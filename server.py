@@ -317,12 +317,14 @@ def place_order(req: OrderRequest):
             "comment":   req.comment,
             "type_time": mt5.ORDER_TIME_GTC,
         }
+        print(f"[ORDER] {req.order_type} {real} vol={req.volume} price={price} sl={sl} tp={tp} (sl_pips={req.sl_pips} tp_pips={req.tp_pips} pip={_pip_size(sym)})")
+
         for filling in [mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_RETURN]:
             request["type_filling"] = filling
             result = mt5.order_send(request)
             if result.retcode == mt5.TRADE_RETCODE_DONE:
-                return {"success": True, "ticket": result.order, "price": result.price}
-            if result.retcode != 10038:   # not a filling error — stop retrying
+                return {"success": True, "ticket": result.order, "price": result.price, "sl": sl, "tp": tp}
+            if result.retcode != 10038:
                 return {"error": f"{result.comment} (retcode {result.retcode})"}
         return {"error": f"{result.comment} (retcode {result.retcode})"}
 

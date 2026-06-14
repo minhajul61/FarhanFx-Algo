@@ -2372,7 +2372,9 @@ async function placeOrder(side) {
   activeBtn.innerHTML = origHTML;
 
   if (r.error) { toast(side + ' failed: ' + r.error, false); return; }
-  toast(`${side} #${r.ticket} opened @ ${r.price}`);
+  const slInfo = r.sl > 0 ? ` SL:${r.sl}` : ' (no SL)';
+  const tpInfo = r.tp > 0 ? ` TP:${r.tp}` : ' (no TP)';
+  toast(`${side} #${r.ticket} @ ${r.price}${slInfo}${tpInfo}`);
   loadPositions();
   loadAccount();
 }
