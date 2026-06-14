@@ -1526,8 +1526,8 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 // ── CONFIG ─────────────────────────────────────────────────────────────────────
-const API = 'http://127.0.0.1:8000';
-const WS  = 'ws://127.0.0.1:8000/ws';
+const API = window.location.origin;
+const WS  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws';
 
 // Auto-connect on page load
 window.addEventListener('DOMContentLoaded', async () => {

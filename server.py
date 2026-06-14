@@ -10,7 +10,7 @@ import MetaTrader5 as mt5
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 
 
@@ -1923,5 +1923,9 @@ def run_backtest(req: BacktestRequest):
     }
 
 
+@app.get("/")
+def serve_index():
+    return FileResponse("index.html")
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
