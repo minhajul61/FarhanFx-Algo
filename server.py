@@ -212,10 +212,12 @@ def get_deals(days: int = 30):
         for d in deals_all:
             if d.type not in (0, 1):  # only BUY/SELL deals
                 continue
-            if d.entry == 0:          # DEAL_ENTRY_IN — opening deal
+            # Opening deals always have profit=0; closing deals have profit!=0.
+            # Using profit check is more reliable than d.entry (varies by broker/account type).
+            is_close = not (d.profit == 0.0 and d.commission == 0.0 and d.swap == 0.0)
+            if not is_close:           # opening deal → store for matching
                 in_map[d.position_id] = d
-            elif d.entry in (1, 2, 3):  # OUT / INOUT / OUT_BY — all closing types
-                # Only include closings within the requested range (from midnight)
+            else:                      # closing deal
                 if d.time >= cutoff_ts:
                     out_list.append(d)
 
@@ -311,11 +313,13 @@ def get_today_realized():
         wins   = 0
         losses = 0
         for d in deals:
-            if d.type not in (0, 1):        # skip balance, credit, bonus etc.
+            if d.type not in (0, 1):   # skip balance, credit, bonus, commission etc.
                 continue
-            if d.entry not in (1, 2, 3):    # only OUT / INOUT / OUT_BY
+            net = round(d.profit + d.commission + d.swap, 2)
+            # Opening deals always have profit=0; closing deals always have profit!=0
+            # This is more reliable than checking d.entry which varies by broker/mode
+            if d.profit == 0.0 and d.commission == 0.0 and d.swap == 0.0:
                 continue
-            net = d.profit + d.commission + d.swap
             total += net
             trades += 1
             if net > 0:
