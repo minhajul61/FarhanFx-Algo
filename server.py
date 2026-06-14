@@ -1,6 +1,8 @@
 import asyncio
+import hashlib
 import json
 import queue
+import secrets
 import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -8,7 +10,7 @@ from typing import List, Optional
 
 import MetaTrader5 as mt5
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
@@ -103,6 +105,88 @@ def get_account():
 
 
 # ── MT5 CREDENTIAL LOGIN ────────────────────────────────────────────────────────
+
+# ── USER AUTH ───────────────────────────────────────────────────────────────────
+
+_USERS_FILE    = "users.json"
+_auth_sessions: dict = {}   # token -> {"username": str, "created": str}
+
+class AuthLoginRequest(BaseModel):
+    username: str
+    password: str
+
+class AuthChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+def _hash_pw(password: str, salt: str) -> str:
+    return hashlib.sha256(f"{salt}:{password}".encode()).hexdigest()
+
+def _load_users() -> dict:
+    try:
+        with open(_USERS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"users": []}
+
+def _save_users(data: dict):
+    with open(_USERS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+def _ensure_default_user():
+    data = _load_users()
+    if not data.get("users"):
+        salt = secrets.token_hex(16)
+        data["users"] = [{
+            "username": "admin",
+            "salt": salt,
+            "password_hash": _hash_pw("admin123", salt),
+            "display_name": "Admin"
+        }]
+        _save_users(data)
+
+_ensure_default_user()
+
+@app.post("/api/auth/login")
+def auth_login(req: AuthLoginRequest):
+    data  = _load_users()
+    user  = next((u for u in data.get("users", []) if u["username"] == req.username), None)
+    if not user or _hash_pw(req.password, user["salt"]) != user["password_hash"]:
+        return JSONResponse({"error": "Invalid username or password"}, status_code=401)
+    token = secrets.token_urlsafe(32)
+    _auth_sessions[token] = {"username": req.username, "display_name": user.get("display_name", req.username),
+                              "created": datetime.now().isoformat()}
+    return {"token": token, "username": req.username, "display_name": user.get("display_name", req.username)}
+
+@app.get("/api/auth/verify")
+def auth_verify(authorization: str = Header(default=None)):
+    token = (authorization or "").replace("Bearer ", "").strip()
+    sess  = _auth_sessions.get(token)
+    if not sess:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    return {"username": sess["username"], "display_name": sess.get("display_name", sess["username"])}
+
+@app.post("/api/auth/logout")
+def auth_logout(authorization: str = Header(default=None)):
+    token = (authorization or "").replace("Bearer ", "").strip()
+    _auth_sessions.pop(token, None)
+    return {"ok": True}
+
+@app.post("/api/auth/change_password")
+def auth_change_password(req: AuthChangePasswordRequest, authorization: str = Header(default=None)):
+    token = (authorization or "").replace("Bearer ", "").strip()
+    sess  = _auth_sessions.get(token)
+    if not sess:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    data  = _load_users()
+    user  = next((u for u in data.get("users", []) if u["username"] == sess["username"]), None)
+    if not user or _hash_pw(req.old_password, user["salt"]) != user["password_hash"]:
+        return JSONResponse({"error": "Old password incorrect"}, status_code=400)
+    user["salt"]          = secrets.token_hex(16)
+    user["password_hash"] = _hash_pw(req.new_password, user["salt"])
+    _save_users(data)
+    return {"ok": True}
+
 
 class ConnectRequest(BaseModel):
     login:    int

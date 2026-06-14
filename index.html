@@ -34,6 +34,17 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
 .bg-grid{position:fixed;inset:0;background-image:linear-gradient(rgba(139,92,246,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(139,92,246,0.04) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
 
 /* LOGIN */
+#auth-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:20;background:var(--bg)}
+#auth-screen .auth-bg{position:absolute;inset:0;background:radial-gradient(ellipse at 60% 40%,rgba(139,92,246,0.08) 0%,transparent 70%);pointer-events:none}
+.auth-card{background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:32px;width:100%;max-width:380px;box-shadow:0 12px 48px rgba(0,0,0,0.5);position:relative}
+.auth-brand{text-align:center;margin-bottom:28px}
+.auth-icon{width:56px;height:56px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:14px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;color:#fff;margin-bottom:12px;box-shadow:0 0 32px var(--accent-glow)}
+.auth-title{font-size:20px;font-weight:700;letter-spacing:2px;color:var(--text)}
+.auth-sub{font-size:11px;color:var(--text3);letter-spacing:1px;margin-top:4px}
+.auth-err{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--red);margin-bottom:14px;display:none}
+.auth-btn{width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:8px;padding:14px;color:#fff;font-family:var(--font);font-size:14px;font-weight:700;letter-spacing:2px;cursor:pointer;margin-top:6px;transition:all 0.2s;box-shadow:0 4px 16px var(--accent-glow)}
+.auth-btn:hover{filter:brightness(1.12);transform:translateY(-1px)}
+.auth-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none}
 #login-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:10;background:var(--bg)}
 .l-container{width:100%;max-width:420px;padding:24px}
 .logo-wrap{text-align:center;margin-bottom:32px}
@@ -191,8 +202,35 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
 <div class="bg-grid"></div>
 
+<!-- AUTH SCREEN -->
+<div id="auth-screen" style="display:none">
+  <div class="auth-bg"></div>
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="auth-icon">FX</div>
+      <div class="auth-title">FARHANFX ALGO</div>
+      <div class="auth-sub">TRADING SYSTEM · SECURE LOGIN</div>
+    </div>
+    <div class="auth-err" id="auth-err"></div>
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="auth-username" placeholder="Enter username" autocomplete="username"
+             onkeydown="if(event.key==='Enter') document.getElementById('auth-password').focus()"/>
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="auth-password" placeholder="••••••••••••" autocomplete="current-password"
+             onkeydown="if(event.key==='Enter') doAuthLogin()"/>
+    </div>
+    <button class="auth-btn" id="auth-btn" onclick="doAuthLogin()">LOGIN →</button>
+    <div style="text-align:center;margin-top:16px;font-size:10px;color:var(--text3)">
+      Default: <span style="color:var(--accent)">admin</span> / <span style="color:var(--accent)">admin123</span>
+    </div>
+  </div>
+</div>
+
 <!-- LOGIN -->
-<div id="login-screen">
+<div id="login-screen" style="display:none">
   <div class="l-container">
     <div class="logo-wrap">
       <div class="logo-icon">FX</div>
@@ -232,7 +270,9 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       <button class="lbtn" id="session-btn" onclick="useCurrentSession()" style="background:transparent;border:1px solid var(--accent);color:var(--accent);margin-top:12px">⚡ USE CURRENT MT5 SESSION</button>
       <div class="lstatus"><div class="dot"></div><div class="lstatus-text" id="login-status-text">SERVER READY</div></div>
     </div>
-    <div class="footer-text">Make sure MetaTrader 5 is running &amp; <a href="#" onclick="checkServer(event)">check server</a></div>
+    <div class="footer-text">Make sure MetaTrader 5 is running &amp; <a href="#" onclick="checkServer(event)">check server</a>
+      &nbsp;·&nbsp; <a href="#" onclick="doAuthLogout();return false" style="color:var(--text3)">Switch Account</a>
+    </div>
   </div>
 </div>
 
@@ -1680,15 +1720,28 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 const API = window.location.origin;
 const WS  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws';
 
-// Auto-connect on page load
+// Page load — check auth token first, then MT5
 window.addEventListener('DOMContentLoaded', async () => {
-  const r = await apiFetch('/api/account');
-  if (!r.error) {
-    showApp(r);
-    loadMT5Symbols();
-    // Ensure dashboard KPIs always populate even if WS is slow
-    setTimeout(loadAccount, 500);
+  const token = _getAuthToken();
+  if (!token) {
+    document.getElementById('auth-screen').style.display = 'flex';
+    setTimeout(() => document.getElementById('auth-username').focus(), 100);
+    return;
   }
+  // Verify token with server
+  const vr = await fetch(API + '/api/auth/verify', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  }).then(r => r.json()).catch(() => ({ error: 'offline' }));
+  if (vr.error) {
+    // Token invalid or server offline — show auth screen
+    _clearAuthToken();
+    document.getElementById('auth-screen').style.display = 'flex';
+    setTimeout(() => document.getElementById('auth-username').focus(), 100);
+    return;
+  }
+  // Token valid — update badge and check MT5
+  document.getElementById('user-badge').textContent = '● ' + (vr.display_name || vr.username);
+  await _afterAuthSuccess();
 });
 
 // ── LOAD SYMBOLS FROM MT5 ──────────────────────────────────────────────────────
@@ -1833,9 +1886,13 @@ function showApp(accountInfo) {
 }
 
 async function logout() {
+  await doAuthLogout();
+}
+
+async function disconnectMT5Only() {
   if (ws) { ws.close(); ws = null; }
   await apiFetch('/api/disconnect', { method: 'POST' });
-  document.getElementById('app').style.display = 'none';
+  document.getElementById('app').style.display          = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('mt5-password').value = '';
   setConnStatus(false);
@@ -2685,18 +2742,82 @@ function resetSettings() {
 
 function getSettings() { return loadSettings(); }
 
-// ── MT5 API HELPERS ────────────────────────────────────────────────────────────
+// ── AUTH HELPERS ───────────────────────────────────────────────────────────────
+function _getAuthToken() { return sessionStorage.getItem('fx_auth_token') || ''; }
+function _setAuthToken(t) { sessionStorage.setItem('fx_auth_token', t); }
+function _clearAuthToken() { sessionStorage.removeItem('fx_auth_token'); }
+
+async function doAuthLogin() {
+  const username = document.getElementById('auth-username').value.trim();
+  const password = document.getElementById('auth-password').value;
+  const errEl    = document.getElementById('auth-err');
+  const btn      = document.getElementById('auth-btn');
+  errEl.style.display = 'none';
+  if (!username || !password) { errEl.textContent = 'Username and password required.'; errEl.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Logging in...';
+  try {
+    const r = await fetch(API + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error || 'Login failed.'; errEl.style.display = 'block'; return; }
+    _setAuthToken(data.token);
+    document.getElementById('user-badge').textContent = '● ' + (data.display_name || data.username);
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('auth-username').value = '';
+    document.getElementById('auth-password').value = '';
+    // Now check MT5 connection
+    await _afterAuthSuccess();
+  } catch(e) {
+    errEl.textContent = 'Server offline — start server.py first'; errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'LOGIN →';
+  }
+}
+
+async function _afterAuthSuccess() {
+  const r = await apiFetch('/api/account');
+  if (!r.error) {
+    showApp(r);
+    loadMT5Symbols();
+    setTimeout(loadAccount, 500);
+  } else {
+    // MT5 not connected — show MT5 connect screen
+    document.getElementById('login-screen').style.display = 'flex';
+    setLoginStatus('SERVER READY', 'var(--text2)');
+  }
+}
+
+async function doAuthLogout() {
+  const token = _getAuthToken();
+  if (token) {
+    try { await fetch(API + '/api/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }); } catch {}
+  }
+  _clearAuthToken();
+  if (ws) { ws.close(); ws = null; }
+  try { await fetch(API + '/api/disconnect', { method: 'POST' }); } catch {}
+  document.getElementById('app').style.display          = 'none';
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('auth-screen').style.display  = 'flex';
+  document.getElementById('auth-username').focus();
+  setConnStatus(false);
+}
+
+// ── MT5 API HELPERS ───────────────────────────────────────────────────────────
 async function apiFetch(path, opts = {}) {
   try {
-    const r = await fetch(API + path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+    const token = _getAuthToken();
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const r = await fetch(API + path, { headers, ...opts });
     const text = await r.text();
     try {
       const json = JSON.parse(text);
-      // FastAPI wraps exceptions as {detail: "..."}
       if (!r.ok && json.detail) return { error: json.detail };
       return json;
     } catch {
-      // Server returned non-JSON (traceback HTML etc)
       if (!r.ok) return { error: `Server error ${r.status} — check server.py console` };
       return { error: text };
     }
