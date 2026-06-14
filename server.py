@@ -2012,7 +2012,11 @@ def run_backtest(req: BacktestRequest):
 
 @app.get("/")
 def serve_index():
-    return FileResponse("index.html")
+    return FileResponse("index.html", headers={
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    })
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)

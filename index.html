@@ -1571,6 +1571,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (!r.error) {
     showApp(r);
     loadMT5Symbols();
+    // Ensure dashboard KPIs always populate even if WS is slow
+    setTimeout(loadAccount, 500);
   }
 });
 
