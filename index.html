@@ -1937,24 +1937,49 @@ function jDeleteTrade(idx) {
 async function jImportMT5() {
   toast('Importing from MT5...', true);
   const r = await apiFetch('/api/deals');
-  if (r.error || !r.deals) { toast('Import failed: ' + (r.error || 'no data'), false); return; }
+
+  // API returns array directly OR {error:...}
+  if (r && r.error) { toast('Import failed: ' + r.error, false); return; }
+  const deals = Array.isArray(r) ? r : (r.deals || []);
+  if (!deals.length) { toast('No deals found in MT5', false); return; }
 
   let added = 0;
-  r.deals.forEach(d => {
-    if (!d.profit || !d.symbol) return;
+  deals.forEach(d => {
+    if (!d.symbol) return;                                      // skip if no symbol
     const existing = journalTrades.find(t => t.id === d.ticket);
-    if (existing) return;
-    const dir = d.type === 0 ? 'BUY' : 'SELL';
+    if (existing) return;                                       // skip duplicates
+
+    // d.type is string "BUY"/"SELL" from API
+    const dir = (d.type || '').toString().toUpperCase().includes('BUY') ? 'BUY' : 'SELL';
     const pnl = parseFloat(d.profit) || 0;
+
+    // d.time is already "YYYY-MM-DD HH:MM" string
+    let dateStr = '';
+    if (d.time) {
+      dateStr = d.time.replace(' ', 'T');   // "2026-06-13T00:01"
+    } else {
+      dateStr = new Date().toISOString().slice(0, 16);
+    }
+
+    // Detect session from hour
+    const hour = dateStr.length >= 16 ? parseInt(dateStr.slice(11, 13)) : 0;
+    const session = hour >= 7 && hour < 16 ? 'London' : hour >= 13 && hour < 21 ? 'NewYork' : hour >= 0 && hour < 9 ? 'Asian' : 'Unknown';
+
     journalTrades.unshift({
       id: d.ticket,
-      date: d.time ? new Date(d.time * 1000).toISOString().slice(0,16) : new Date().toISOString().slice(0,16),
-      symbol: d.symbol, direction: dir,
-      lots: d.volume || 0, entry: d.price || 0, exit: 0,
+      date: dateStr,
+      symbol: d.symbol,
+      direction: dir,
+      lots: d.volume || 0,
+      entry: d.price || 0,
+      exit: 0,
       pips: 0, pnl, rr: null, sl: 0, tp: 0,
-      strategy: 'Manual', session: 'Unknown',
-      duration: '', notes: 'Imported from MT5',
-      emotion: '😊', rating: 3,
+      strategy: 'MT5 Import',
+      session,
+      duration: '',
+      notes: 'Imported from MT5' + (d.comment ? ' | ' + d.comment : ''),
+      emotion: '😊',
+      rating: 3,
       result: pnl > 0.5 ? 'WIN' : pnl < -0.5 ? 'LOSS' : 'BE'
     });
     added++;
