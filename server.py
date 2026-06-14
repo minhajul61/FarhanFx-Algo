@@ -396,24 +396,40 @@ def get_reports(months: int = 12):
     def fn():
         now        = datetime.now()
         date_from  = now - timedelta(days=months * 31)
-        date_wide  = date_from - timedelta(days=180)
+        # Fetch full history for monthly chart (up to 10 years back)
+        date_wide  = datetime(max(now.year - 10, 2010), 1, 1)
         deals_all  = mt5.history_deals_get(date_wide, now + timedelta(seconds=60))
         if deals_all is None:
-            return {"monthly": [], "by_symbol": [], "by_day": [], "by_session": [],
+            return {"monthly": [], "monthly_chart": [], "by_symbol": [], "by_session": [],
                     "daily_pnl": [], "summary": {}}
 
         cutoff_ts = date_from.timestamp()
 
         in_map   = {}
         out_list = []
+        monthly_chart: dict = {}
+
         for d in deals_all:
             if d.type not in (0, 1):
                 continue
             is_close = not (d.profit == 0.0 and d.commission == 0.0 and d.swap == 0.0)
             if not is_close:
                 in_map[d.position_id] = d
-            elif d.time >= cutoff_ts:
-                out_list.append(d)
+            else:
+                # Build monthly_chart from ALL closing deals (no cutoff)
+                net_c = round(d.profit + d.commission + d.swap, 2)
+                dt_c  = datetime.fromtimestamp(d.time)
+                mkey  = dt_c.strftime("%Y-%m")
+                if mkey not in monthly_chart:
+                    monthly_chart[mkey] = {"key": mkey, "label": dt_c.strftime("%b %Y"),
+                                           "pnl": 0.0, "trades": 0, "wins": 0, "losses": 0}
+                monthly_chart[mkey]["pnl"]    = round(monthly_chart[mkey]["pnl"] + net_c, 2)
+                monthly_chart[mkey]["trades"] += 1
+                if net_c > 0: monthly_chart[mkey]["wins"]   += 1
+                else:         monthly_chart[mkey]["losses"] += 1
+
+                if d.time >= cutoff_ts:
+                    out_list.append(d)
 
         # ── Accumulators ──────────────────────────────────────────────────────
         monthly:    dict = {}
@@ -506,6 +522,10 @@ def get_reports(months: int = 12):
         for m in monthly_list:
             m["win_rate"] = wr(m["wins"], m["trades"])
 
+        monthly_chart_list = sorted(monthly_chart.values(), key=lambda x: x["key"])
+        for m in monthly_chart_list:
+            m["win_rate"] = wr(m["wins"], m["trades"])
+
         daily_list = sorted(daily.values(), key=lambda x: x["date"], reverse=True)
         for d in daily_list:
             d["win_rate"] = wr(d["wins"], d["trades"])
@@ -566,12 +586,13 @@ def get_reports(months: int = 12):
             "worst_dow":         min(dow_list, key=lambda x: x["pnl"])  if dow_list else {},
         }
         return {
-            "summary":    summary,
-            "monthly":    monthly_list,
-            "daily":      daily_list[:60],
-            "by_symbol":  sym_list,
-            "by_dow":     dow_list,
-            "by_session": sess_list,
+            "summary":       summary,
+            "monthly":       monthly_list,
+            "monthly_chart": monthly_chart_list,
+            "daily":         daily_list[:60],
+            "by_symbol":     sym_list,
+            "by_dow":        dow_list,
+            "by_session":    sess_list,
         }
     return _mt5_call(fn)
 

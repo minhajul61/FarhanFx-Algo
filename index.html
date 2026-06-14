@@ -573,7 +573,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
         <!-- ③ CHARTS ROW -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
-          <div class="panel" style="margin:0"><div class="panel-title">Monthly P&L</div><div style="position:relative;height:200px"><canvas id="rpt-monthly-chart"></canvas></div></div>
+          <div class="panel" style="margin:0"><div class="panel-title">Monthly P&L <span style="font-size:10px;color:var(--text3);font-weight:400">(all history)</span></div><div style="position:relative;height:240px"><canvas id="rpt-monthly-chart"></canvas></div></div>
           <div class="panel" style="margin:0"><div class="panel-title">Day of Week Performance</div><div style="position:relative;height:200px"><canvas id="rpt-dow-chart"></canvas></div></div>
         </div>
 
@@ -2958,7 +2958,7 @@ async function loadReports() {
       `<tr><td colspan="7" style="text-align:center;color:var(--red);padding:20px">${data?.error || 'Failed to load'}</td></tr>`;
     return;
   }
-  const { summary: s, monthly, by_symbol, by_dow, by_session } = data;
+  const { summary: s, monthly, monthly_chart, by_symbol, by_dow, by_session } = data;
 
   // ── ① Overview KPIs ─────────────────────────────────────────────────────────
   const setEl = (id, val, color) => { const e = document.getElementById(id); if (e) { e.textContent = val; if (color) e.style.color = color; } };
@@ -3007,15 +3007,15 @@ async function loadReports() {
   // ── ③ Monthly Chart ───────────────────────────────────────────────────────────
   if (_rptMonthlyChart) _rptMonthlyChart.destroy();
   const mCtx = document.getElementById('rpt-monthly-chart')?.getContext('2d');
-  const monthlyAsc = [...monthly].reverse();
-  if (mCtx && monthlyAsc.length > 0) {
+  const mData = (monthly_chart && monthly_chart.length > 0) ? monthly_chart : [...monthly].reverse();
+  if (mCtx && mData.length > 0) {
     _rptMonthlyChart = new Chart(mCtx, {
       type: 'bar',
-      data: { labels: monthlyAsc.map(m => m.label),
-              datasets: [{ data: monthlyAsc.map(m => m.pnl),
-                backgroundColor: monthlyAsc.map(m => m.pnl >= 0 ? 'rgba(63,185,80,0.75)' : 'rgba(248,81,73,0.75)'),
+      data: { labels: mData.map(m => m.label),
+              datasets: [{ data: mData.map(m => m.pnl),
+                backgroundColor: mData.map(m => m.pnl >= 0 ? 'rgba(63,185,80,0.75)' : 'rgba(248,81,73,0.75)'),
                 borderRadius: 4 }] },
-      options: _rptChartOpts(9)
+      options: _rptChartOpts(mData.length > 18 ? 8 : 9)
     });
   }
 
