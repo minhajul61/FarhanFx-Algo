@@ -1684,6 +1684,9 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <button class="ex-tab" id="cx-tab-bybit" onclick="selectExchange('bybit',this)">
               <span class="ex-conn-dot" id="cx-dot-bybit"></span>BYBIT
             </button>
+            <button class="ex-tab" id="cx-tab-coinswitch" onclick="selectExchange('coinswitch',this)">
+              <span class="ex-conn-dot" id="cx-dot-coinswitch"></span>COINSWITCH
+            </button>
           </div>
           <div style="display:flex;gap:16px;flex:1;flex-wrap:wrap">
             <div class="kpi" style="flex:1;min-width:120px;border-top:2px solid var(--green);padding:10px 14px">
@@ -4948,8 +4951,9 @@ async function cryptoCheckStatus() {
     const d = document.getElementById('cx-dot-' + name);
     if (d) { d.className = 'ex-conn-dot' + (on ? ' online' : ''); }
   };
-  setDot('binance', s.binance);
-  setDot('bybit',   s.bybit);
+  setDot('binance',    s.binance);
+  setDot('bybit',      s.bybit);
+  setDot('coinswitch', s.coinswitch);
 }
 
 // ── Exchange tab select ──
@@ -5173,6 +5177,11 @@ function setCxModalEx(name, el) {
   _cxModalEx = name;
   document.querySelectorAll('#cx-modal .broker-tab').forEach(t => t.classList.remove('active'));
   if (el) el.classList.add('active');
+  // Show/hide CoinSwitch-specific info and testnet toggle
+  const csInfo    = document.getElementById('cxm-cs-info');
+  const testnetRow= document.getElementById('cxm-testnet-row');
+  if (csInfo)     csInfo.style.display     = name === 'coinswitch' ? 'block' : 'none';
+  if (testnetRow) testnetRow.style.display = name === 'coinswitch' ? 'none'  : 'flex';
 }
 
 async function doExchangeConnect() {
@@ -5225,8 +5234,9 @@ async function _refreshCxModalConnected() {
   const box = document.getElementById('cxm-connected');
   if (!box || s.error) return;
   const exchanges = [
-    { name: 'binance', label: 'Binance', on: s.binance },
-    { name: 'bybit',   label: 'Bybit',   on: s.bybit   },
+    { name: 'binance',    label: 'Binance',    on: s.binance    },
+    { name: 'bybit',      label: 'Bybit',      on: s.bybit      },
+    { name: 'coinswitch', label: 'CoinSwitch', on: s.coinswitch },
   ];
   const active = exchanges.filter(e => e.on);
   if (!active.length) { box.innerHTML = ''; return; }
@@ -5256,12 +5266,21 @@ async function _refreshCxModalConnected() {
     <div class="cx-ex-tabs">
       <button class="broker-tab active" id="cxm-tab-binance" onclick="setCxModalEx('binance',this)">BINANCE</button>
       <button class="broker-tab" id="cxm-tab-bybit" onclick="setCxModalEx('bybit',this)">BYBIT</button>
+      <button class="broker-tab" id="cxm-tab-coinswitch" onclick="setCxModalEx('coinswitch',this)">COINSWITCH</button>
     </div>
 
-    <!-- Testnet toggle -->
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+    <!-- Testnet toggle (hidden for CoinSwitch) -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px" id="cxm-testnet-row">
       <div class="toggle" id="cxm-testnet" onclick="this.classList.toggle('on')"></div>
       <span style="font-size:11px;color:var(--text2)">Testnet / Demo mode</span>
+    </div>
+
+    <!-- CoinSwitch info (shown only for CoinSwitch) -->
+    <div id="cxm-cs-info" style="display:none;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:10px 14px;font-size:10px;color:var(--text2);margin-bottom:14px;line-height:1.7">
+      <strong style="color:var(--accent)">CoinSwitch Pro API</strong><br>
+      API Key = your public key (hex)<br>
+      API Secret = your <strong>Ed25519 private key</strong> (hex, 64 chars)<br>
+      Get keys from: <span style="color:var(--cyan)">pro.coinswitch.co → API Management</span>
     </div>
 
     <div class="field">
