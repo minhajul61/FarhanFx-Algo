@@ -66,6 +66,8 @@ async def lifespan(app: FastAPI):
     t = threading.Thread(target=_mt5_worker, daemon=True)
     t.start()
     await asyncio.sleep(1)
+    # Restore saved crypto exchange connections in background
+    threading.Thread(target=_restore_exchanges, daemon=True).start()
     print("FarhanFX Algo API — http://127.0.0.1:8000")
     yield
     _cmd_queue.put((None, None, None))
@@ -2414,6 +2416,331 @@ def run_backtest(req: BacktestRequest):
         "dd_curve":     dd_curve,
         "trades":      trades[-50:],   # last 50 trades for table
     }
+
+
+# ── CRYPTO EXCHANGE (Binance Futures + Bybit Perpetual) ─────────────────────────
+try:
+    import ccxt as _ccxt
+    _CCXT_OK = True
+except ImportError:
+    _ccxt = None
+    _CCXT_OK = False
+    print("⚠  ccxt not installed — run: pip install ccxt")
+
+_EX_FILE     = "exchanges.json"
+_active_ex   = {}          # {"binance": ccxt.Exchange, "bybit": ccxt.Exchange}
+
+
+class ExConnectReq(BaseModel):
+    exchange:   str           # "binance" | "bybit"
+    api_key:    str
+    api_secret: str
+    testnet:    bool = False
+
+
+class CryptoOrderReq(BaseModel):
+    exchange:    str
+    symbol:      str           # e.g. "BTC/USDT:USDT"
+    side:        str           # "buy" | "sell"
+    order_type:  str           # "market" | "limit"
+    amount:      float         # in contracts (base coin)
+    price:       Optional[float] = None
+    leverage:    int  = 10
+    reduce_only: bool = False
+
+
+class CryptoCloseReq(BaseModel):
+    exchange: str
+    symbol:   str
+    pos_side: str              # "long" | "short"
+    amount:   float
+
+
+class CryptoLeverageReq(BaseModel):
+    exchange: str
+    symbol:   str
+    leverage: int
+
+
+def _load_ex_cfg():
+    try:
+        with open(_EX_FILE) as f: return json.load(f)
+    except: return {}
+
+def _save_ex_cfg(data):
+    with open(_EX_FILE, "w") as f: json.dump(data, f, indent=2)
+
+
+def _build_exchange(name: str, key: str, secret: str, testnet: bool = False):
+    if not _CCXT_OK:
+        raise RuntimeError("ccxt not installed — pip install ccxt")
+    name = name.lower()
+    if name == "binance":
+        ex = _ccxt.binanceusdm({
+            "apiKey": key, "secret": secret,
+            "options": {"defaultType": "future"},
+        })
+    elif name == "bybit":
+        ex = _ccxt.bybit({
+            "apiKey": key, "secret": secret,
+            "options": {"defaultType": "swap", "defaultSubType": "linear"},
+        })
+    else:
+        raise ValueError(f"Unsupported exchange: {name}")
+    if testnet:
+        ex.set_sandbox_mode(True)
+    return ex
+
+
+def _restore_exchanges():
+    """Try to reconnect saved exchanges on server startup."""
+    if not _CCXT_OK:
+        return
+    cfg = _load_ex_cfg()
+    for name, info in cfg.items():
+        try:
+            ex = _build_exchange(name, info["api_key"], info["api_secret"], info.get("testnet", False))
+            ex.fetch_balance()
+            _active_ex[name] = ex
+            print(f"Crypto: {name} restored ✓")
+        except Exception as e:
+            print(f"Crypto: {name} restore failed — {e}")
+
+
+def _fmt_position(p):
+    contracts = p.get("contracts") or p.get("contractSize") or 0
+    try: contracts = float(contracts)
+    except: contracts = 0
+    upnl = p.get("unrealizedPnl") or 0
+    try: upnl = round(float(upnl), 4)
+    except: upnl = 0
+    pct  = p.get("percentage") or 0
+    try: pct = round(float(pct), 2)
+    except: pct = 0
+    liq  = p.get("liquidationPrice") or 0
+    try: liq = float(liq)
+    except: liq = 0
+    margin = p.get("initialMargin") or 0
+    try: margin = round(float(margin), 2)
+    except: margin = 0
+    return {
+        "symbol":      p.get("symbol", ""),
+        "side":        p.get("side", ""),
+        "size":        contracts,
+        "entry_price": p.get("entryPrice") or 0,
+        "mark_price":  p.get("markPrice")  or 0,
+        "pnl":         upnl,
+        "pnl_pct":     pct,
+        "leverage":    p.get("leverage") or 1,
+        "liquidation": liq,
+        "margin":      margin,
+    }
+
+
+@app.post("/api/crypto/connect")
+def crypto_connect(req: ExConnectReq):
+    if not _CCXT_OK:
+        return JSONResponse(400, {"error": "ccxt not installed — pip install ccxt"})
+    try:
+        ex  = _build_exchange(req.exchange, req.api_key, req.api_secret, req.testnet)
+        bal = ex.fetch_balance()
+        _active_ex[req.exchange.lower()] = ex
+        cfg = _load_ex_cfg()
+        cfg[req.exchange.lower()] = {
+            "api_key": req.api_key, "api_secret": req.api_secret,
+            "testnet": req.testnet
+        }
+        _save_ex_cfg(cfg)
+        usdt = bal.get("USDT", {})
+        return {
+            "success":  True,
+            "exchange": req.exchange.lower(),
+            "balance":  round(float(usdt.get("free",  0)), 2),
+            "total":    round(float(usdt.get("total", 0)), 2),
+            "testnet":  req.testnet,
+        }
+    except _ccxt.AuthenticationError:
+        return JSONResponse(400, {"error": "Invalid API key or secret — check credentials"})
+    except _ccxt.NetworkError as e:
+        return JSONResponse(400, {"error": f"Network error — {str(e)[:120]}"})
+    except Exception as e:
+        return JSONResponse(400, {"error": str(e)[:200]})
+
+
+@app.post("/api/crypto/disconnect/{exchange}")
+def crypto_disconnect(exchange: str):
+    _active_ex.pop(exchange.lower(), None)
+    cfg = _load_ex_cfg()
+    cfg.pop(exchange.lower(), None)
+    _save_ex_cfg(cfg)
+    return {"success": True}
+
+
+@app.get("/api/crypto/status")
+def crypto_status():
+    cfg = _load_ex_cfg()
+    return {
+        "binance": "binance" in _active_ex,
+        "bybit":   "bybit"   in _active_ex,
+        "saved":   list(cfg.keys()),
+    }
+
+
+@app.get("/api/crypto/balance")
+def crypto_balance(exchange: str = "binance"):
+    ex = _active_ex.get(exchange.lower())
+    if not ex:
+        return JSONResponse(400, {"error": f"{exchange} not connected"})
+    try:
+        bal  = ex.fetch_balance()
+        usdt = bal.get("USDT", {})
+        # Unrealized PnL (Binance futures returns it in info)
+        upnl = 0
+        try:
+            info = bal.get("info", {})
+            upnl = round(float(
+                info.get("totalUnrealizedProfit") or
+                info.get("result", {}).get("list", [{}])[0].get("totalUnrealisedPnl", 0)
+            ), 2)
+        except: pass
+        return {
+            "free":  round(float(usdt.get("free",  0)), 2),
+            "used":  round(float(usdt.get("used",  0)), 2),
+            "total": round(float(usdt.get("total", 0)), 2),
+            "upnl":  upnl,
+        }
+    except Exception as e:
+        return JSONResponse(400, {"error": str(e)[:200]})
+
+
+@app.get("/api/crypto/positions")
+def crypto_positions(exchange: str = "binance"):
+    ex = _active_ex.get(exchange.lower())
+    if not ex:
+        return JSONResponse(400, {"error": f"{exchange} not connected"})
+    try:
+        raw  = ex.fetch_positions()
+        open_pos = []
+        for p in raw:
+            size = p.get("contracts") or 0
+            try: size = float(size)
+            except: size = 0
+            if size and size != 0:
+                open_pos.append(_fmt_position(p))
+        return open_pos
+    except Exception as e:
+        return JSONResponse(400, {"error": str(e)[:200]})
+
+
+@app.get("/api/crypto/orders")
+def crypto_orders(exchange: str = "binance", symbol: str = "BTC/USDT:USDT"):
+    ex = _active_ex.get(exchange.lower())
+    if not ex:
+        return JSONResponse(400, {"error": f"{exchange} not connected"})
+    try:
+        orders = ex.fetch_open_orders(symbol)
+        return [{
+            "id":     o.get("id"),
+            "symbol": o.get("symbol"),
+            "side":   o.get("side"),
+            "type":   o.get("type"),
+            "amount": o.get("amount"),
+            "price":  o.get("price"),
+            "status": o.get("status"),
+        } for o in orders]
+    except Exception as e:
+        return JSONResponse(400, {"error": str(e)[:200]})
+
+
+@app.post("/api/crypto/order")
+def crypto_order(req: CryptoOrderReq):
+    ex = _active_ex.get(req.exchange.lower())
+    if not ex:
+        return JSONResponse(400, {"error": f"{req.exchange} not connected"})
+    try:
+        # Set leverage before placing
+        try: ex.set_leverage(req.leverage, req.symbol)
+        except: pass
+        params = {}
+        if req.reduce_only:
+            params["reduceOnly"] = True
+        order = ex.create_order(
+            symbol=req.symbol,
+            type=req.order_type,
+            side=req.side,
+            amount=req.amount,
+            price=req.price if req.order_type == "limit" else None,
+            params=params,
+        )
+        return {
+            "success":  True,
+            "order_id": order.get("id"),
+            "symbol":   order.get("symbol"),
+            "side":     order.get("side"),
+            "amount":   order.get("amount"),
+            "price":    order.get("price") or order.get("average"),
+            "status":   order.get("status"),
+        }
+    except _ccxt.InsufficientFunds:
+        return JSONResponse(400, {"error": "Insufficient USDT margin"})
+    except _ccxt.InvalidOrder as e:
+        return JSONResponse(400, {"error": f"Invalid order — {str(e)[:120]}"})
+    except Exception as e:
+        return JSONResponse(400, {"error": str(e)[:200]})
+
+
+@app.post("/api/crypto/close")
+def crypto_close(req: CryptoCloseReq):
+    ex = _active_ex.get(req.exchange.lower())
+    if not ex:
+        return JSONResponse(400, {"error": f"{req.exchange} not connected"})
+    try:
+        close_side = "sell" if req.pos_side == "long" else "buy"
+        order = ex.create_order(
+            symbol=req.symbol,
+            type="market",
+            side=close_side,
+            amount=req.amount,
+            params={"reduceOnly": True},
+        )
+        return {"success": True, "order_id": order.get("id")}
+    except Exception as e:
+        return JSONResponse(400, {"error": str(e)[:200]})
+
+
+@app.post("/api/crypto/leverage")
+def crypto_set_leverage(req: CryptoLeverageReq):
+    ex = _active_ex.get(req.exchange.lower())
+    if not ex:
+        return JSONResponse(400, {"error": f"{req.exchange} not connected"})
+    try:
+        ex.set_leverage(req.leverage, req.symbol)
+        return {"success": True, "leverage": req.leverage}
+    except Exception as e:
+        return JSONResponse(400, {"error": str(e)[:200]})
+
+
+@app.get("/api/crypto/markets")
+def crypto_markets(exchange: str = "binance"):
+    ex = _active_ex.get(exchange.lower())
+    fallback = [
+        "BTC/USDT:USDT","ETH/USDT:USDT","BNB/USDT:USDT","SOL/USDT:USDT",
+        "XRP/USDT:USDT","DOGE/USDT:USDT","ADA/USDT:USDT","AVAX/USDT:USDT",
+        "MATIC/USDT:USDT","DOT/USDT:USDT","LINK/USDT:USDT","LTC/USDT:USDT",
+        "UNI/USDT:USDT","ATOM/USDT:USDT","FIL/USDT:USDT","APT/USDT:USDT",
+        "ARB/USDT:USDT","OP/USDT:USDT","SUI/USDT:USDT","INJ/USDT:USDT",
+    ]
+    if not ex:
+        return fallback
+    try:
+        mkts = ex.load_markets()
+        syms = sorted([
+            s for s, m in mkts.items()
+            if m.get("settle") == "USDT" and m.get("type") in ("swap", "future") and m.get("active")
+        ])
+        return syms if syms else fallback
+    except:
+        return fallback
 
 
 @app.get("/")

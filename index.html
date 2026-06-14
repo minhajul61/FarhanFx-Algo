@@ -217,6 +217,33 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 .toast.show{opacity:1;transform:translateY(0)}
 .toast-ok{background:rgba(16,185,129,0.15);border:1px solid var(--green);color:var(--green)}
 .toast-err{background:rgba(239,68,68,0.22);border:2px solid var(--red);color:#ff6b6b;font-size:13px;box-shadow:0 4px 24px rgba(239,68,68,0.25)}
+/* ── CRYPTO PAGE ── */
+.ex-tabs{display:flex;gap:8px;margin-bottom:16px}
+.ex-tab{padding:7px 18px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;font-family:var(--font);transition:all 0.15s}
+.ex-tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.ex-tab:hover:not(.active){border-color:var(--accent);color:var(--accent)}
+.ex-conn-dot{width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block;margin-right:6px;transition:background 0.3s}
+.ex-conn-dot.online{background:var(--green);animation:pulse 2s infinite}
+.crypto-order-card{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:18px}
+.crypto-side-btn{flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);background:transparent;font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;transition:all 0.2s}
+.crypto-side-btn.long-active{background:linear-gradient(135deg,#059669,#10b981);border-color:#10b981;color:#fff}
+.crypto-side-btn.short-active{background:linear-gradient(135deg,#dc2626,#ef4444);border-color:#ef4444;color:#fff}
+.crypto-side-btn:not(.long-active):not(.short-active){color:var(--text2)}
+.crypto-type-btn{padding:5px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;font-family:var(--font);font-size:10px;font-weight:700;letter-spacing:1px;cursor:pointer;color:var(--text2);transition:all 0.15s}
+.crypto-type-btn.active{background:var(--bg2);border-color:var(--accent);color:var(--accent)}
+.pos-pnl-pos{color:var(--green);font-weight:700}
+.pos-pnl-neg{color:var(--red);font-weight:700}
+/* ── CRYPTO CONNECT MODAL ── */
+.cx-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:100}
+.cx-modal.open{display:flex}
+.cx-overlay{position:absolute;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px)}
+.cx-card{position:relative;z-index:1;background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:28px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,0.5)}
+.cx-title{font-size:16px;font-weight:800;letter-spacing:2px;color:var(--text);margin-bottom:4px}
+.cx-sub{font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:20px}
+.cx-ex-tabs{display:flex;gap:6px;margin-bottom:18px}
+.cx-close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1}
+.cx-close:hover{color:var(--text)}
+.cx-err{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.4);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--red);margin-bottom:12px;display:none}
 </style>
 </head>
 <body>
@@ -324,6 +351,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       <div class="nav-item" onclick="showPage('algo',this)"><i class="ti ti-robot"></i> ALGO</div>
       <div class="nav-item" onclick="showPage('journal',this)"><i class="ti ti-notebook"></i> JOURNAL</div>
       <div class="nav-item" onclick="showPage('risk',this)"><i class="ti ti-shield-check"></i> RISK CALC</div>
+      <div class="nav-item" onclick="showPage('crypto',this)"><i class="ti ti-currency-bitcoin"></i> CRYPTO</div>
       <div class="nav-item" onclick="showPage('settings',this)"><i class="ti ti-settings"></i> SETTINGS</div>
     </div>
     <div class="content">
@@ -1637,6 +1665,150 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         </div>
       </div>
 
+      <!-- CRYPTO FUTURES PAGE -->
+      <div class="page" id="page-crypto">
+        <div class="page-title" style="display:flex;justify-content:space-between;align-items:center">
+          Crypto Futures
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="sbtn" onclick="cryptoRefresh()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
+            <button class="sbtn" style="font-size:10px;padding:4px 10px;background:var(--accent)" onclick="openCxModal()">⚡ CONNECT EXCHANGE</button>
+          </div>
+        </div>
+
+        <!-- Exchange Tabs + Balance Bar -->
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+          <div class="ex-tabs">
+            <button class="ex-tab active" id="cx-tab-binance" onclick="selectExchange('binance',this)">
+              <span class="ex-conn-dot" id="cx-dot-binance"></span>BINANCE
+            </button>
+            <button class="ex-tab" id="cx-tab-bybit" onclick="selectExchange('bybit',this)">
+              <span class="ex-conn-dot" id="cx-dot-bybit"></span>BYBIT
+            </button>
+          </div>
+          <div style="display:flex;gap:16px;flex:1;flex-wrap:wrap">
+            <div class="kpi" style="flex:1;min-width:120px;border-top:2px solid var(--green);padding:10px 14px">
+              <div class="kpi-label">USDT FREE</div>
+              <div class="kpi-value green" id="cx-bal-free" style="font-size:18px">—</div>
+            </div>
+            <div class="kpi" style="flex:1;min-width:120px;border-top:2px solid var(--amber);padding:10px 14px">
+              <div class="kpi-label">USDT USED</div>
+              <div class="kpi-value amber" id="cx-bal-used" style="font-size:18px">—</div>
+            </div>
+            <div class="kpi" style="flex:1;min-width:120px;border-top:2px solid var(--cyan);padding:10px 14px">
+              <div class="kpi-label">TOTAL EQUITY</div>
+              <div class="kpi-value cyan" id="cx-bal-total" style="font-size:18px">—</div>
+            </div>
+            <div class="kpi" style="flex:1;min-width:120px;border-top:2px solid var(--accent);padding:10px 14px">
+              <div class="kpi-label">UNREALIZED PnL</div>
+              <div class="kpi-value" id="cx-bal-upnl" style="font-size:18px">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Order + Positions Grid -->
+        <div style="display:grid;grid-template-columns:300px 1fr;gap:14px;align-items:start">
+
+          <!-- Quick Order -->
+          <div class="crypto-order-card">
+            <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:var(--text3);margin-bottom:14px">QUICK ORDER</div>
+
+            <!-- Symbol -->
+            <div class="field" style="margin-bottom:12px">
+              <label>Symbol</label>
+              <input type="text" id="cx-symbol" value="BTC/USDT:USDT" list="cx-symbol-list"
+                style="font-size:13px;font-weight:700;color:var(--cyan)"
+                onchange="cryptoLoadMarkPrice()"/>
+              <datalist id="cx-symbol-list"></datalist>
+            </div>
+
+            <!-- Mark Price -->
+            <div style="font-size:10px;color:var(--text3);margin-bottom:12px;letter-spacing:1px">
+              MARK PRICE: <span id="cx-mark-price" style="color:var(--cyan);font-weight:700">—</span>
+            </div>
+
+            <!-- Long / Short -->
+            <div style="display:flex;gap:8px;margin-bottom:14px">
+              <button class="crypto-side-btn long-active" id="cx-side-long" onclick="setCxSide('long')">▲ LONG</button>
+              <button class="crypto-side-btn" id="cx-side-short" onclick="setCxSide('short')">▼ SHORT</button>
+            </div>
+
+            <!-- Order Type -->
+            <div style="display:flex;gap:6px;margin-bottom:12px">
+              <button class="crypto-type-btn active" id="cx-type-market" onclick="setCxType('market')">MARKET</button>
+              <button class="crypto-type-btn" id="cx-type-limit" onclick="setCxType('limit')">LIMIT</button>
+            </div>
+
+            <!-- Price (limit only) -->
+            <div class="field" id="cx-price-field" style="margin-bottom:12px;display:none">
+              <label>Limit Price (USDT)</label>
+              <input type="number" id="cx-price" step="any" placeholder="0.00"/>
+            </div>
+
+            <!-- Amount -->
+            <div class="field" style="margin-bottom:8px">
+              <label>Amount (contracts)</label>
+              <input type="number" id="cx-amount" step="any" min="0.001" value="0.001" placeholder="0.001"/>
+            </div>
+            <div style="font-size:10px;color:var(--text3);margin-bottom:12px" id="cx-usdt-est">≈ — USDT</div>
+
+            <!-- Leverage -->
+            <div class="field" style="margin-bottom:14px">
+              <label>Leverage: <span id="cx-lev-val" style="color:var(--accent);font-weight:700">10x</span></label>
+              <input type="range" id="cx-leverage" min="1" max="100" value="10"
+                oninput="document.getElementById('cx-lev-val').textContent=this.value+'x'; cryptoEstUsdt()"
+                style="width:100%;accent-color:var(--accent)"/>
+              <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3)"><span>1x</span><span>25x</span><span>50x</span><span>100x</span></div>
+            </div>
+
+            <!-- Error -->
+            <div class="cx-err" id="cx-order-err"></div>
+
+            <!-- Place Button -->
+            <button class="obtn obtn-buy" id="cx-order-btn" onclick="placeCryptoOrder()"
+              style="width:100%;margin-top:4px" id="cx-order-btn">
+              ▲ LONG BTC/USDT
+            </button>
+          </div>
+
+          <!-- Positions Panel -->
+          <div>
+            <div class="panel" style="margin:0">
+              <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
+                Open Positions
+                <span id="cx-pos-count" style="font-size:10px;color:var(--text3)">0 open</span>
+              </div>
+              <div style="overflow-x:auto">
+                <table>
+                  <thead><tr>
+                    <th>SYMBOL</th><th>SIDE</th><th>SIZE</th><th>ENTRY</th>
+                    <th>MARK</th><th>LEVERAGE</th><th>PnL</th><th>PnL %</th>
+                    <th>LIQ. PRICE</th><th>MARGIN</th><th>ACTION</th>
+                  </tr></thead>
+                  <tbody id="cx-pos-tbody">
+                    <tr><td colspan="11" style="text-align:center;color:var(--text3);padding:24px">
+                      Connect an exchange to see positions
+                    </td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Open Orders -->
+            <div class="panel" style="margin-top:12px;margin-bottom:0">
+              <div class="panel-title">Open Orders</div>
+              <div style="overflow-x:auto">
+                <table>
+                  <thead><tr><th>SYMBOL</th><th>SIDE</th><th>TYPE</th><th>AMOUNT</th><th>PRICE</th><th>STATUS</th></tr></thead>
+                  <tbody id="cx-orders-tbody">
+                    <tr><td colspan="6" style="text-align:center;color:var(--text3);padding:16px">No open orders</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- SETTINGS PAGE -->
       <div class="page" id="page-settings">
         <div class="page-title">Settings</div>
@@ -1945,6 +2117,7 @@ function showPage(id, el) {
   if (id === 'journal')  { jInit(); }
   if (id === 'risk')     { rcCalcPos(); rcCalcKelly(); rcCalcPropDD(); }
   if (id === 'reports')  { loadReports(); }
+  if (id === 'crypto')   { cryptoInit(); }
   if (id === 'settings') { applySettingsToUI(loadSettings()); }
 }
 
@@ -4745,9 +4918,377 @@ function initCharts() {
 
   // pairChart / distChart removed — canvas elements no longer in HTML
 }
+
+// ── CRYPTO FUTURES ─────────────────────────────────────────────────────────────
+let _cxExchange  = 'binance';   // active exchange tab
+let _cxSide      = 'long';
+let _cxType      = 'market';
+let _cxModalEx   = 'binance';
+let _cxMarkPrice = 0;
+let _cxRefTimer  = null;
+
+// ── Init / Refresh ──
+async function cryptoInit() {
+  await cryptoCheckStatus();
+  await cryptoRefresh();
+  await cryptoLoadMarkets();
+  clearInterval(_cxRefTimer);
+  _cxRefTimer = setInterval(cryptoRefresh, 10000);
+}
+
+async function cryptoRefresh() {
+  await Promise.all([cryptoLoadBalance(), cryptoLoadPositions(), cryptoLoadOrders()]);
+}
+
+// ── Exchange status dots ──
+async function cryptoCheckStatus() {
+  const s = await apiFetch('/api/crypto/status');
+  if (s.error) return;
+  const setDot = (name, on) => {
+    const d = document.getElementById('cx-dot-' + name);
+    if (d) { d.className = 'ex-conn-dot' + (on ? ' online' : ''); }
+  };
+  setDot('binance', s.binance);
+  setDot('bybit',   s.bybit);
+}
+
+// ── Exchange tab select ──
+function selectExchange(name, el) {
+  _cxExchange = name;
+  document.querySelectorAll('.ex-tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  cryptoRefresh();
+}
+
+// ── Balance ──
+async function cryptoLoadBalance() {
+  const b = await apiFetch('/api/crypto/balance?exchange=' + _cxExchange);
+  const setTxt = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  const setCol = (id, c) => { const e = document.getElementById(id); if (e) e.style.color = c; };
+  if (b.error) {
+    setTxt('cx-bal-free', '—'); setTxt('cx-bal-used', '—');
+    setTxt('cx-bal-total', '—'); setTxt('cx-bal-upnl', '—');
+    return;
+  }
+  setTxt('cx-bal-free',  '$' + b.free.toLocaleString(undefined, {minimumFractionDigits:2,maximumFractionDigits:2}));
+  setTxt('cx-bal-used',  '$' + b.used.toLocaleString(undefined, {minimumFractionDigits:2,maximumFractionDigits:2}));
+  setTxt('cx-bal-total', '$' + b.total.toLocaleString(undefined, {minimumFractionDigits:2,maximumFractionDigits:2}));
+  const upnl = b.upnl || 0;
+  setTxt('cx-bal-upnl', (upnl >= 0 ? '+$' : '-$') + Math.abs(upnl).toFixed(2));
+  setCol('cx-bal-upnl', upnl >= 0 ? 'var(--green)' : 'var(--red)');
+}
+
+// ── Positions ──
+async function cryptoLoadPositions() {
+  const data = await apiFetch('/api/crypto/positions?exchange=' + _cxExchange);
+  const tbody = document.getElementById('cx-pos-tbody');
+  const cntEl = document.getElementById('cx-pos-count');
+  if (!tbody) return;
+  if (data.error || !Array.isArray(data) || data.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text3);padding:20px">
+      ${data.error ? '⚠ ' + data.error : 'No open positions'}
+    </td></tr>`;
+    if (cntEl) cntEl.textContent = '0 open';
+    return;
+  }
+  if (cntEl) cntEl.textContent = data.length + ' open';
+  tbody.innerHTML = data.map(p => {
+    const pnlC  = p.pnl >= 0 ? 'var(--green)' : 'var(--red)';
+    const sideC = p.side === 'long' ? 'var(--green)' : 'var(--red)';
+    const sym   = p.symbol.replace('/USDT:USDT','').replace('/USDT','');
+    return `<tr>
+      <td style="font-weight:700;color:var(--cyan)">${sym}</td>
+      <td style="color:${sideC};font-weight:700">${p.side?.toUpperCase()}</td>
+      <td>${p.size}</td>
+      <td>$${(+p.entry_price).toFixed(4)}</td>
+      <td>$${(+p.mark_price).toFixed(4)}</td>
+      <td style="color:var(--accent)">${p.leverage}x</td>
+      <td style="color:${pnlC};font-weight:700">${p.pnl >= 0 ? '+' : ''}$${p.pnl.toFixed(2)}</td>
+      <td style="color:${pnlC}">${p.pnl_pct >= 0 ? '+' : ''}${p.pnl_pct}%</td>
+      <td style="color:var(--amber)">${p.liquidation ? '$'+Number(p.liquidation).toFixed(2) : '—'}</td>
+      <td>$${p.margin.toFixed(2)}</td>
+      <td>
+        <button class="close-btn" onclick="closeCryptoPos('${p.symbol}','${p.side}',${p.size})">
+          CLOSE
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Open Orders ──
+async function cryptoLoadOrders() {
+  const sym    = (document.getElementById('cx-symbol')?.value || 'BTC/USDT:USDT');
+  const data   = await apiFetch(`/api/crypto/orders?exchange=${_cxExchange}&symbol=${encodeURIComponent(sym)}`);
+  const tbody  = document.getElementById('cx-orders-tbody');
+  if (!tbody) return;
+  if (data.error || !Array.isArray(data) || data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:12px">No open orders</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(o => {
+    const sideC = o.side === 'buy' ? 'var(--green)' : 'var(--red)';
+    return `<tr>
+      <td style="color:var(--cyan)">${o.symbol}</td>
+      <td style="color:${sideC};font-weight:700">${o.side?.toUpperCase()}</td>
+      <td>${o.type?.toUpperCase()}</td>
+      <td>${o.amount}</td>
+      <td>${o.price ? '$'+o.price : 'MARKET'}</td>
+      <td><span class="badge badge-green">${o.status}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Markets (symbol autocomplete) ──
+async function cryptoLoadMarkets() {
+  const syms = await apiFetch('/api/crypto/markets?exchange=' + _cxExchange);
+  const dl   = document.getElementById('cx-symbol-list');
+  if (!dl || !Array.isArray(syms)) return;
+  dl.innerHTML = syms.map(s => `<option value="${s}">`).join('');
+}
+
+// ── Mark price for estimation ──
+async function cryptoLoadMarkPrice() {
+  const sym = document.getElementById('cx-symbol')?.value?.trim();
+  if (!sym) return;
+  // Update order button label
+  const base = sym.replace('/USDT:USDT','').replace('/USDT','');
+  _cxUpdateOrderBtn(base);
+  cryptoEstUsdt();
+}
+
+function cryptoEstUsdt() {
+  const amount = parseFloat(document.getElementById('cx-amount')?.value) || 0;
+  const lev    = parseInt(document.getElementById('cx-leverage')?.value) || 10;
+  const el     = document.getElementById('cx-usdt-est');
+  if (!el) return;
+  if (_cxMarkPrice > 0 && amount > 0) {
+    const notional = amount * _cxMarkPrice;
+    const margin   = (notional / lev).toFixed(2);
+    el.textContent = `≈ $${notional.toFixed(2)} notional | $${margin} margin`;
+  } else {
+    el.textContent = '≈ — USDT';
+  }
+}
+
+// ── Side / Type selection ──
+function setCxSide(side) {
+  _cxSide = side;
+  document.getElementById('cx-side-long').className  = 'crypto-side-btn' + (side === 'long'  ? ' long-active'  : '');
+  document.getElementById('cx-side-short').className = 'crypto-side-btn' + (side === 'short' ? ' short-active' : '');
+  const sym  = (document.getElementById('cx-symbol')?.value || '').replace('/USDT:USDT','').replace('/USDT','');
+  _cxUpdateOrderBtn(sym || 'BTC/USDT');
+}
+
+function setCxType(type) {
+  _cxType = type;
+  document.getElementById('cx-type-market').className = 'crypto-type-btn' + (type === 'market' ? ' active' : '');
+  document.getElementById('cx-type-limit').className  = 'crypto-type-btn' + (type === 'limit'  ? ' active' : '');
+  const priceField = document.getElementById('cx-price-field');
+  if (priceField) priceField.style.display = type === 'limit' ? 'block' : 'none';
+}
+
+function _cxUpdateOrderBtn(base) {
+  const btn = document.getElementById('cx-order-btn');
+  if (!btn) return;
+  if (_cxSide === 'long') {
+    btn.className  = 'obtn obtn-buy';
+    btn.textContent = `▲ LONG ${base}`;
+  } else {
+    btn.className  = 'obtn obtn-sell';
+    btn.textContent = `▼ SHORT ${base}`;
+  }
+}
+
+// ── Place Order ──
+async function placeCryptoOrder() {
+  const errEl  = document.getElementById('cx-order-err');
+  const btn    = document.getElementById('cx-order-btn');
+  const symbol = document.getElementById('cx-symbol')?.value?.trim();
+  const amount = parseFloat(document.getElementById('cx-amount')?.value);
+  const price  = parseFloat(document.getElementById('cx-price')?.value);
+  const lev    = parseInt(document.getElementById('cx-leverage')?.value) || 10;
+  errEl.style.display = 'none';
+  if (!symbol || !amount || amount <= 0) {
+    errEl.textContent = 'Fill symbol and amount.';
+    errEl.style.display = 'block'; return;
+  }
+  if (_cxType === 'limit' && (!price || price <= 0)) {
+    errEl.textContent = 'Enter limit price.';
+    errEl.style.display = 'block'; return;
+  }
+  btn.disabled = true;
+  const orig   = btn.textContent;
+  btn.textContent = 'PLACING...';
+  const body   = {
+    exchange:   _cxExchange,
+    symbol,
+    side:       _cxSide === 'long' ? 'buy' : 'sell',
+    order_type: _cxType,
+    amount,
+    price:      _cxType === 'limit' ? price : null,
+    leverage:   lev,
+  };
+  const r = await apiFetch('/api/crypto/order', {
+    method: 'POST', body: JSON.stringify(body),
+  });
+  btn.disabled = false;
+  btn.textContent = orig;
+  if (r.error) {
+    errEl.textContent = r.error;
+    errEl.style.display = 'block';
+    toast(r.error, false);
+  } else {
+    toast(`Order placed ✓ — ${r.side?.toUpperCase()} ${r.amount} ${symbol}`, true);
+    setTimeout(cryptoRefresh, 1000);
+  }
+}
+
+// ── Close Position ──
+async function closeCryptoPos(symbol, side, amount) {
+  const r = await apiFetch('/api/crypto/close', {
+    method: 'POST',
+    body: JSON.stringify({ exchange: _cxExchange, symbol, pos_side: side, amount }),
+  });
+  if (r.error) { toast(r.error, false); return; }
+  toast(`Position closed ✓`, true);
+  setTimeout(cryptoLoadPositions, 1000);
+}
+
+// ── Exchange Connect Modal ──
+function openCxModal() {
+  document.getElementById('cx-modal').classList.add('open');
+  document.getElementById('cxm-err').style.display = 'none';
+  document.getElementById('cxm-status').textContent = 'Ready to connect';
+  _refreshCxModalConnected();
+}
+
+function closeCxModal() {
+  document.getElementById('cx-modal').classList.remove('open');
+  const btn = document.getElementById('cxm-btn');
+  btn.disabled = false; btn.textContent = 'CONNECT →';
+}
+
+function setCxModalEx(name, el) {
+  _cxModalEx = name;
+  document.querySelectorAll('#cx-modal .broker-tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+}
+
+async function doExchangeConnect() {
+  const apiKey    = document.getElementById('cxm-apikey')?.value?.trim();
+  const apiSecret = document.getElementById('cxm-secret')?.value?.trim();
+  const testnet   = document.getElementById('cxm-testnet')?.classList.contains('on') || false;
+  const errEl     = document.getElementById('cxm-err');
+  const btn       = document.getElementById('cxm-btn');
+  const statusEl  = document.getElementById('cxm-status');
+  errEl.style.display = 'none';
+  if (!apiKey || !apiSecret) {
+    errEl.textContent = 'API Key and Secret are required.';
+    errEl.style.display = 'block'; return;
+  }
+  btn.disabled = true; btn.textContent = 'CONNECTING...';
+  statusEl.textContent = 'Verifying API keys with ' + _cxModalEx + '...';
+  const r = await apiFetch('/api/crypto/connect', {
+    method: 'POST',
+    body: JSON.stringify({ exchange: _cxModalEx, api_key: apiKey, api_secret: apiSecret, testnet }),
+  });
+  btn.disabled = false; btn.textContent = 'CONNECT →';
+  if (r.error) {
+    errEl.textContent = r.error;
+    errEl.style.display = 'block';
+    statusEl.textContent = 'Connection failed';
+    return;
+  }
+  statusEl.textContent = `✓ ${_cxModalEx} connected — Balance: $${r.balance} USDT`;
+  document.getElementById('cxm-apikey').value = '';
+  document.getElementById('cxm-secret').value = '';
+  // Update dot
+  const dot = document.getElementById('cx-dot-' + _cxModalEx);
+  if (dot) dot.className = 'ex-conn-dot online';
+  _refreshCxModalConnected();
+  toast(`${_cxModalEx} connected ✓ — $${r.balance} USDT`, true);
+  setTimeout(() => { closeCxModal(); cryptoRefresh(); cryptoLoadMarkets(); }, 1200);
+}
+
+async function disconnectExchange(name) {
+  await apiFetch('/api/crypto/disconnect/' + name, { method: 'POST' });
+  const dot = document.getElementById('cx-dot-' + name);
+  if (dot) dot.className = 'ex-conn-dot';
+  _refreshCxModalConnected();
+  toast(name + ' disconnected', true);
+  cryptoRefresh();
+}
+
+async function _refreshCxModalConnected() {
+  const s   = await apiFetch('/api/crypto/status');
+  const box = document.getElementById('cxm-connected');
+  if (!box || s.error) return;
+  const exchanges = [
+    { name: 'binance', label: 'Binance', on: s.binance },
+    { name: 'bybit',   label: 'Bybit',   on: s.bybit   },
+  ];
+  const active = exchanges.filter(e => e.on);
+  if (!active.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:8px">CONNECTED EXCHANGES</div>` +
+    active.map(e => `
+      <div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="ex-conn-dot online"></span>
+          <span style="font-size:12px;font-weight:700;color:var(--text)">${e.label}</span>
+        </div>
+        <button class="close-btn" onclick="disconnectExchange('${e.name}')">DISCONNECT</button>
+      </div>`).join('');
+}
 </script>
 <!-- Symbol datalist at body level so browser can access from any input -->
 <datalist id="jf-symbol-list"></datalist>
+
+<!-- CRYPTO EXCHANGE CONNECT MODAL -->
+<div class="cx-modal" id="cx-modal">
+  <div class="cx-overlay" onclick="closeCxModal()"></div>
+  <div class="cx-card">
+    <button class="cx-close" onclick="closeCxModal()">✕</button>
+    <div class="cx-title">CONNECT EXCHANGE</div>
+    <div class="cx-sub">ENTER API KEY &amp; SECRET FROM EXCHANGE</div>
+
+    <!-- Exchange tabs -->
+    <div class="cx-ex-tabs">
+      <button class="broker-tab active" id="cxm-tab-binance" onclick="setCxModalEx('binance',this)">BINANCE</button>
+      <button class="broker-tab" id="cxm-tab-bybit" onclick="setCxModalEx('bybit',this)">BYBIT</button>
+    </div>
+
+    <!-- Testnet toggle -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <div class="toggle" id="cxm-testnet" onclick="this.classList.toggle('on')"></div>
+      <span style="font-size:11px;color:var(--text2)">Testnet / Demo mode</span>
+    </div>
+
+    <div class="field">
+      <label>API Key</label>
+      <input type="text" id="cxm-apikey" placeholder="Your API key" autocomplete="off"/>
+    </div>
+    <div class="field">
+      <label>API Secret</label>
+      <input type="password" id="cxm-secret" placeholder="Your API secret" autocomplete="off"/>
+    </div>
+
+    <!-- Info box -->
+    <div style="background:rgba(88,166,255,0.08);border:1px solid rgba(88,166,255,0.2);border-radius:8px;padding:10px 14px;font-size:10px;color:var(--text3);margin-bottom:14px;line-height:1.6">
+      ⚠ <strong style="color:var(--text2)">Enable Futures trading</strong> permission on your API key.<br>
+      IP whitelist is optional for read-only — required for trading.<br>
+      Keys are saved locally in <code style="color:var(--cyan)">exchanges.json</code>.
+    </div>
+
+    <div class="cx-err" id="cxm-err"></div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px" id="cxm-status">Ready to connect</div>
+
+    <button class="lbtn" id="cxm-btn" onclick="doExchangeConnect()" style="width:100%">CONNECT →</button>
+
+    <!-- Already connected exchanges -->
+    <div id="cxm-connected" style="margin-top:16px"></div>
+  </div>
+</div>
 
 <!-- MT5 CONNECT MODAL -->
 <div id="mt5-modal">
