@@ -297,19 +297,20 @@ def place_order(req: OrderRequest):
         sl, tp = req.sl or 0.0, req.tp or 0.0
         if (req.sl_pips and req.sl_pips > 0) or (req.tp_pips and req.tp_pips > 0):
             pip = _pip_size(sym)
-            # Broker minimum stop distance (in price units)
-            min_dist = sym.trade_stops_level * sym.point
-            if min_dist <= 0:
-                min_dist = pip  # fallback
+            # MT5 rule: BUY SL/TP reference = BID, SELL SL/TP reference = ASK
+            # This ensures SL is always on the correct side of current market
+            sl_tp_ref = tick.bid if is_buy else tick.ask
+            # Broker minimum stop distance
+            min_dist = max(sym.trade_stops_level * sym.point, pip)
 
             if req.sl_pips and req.sl_pips > 0:
                 sl_dist = max(req.sl_pips * pip, min_dist + sym.point)
-                sl = round(price - sl_dist, sym.digits) if is_buy \
-                     else round(price + sl_dist, sym.digits)
+                sl = round(sl_tp_ref - sl_dist, sym.digits) if is_buy \
+                     else round(sl_tp_ref + sl_dist, sym.digits)
             if req.tp_pips and req.tp_pips > 0:
                 tp_dist = max(req.tp_pips * pip, min_dist + sym.point)
-                tp = round(price + tp_dist, sym.digits) if is_buy \
-                     else round(price - tp_dist, sym.digits)
+                tp = round(sl_tp_ref + tp_dist, sym.digits) if is_buy \
+                     else round(sl_tp_ref - tp_dist, sym.digits)
 
         request = {
             "action":    mt5.TRADE_ACTION_DEAL,
