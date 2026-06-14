@@ -200,6 +200,25 @@ def get_deals(days: int = 30, limit: int = 100):
     return _mt5_call(fn)
 
 
+# ── SYMBOLS LIST ────────────────────────────────────────────────────────────────
+
+@app.get("/api/symbols")
+def get_symbols():
+    def fn():
+        all_syms = mt5.symbols_get()
+        if not all_syms:
+            return {"error": "Cannot get symbols"}
+        result = []
+        for s in all_syms:
+            result.append({
+                "name": s.name,
+                "description": s.description,
+                "path": s.path,
+            })
+        return result
+    return _mt5_call(fn)
+
+
 # ── PRICE ───────────────────────────────────────────────────────────────────────
 
 @app.get("/api/price/{symbol}")
