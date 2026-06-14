@@ -24,12 +24,16 @@ _cmd_queue: queue.Queue = queue.Queue()
 
 def _mt5_worker():
     """Runs forever on its own thread, executing MT5 calls."""
-    mt5.initialize()
-    info = mt5.account_info()
-    if info:
-        print(f"MT5 connected — {info.login} | {info.balance} {info.currency}")
+    # timeout=8000ms — don't hang if MT5 terminal is not running yet
+    ok = mt5.initialize(timeout=8000)
+    if ok:
+        info = mt5.account_info()
+        if info:
+            print(f"MT5 auto-connected — {info.login} | {info.balance} {info.currency}")
+        else:
+            print("MT5 ready — no account logged in yet")
     else:
-        print("MT5 initialized — no account logged in yet")
+        print(f"MT5 not available at startup — connect via UI | {mt5.last_error()}")
 
     while True:
         fn, result_event, result_box = _cmd_queue.get()
