@@ -256,6 +256,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       <div class="nav-item" onclick="showPage('backtest',this)"><i class="ti ti-test-pipe"></i> BACKTEST</div>
       <div class="nav-item" onclick="showPage('algo',this)"><i class="ti ti-robot"></i> ALGO</div>
       <div class="nav-item" onclick="showPage('journal',this)"><i class="ti ti-notebook"></i> JOURNAL</div>
+      <div class="nav-item" onclick="showPage('risk',this)"><i class="ti ti-shield-check"></i> RISK CALC</div>
       <div class="nav-item" onclick="showPage('settings',this)"><i class="ti ti-settings"></i> SETTINGS</div>
     </div>
     <div class="content">
@@ -698,16 +699,26 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             </div>
           </div>
           <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
-            <div class="kpi"><div class="kpi-label">Net Profit</div><div class="kpi-value" id="r-profit">—</div><div class="kpi-delta" id="r-return">—</div></div>
-            <div class="kpi"><div class="kpi-label">Win Rate</div><div class="kpi-value cyan" id="r-winrate">—</div><div class="kpi-delta" id="r-trades">—</div></div>
-            <div class="kpi"><div class="kpi-label">Max Drawdown</div><div class="kpi-value red" id="r-dd">—</div><div class="kpi-delta" id="r-pf">—</div></div>
-            <div class="kpi"><div class="kpi-label">Sharpe Ratio</div><div class="kpi-value cyan" id="r-sharpe">—</div><div class="kpi-delta" id="r-calmar">—</div></div>
+            <div class="kpi" style="border-top:2px solid var(--accent)"><div class="kpi-label">Net Profit</div><div class="kpi-value" id="r-profit">—</div><div class="kpi-delta" id="r-return">—</div></div>
+            <div class="kpi" style="border-top:2px solid var(--cyan)"><div class="kpi-label">Win Rate</div><div class="kpi-value cyan" id="r-winrate">—</div><div class="kpi-delta" id="r-trades">—</div></div>
+            <div class="kpi" style="border-top:2px solid var(--red)"><div class="kpi-label">Max Drawdown</div><div class="kpi-value red" id="r-dd">—</div><div class="kpi-delta" id="r-pf">—</div></div>
+            <div class="kpi" style="border-top:2px solid var(--cyan)"><div class="kpi-label">Sharpe Ratio</div><div class="kpi-value cyan" id="r-sharpe">—</div><div class="kpi-delta" id="r-calmar">—</div></div>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
-            <div class="kpi"><div class="kpi-label">Profit Factor</div><div class="kpi-value green" id="r-pf2">—</div></div>
-            <div class="kpi"><div class="kpi-label">Avg Win</div><div class="kpi-value green" id="r-avg-win">—</div></div>
-            <div class="kpi"><div class="kpi-label">Avg Loss</div><div class="kpi-value red" id="r-avg-loss">—</div></div>
-            <div class="kpi"><div class="kpi-label">Calmar Ratio</div><div class="kpi-value cyan" id="r-calmar2">—</div></div>
+          <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px">
+            <div class="kpi" style="border-top:2px solid var(--green)"><div class="kpi-label">Profit Factor</div><div class="kpi-value green" id="r-pf2">—</div></div>
+            <div class="kpi" style="border-top:2px solid var(--green)"><div class="kpi-label">Avg Win</div><div class="kpi-value green" id="r-avg-win">—</div></div>
+            <div class="kpi" style="border-top:2px solid var(--red)"><div class="kpi-label">Avg Loss</div><div class="kpi-value red" id="r-avg-loss">—</div></div>
+            <div class="kpi" style="border-top:2px solid var(--cyan)"><div class="kpi-label">Calmar Ratio</div><div class="kpi-value cyan" id="r-calmar2">—</div></div>
+            <div class="kpi" style="border-top:2px solid var(--amber)">
+              <div class="kpi-label">Expectancy</div>
+              <div class="kpi-value amber" id="r-expectancy">—</div>
+              <div class="kpi-delta" id="r-expectancy-sub" style="font-size:9px">per trade</div>
+            </div>
+            <div class="kpi" style="border-top:2px solid var(--accent)">
+              <div class="kpi-label">Kelly Optimal</div>
+              <div class="kpi-value purple" id="r-kelly">—</div>
+              <div class="kpi-delta" id="r-kelly-sub" style="font-size:9px">risk per trade</div>
+            </div>
           </div>
           <div class="two-col">
             <div class="panel"><div class="panel-title">Equity Curve — Real MT5 Data</div><div style="position:relative;height:220px"><canvas id="bt-equity-chart"></canvas></div></div>
@@ -813,8 +824,8 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           </div>
         </div>
 
-        <!-- KPI ROW -->
-        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:18px" id="j-kpi-grid">
+        <!-- KPI ROW 1 -->
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:10px">
           <div class="kpi" style="border-top:2px solid var(--accent)"><div class="kpi-label">Total Trades</div><div class="kpi-value purple" id="j-kpi-total">0</div></div>
           <div class="kpi" style="border-top:2px solid var(--green)"><div class="kpi-label">Win Rate</div><div class="kpi-value green" id="j-kpi-wr">—</div></div>
           <div class="kpi" style="border-top:2px solid var(--cyan)"><div class="kpi-label">Net P&amp;L</div><div class="kpi-value" id="j-kpi-pnl">$0.00</div></div>
@@ -822,6 +833,14 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <div class="kpi" style="border-top:2px solid var(--accent)"><div class="kpi-label">Avg R:R</div><div class="kpi-value purple" id="j-kpi-rr">—</div></div>
           <div class="kpi" style="border-top:2px solid var(--green)"><div class="kpi-label">Best Trade</div><div class="kpi-value green" id="j-kpi-best">—</div></div>
           <div class="kpi" style="border-top:2px solid var(--red)"><div class="kpi-label">Worst Trade</div><div class="kpi-value red" id="j-kpi-worst">—</div></div>
+        </div>
+        <!-- KPI ROW 2 — Advanced -->
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:18px">
+          <div class="kpi" style="border-top:2px solid var(--amber)"><div class="kpi-label">Expectancy</div><div class="kpi-value" id="j-kpi-exp">—</div><div class="kpi-delta" id="j-kpi-exp-sub">per trade</div></div>
+          <div class="kpi" style="border-top:2px solid var(--accent)"><div class="kpi-label">Kelly Optimal</div><div class="kpi-value purple" id="j-kpi-kelly">—</div><div class="kpi-delta">half-kelly %</div></div>
+          <div class="kpi" style="border-top:2px solid var(--red)"><div class="kpi-label">Max Drawdown</div><div class="kpi-value red" id="j-kpi-dd">—</div><div class="kpi-delta" id="j-kpi-dd-rec" style="font-size:9px">recovery needed</div></div>
+          <div class="kpi" style="border-top:2px solid var(--green)"><div class="kpi-label">Best Streak</div><div class="kpi-value green" id="j-kpi-streak-w">—</div><div class="kpi-delta">consecutive wins</div></div>
+          <div class="kpi" style="border-top:2px solid var(--red)"><div class="kpi-label">Worst Streak</div><div class="kpi-value red" id="j-kpi-streak-l">—</div><div class="kpi-delta">consecutive losses</div></div>
         </div>
 
         <!-- ANALYTICS ROW -->
@@ -990,6 +1009,165 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <div style="display:flex;gap:10px">
               <button onclick="jSaveTrade()" style="flex:1;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:8px;padding:13px;color:#fff;font-family:var(--font);font-size:13px;font-weight:700;letter-spacing:2px;cursor:pointer;box-shadow:0 4px 16px var(--accent-glow)">SAVE TRADE</button>
               <button onclick="jCloseModal()" style="background:transparent;border:1px solid var(--border);border-radius:8px;padding:13px 24px;color:var(--text2);font-family:var(--font);font-size:13px;cursor:pointer">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RISK CALCULATOR PAGE -->
+      <div class="page" id="page-risk">
+        <div class="page-title">Risk Calculator</div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+
+          <!-- Position Size Calculator -->
+          <div class="panel">
+            <div class="panel-title">Position Size Calculator</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+              <div class="field"><label>Account Balance ($)</label><input type="number" id="rc-balance" value="10000" oninput="rcCalcPos()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
+              <div class="field"><label>Risk % per Trade</label><input type="number" id="rc-risk-pct" value="1" step="0.1" oninput="rcCalcPos()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
+              <div class="field"><label>Stop Loss (pips)</label><input type="number" id="rc-sl-pips" value="20" oninput="rcCalcPos()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
+              <div class="field"><label>Pip Value ($)</label>
+                <select id="rc-pip-val" oninput="rcCalcPos()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%">
+                  <option value="10">$10 (EURUSD, GBPUSD)</option>
+                  <option value="10">$10 (AUDUSD, NZDUSD)</option>
+                  <option value="7.3">$7.30 (USDCHF ~)</option>
+                  <option value="0.1">$0.10 (XAUUSDc / Gold)</option>
+                  <option value="1">$1 (NAS100 / indices)</option>
+                </select>
+              </div>
+            </div>
+            <div style="background:var(--bg2);border:1px solid var(--accent);border-radius:10px;padding:16px;text-align:center">
+              <div style="font-size:10px;color:var(--text2);letter-spacing:2px;margin-bottom:8px">OPTIMAL LOT SIZE</div>
+              <div style="font-size:36px;font-weight:700;color:var(--accent)" id="rc-lot-result">0.50</div>
+              <div style="font-size:11px;color:var(--text2);margin-top:6px" id="rc-lot-sub">Risk: $100 | SL: 20 pips</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px">
+              <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:9px;color:var(--text2);letter-spacing:1px">$ AT RISK</div>
+                <div style="font-size:16px;font-weight:700;color:var(--red);margin-top:4px" id="rc-dollar-risk">—</div>
+              </div>
+              <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:9px;color:var(--text2);letter-spacing:1px">TP 1:2</div>
+                <div style="font-size:16px;font-weight:700;color:var(--green);margin-top:4px" id="rc-tp-reward">—</div>
+              </div>
+              <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:9px;color:var(--text2);letter-spacing:1px">TP 1:3</div>
+                <div style="font-size:16px;font-weight:700;color:var(--green);margin-top:4px" id="rc-tp-reward3">—</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Kelly Criterion Calculator -->
+          <div class="panel">
+            <div class="panel-title">Kelly Criterion Calculator</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+              <div class="field"><label>Win Rate (%)</label><input type="number" id="kc-wr" value="55" step="1" oninput="rcCalcKelly()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
+              <div class="field"><label>Avg Win ($)</label><input type="number" id="kc-avg-win" value="200" oninput="rcCalcKelly()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
+              <div class="field"><label>Avg Loss ($)</label><input type="number" id="kc-avg-loss" value="100" oninput="rcCalcKelly()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
+              <div class="field"><label>Account Size ($)</label><input type="number" id="kc-balance" value="10000" oninput="rcCalcKelly()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
+            </div>
+            <div style="background:var(--bg2);border:1px solid var(--accent);border-radius:10px;padding:14px">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
+                <div><div style="font-size:9px;color:var(--text2);letter-spacing:1px">FULL KELLY</div><div style="font-size:20px;font-weight:700;color:var(--red);margin-top:4px" id="kc-full">—</div></div>
+                <div style="border-left:1px solid var(--border);border-right:1px solid var(--border)">
+                  <div style="font-size:9px;color:var(--text2);letter-spacing:1px">HALF KELLY ✓</div>
+                  <div style="font-size:20px;font-weight:700;color:var(--accent);margin-top:4px" id="kc-half">—</div>
+                </div>
+                <div><div style="font-size:9px;color:var(--text2);letter-spacing:1px">QUARTER KELLY</div><div style="font-size:20px;font-weight:700;color:var(--green);margin-top:4px" id="kc-quarter">—</div></div>
+              </div>
+              <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:center">
+                  <div><div style="font-size:9px;color:var(--text2)">EXPECTANCY</div><div style="font-size:16px;font-weight:700;margin-top:4px" id="kc-exp">—</div></div>
+                  <div><div style="font-size:9px;color:var(--text2)">RISK AMOUNT (Half K)</div><div style="font-size:16px;font-weight:700;color:var(--accent);margin-top:4px" id="kc-risk-amt">—</div></div>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:12px;padding:12px;background:rgba(139,92,246,0.08);border-radius:8px;font-size:11px;color:var(--text2);line-height:1.7">
+              <span style="color:var(--accent);font-weight:700">Half-Kelly</span> recommended — পূর্ণ Kelly তে অনেক বেশি drawdown হয়। Half-Kelly তে ৭৫% growth ধরে রেখে volatility ৫০% কমে।
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+          <!-- Prop Firm DD Tracker -->
+          <div class="panel">
+            <div class="panel-title">Prop Firm Drawdown Tracker</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+              <div class="field"><label>Account Size ($)</label><input type="number" id="pf-balance" value="100000" oninput="rcCalcPropDD()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
+              <div class="field"><label>Firm Type</label>
+                <select id="pf-type" onchange="rcCalcPropDD()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%">
+                  <option value="5,10">FTMO (5% daily / 10% max)</option>
+                  <option value="4,8">For Traders (4% / 8%)</option>
+                  <option value="5,10">MyFundedFX (5% / 10%)</option>
+                  <option value="3,6">Conservative (3% / 6%)</option>
+                </select>
+              </div>
+              <div class="field"><label>Today's P&amp;L ($)</label><input type="number" id="pf-today-pnl" value="0" oninput="rcCalcPropDD()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
+              <div class="field"><label>Total P&amp;L ($)</label><input type="number" id="pf-total-pnl" value="0" oninput="rcCalcPropDD()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
+            </div>
+            <div id="pf-result" style="background:var(--bg2);border-radius:10px;padding:14px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+                <div>
+                  <div style="font-size:10px;color:var(--text2);letter-spacing:1px;margin-bottom:6px">DAILY LIMIT</div>
+                  <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div id="pf-daily-bar" style="height:100%;background:var(--green);border-radius:4px;width:0%;transition:width 0.5s"></div></div>
+                  <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px">
+                    <span id="pf-daily-used" style="color:var(--text2)">$0 used</span>
+                    <span id="pf-daily-left" style="color:var(--green)">$5,000 left</span>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:var(--text2);letter-spacing:1px;margin-bottom:6px">MAX DD LIMIT</div>
+                  <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div id="pf-max-bar" style="height:100%;background:var(--green);border-radius:4px;width:0%;transition:width 0.5s"></div></div>
+                  <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px">
+                    <span id="pf-max-used" style="color:var(--text2)">$0 used</span>
+                    <span id="pf-max-left" style="color:var(--green)">$10,000 left</span>
+                  </div>
+                </div>
+              </div>
+              <div style="text-align:center;padding:10px;border-radius:8px;font-size:13px;font-weight:700;letter-spacing:1px" id="pf-status-bar">✓ SAFE TO TRADE</div>
+            </div>
+          </div>
+
+          <!-- Drawdown Recovery & Correlation Reference -->
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <!-- DD Recovery Calculator -->
+            <div class="panel">
+              <div class="panel-title">Drawdown Recovery Math</div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--green)">5%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+5%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
+                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--green)">10%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+11%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
+                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--amber)">15%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+18%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
+                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--amber)">20%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+25%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
+                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--amber)">25%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+33%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
+                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--red)">30%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+43%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
+                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--red)">40%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+67%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
+                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--red)">50%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+100%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
+              </div>
+            </div>
+
+            <!-- Correlation Reference -->
+            <div class="panel" style="flex:1">
+              <div class="panel-title">Pair Correlation Reference</div>
+              <div style="font-size:10px;color:var(--text2);margin-bottom:10px">একসাথে এই pair গুলো trade করলে risk দ্বিগুণ হয়!</div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px">
+                  <span style="font-size:12px">EURUSD + GBPUSD</span><span style="color:var(--red);font-size:11px;font-weight:700">+0.90 ⚠ Very High</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px">
+                  <span style="font-size:12px">EURUSD + AUDUSD</span><span style="color:var(--red);font-size:11px;font-weight:700">+0.78 ⚠ High</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:6px">
+                  <span style="font-size:12px">EURUSD + USDJPY</span><span style="color:var(--amber);font-size:11px;font-weight:700">−0.82 Inverse</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:6px">
+                  <span style="font-size:12px">EURUSD + USDCHF</span><span style="color:var(--green);font-size:11px;font-weight:700">−0.95 Natural Hedge</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);border-radius:6px">
+                  <span style="font-size:12px">XAUUSD + NAS100</span><span style="color:var(--accent);font-size:11px;font-weight:700">−0.30 Low Corr ✓</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1164,6 +1342,89 @@ function showPage(id, el) {
   if (id === 'trades')   { loadPositions(); loadDeals(); }
   if (id === 'algo')     { startAlgoRefresh(); }
   if (id === 'journal')  { jInit(); }
+  if (id === 'risk')     { rcCalcPos(); rcCalcKelly(); rcCalcPropDD(); }
+}
+
+// ── RISK CALCULATOR ────────────────────────────────────────────────────────────
+function rcCalcPos() {
+  const bal     = parseFloat(document.getElementById('rc-balance')?.value) || 10000;
+  const riskPct = parseFloat(document.getElementById('rc-risk-pct')?.value) || 1;
+  const slPips  = parseFloat(document.getElementById('rc-sl-pips')?.value) || 20;
+  const pipVal  = parseFloat(document.getElementById('rc-pip-val')?.value) || 10;
+
+  const dollarRisk = bal * riskPct / 100;
+  const lotSize    = dollarRisk / (slPips * pipVal);
+
+  document.getElementById('rc-lot-result').textContent = Math.max(0.01, lotSize).toFixed(2);
+  document.getElementById('rc-lot-sub').textContent = `Risk: $${dollarRisk.toFixed(2)} | SL: ${slPips} pips`;
+  document.getElementById('rc-dollar-risk').textContent = '$' + dollarRisk.toFixed(2);
+  document.getElementById('rc-tp-reward').textContent = '+$' + (dollarRisk * 2).toFixed(2);
+  document.getElementById('rc-tp-reward3').textContent = '+$' + (dollarRisk * 3).toFixed(2);
+}
+
+function rcCalcKelly() {
+  const wr     = (parseFloat(document.getElementById('kc-wr')?.value) || 55) / 100;
+  const avgW   = parseFloat(document.getElementById('kc-avg-win')?.value) || 200;
+  const avgL   = parseFloat(document.getElementById('kc-avg-loss')?.value) || 100;
+  const bal    = parseFloat(document.getElementById('kc-balance')?.value) || 10000;
+
+  const b      = avgW / avgL;
+  const q      = 1 - wr;
+  const kFull  = Math.max(0, (b * wr - q) / b);
+  const kHalf  = kFull / 2;
+  const kQtr   = kFull / 4;
+  const exp    = (wr * avgW) - (q * avgL);
+
+  const fmtPct = v => (v * 100).toFixed(1) + '%';
+  document.getElementById('kc-full').textContent    = fmtPct(kFull);
+  document.getElementById('kc-full').className      = 'kpi-value ' + (kFull > 0.2 ? 'red' : 'amber');
+  document.getElementById('kc-half').textContent    = fmtPct(kHalf);
+  document.getElementById('kc-quarter').textContent = fmtPct(kQtr);
+  const expEl = document.getElementById('kc-exp');
+  expEl.textContent = (exp >= 0 ? '+$' : '-$') + Math.abs(exp).toFixed(2);
+  expEl.style.color = exp >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('kc-risk-amt').textContent = '$' + (bal * kHalf).toFixed(2);
+}
+
+function rcCalcPropDD() {
+  const bal      = parseFloat(document.getElementById('pf-balance')?.value) || 100000;
+  const typeVal  = document.getElementById('pf-type')?.value || '5,10';
+  const [dailyPct, maxPct] = typeVal.split(',').map(Number);
+  const todayPnl = parseFloat(document.getElementById('pf-today-pnl')?.value) || 0;
+  const totalPnl = parseFloat(document.getElementById('pf-total-pnl')?.value) || 0;
+
+  const dailyLimit = bal * dailyPct / 100;
+  const maxLimit   = bal * maxPct / 100;
+  const dailyUsed  = Math.max(0, -todayPnl);
+  const maxUsed    = Math.max(0, -totalPnl);
+  const dailyLeft  = Math.max(0, dailyLimit - dailyUsed);
+  const maxLeft    = Math.max(0, maxLimit - maxUsed);
+  const dailyPct2  = Math.min(100, dailyUsed / dailyLimit * 100);
+  const maxPct2    = Math.min(100, maxUsed / maxLimit * 100);
+
+  const barColor = pct => pct < 50 ? 'var(--green)' : pct < 80 ? 'var(--amber)' : 'var(--red)';
+  document.getElementById('pf-daily-bar').style.width = dailyPct2 + '%';
+  document.getElementById('pf-daily-bar').style.background = barColor(dailyPct2);
+  document.getElementById('pf-max-bar').style.width = maxPct2 + '%';
+  document.getElementById('pf-max-bar').style.background = barColor(maxPct2);
+  document.getElementById('pf-daily-used').textContent = '$' + dailyUsed.toLocaleString(undefined,{maximumFractionDigits:0}) + ' used';
+  document.getElementById('pf-daily-left').textContent = '$' + dailyLeft.toLocaleString(undefined,{maximumFractionDigits:0}) + ' left';
+  document.getElementById('pf-max-used').textContent = '$' + maxUsed.toLocaleString(undefined,{maximumFractionDigits:0}) + ' used';
+  document.getElementById('pf-max-left').textContent = '$' + maxLeft.toLocaleString(undefined,{maximumFractionDigits:0}) + ' left';
+  document.getElementById('pf-daily-left').style.color = barColor(dailyPct2);
+  document.getElementById('pf-max-left').style.color = barColor(maxPct2);
+
+  const statusEl = document.getElementById('pf-status-bar');
+  if (dailyLeft <= 0 || maxLeft <= 0) {
+    statusEl.textContent = '🚫 STOP TRADING — LIMIT BREACHED';
+    statusEl.style.background = 'rgba(239,68,68,0.2)'; statusEl.style.color = 'var(--red)'; statusEl.style.border = '1px solid var(--red)';
+  } else if (dailyPct2 >= 80 || maxPct2 >= 80) {
+    statusEl.textContent = '⚠ WARNING — Near Drawdown Limit';
+    statusEl.style.background = 'rgba(245,158,11,0.15)'; statusEl.style.color = 'var(--amber)'; statusEl.style.border = '1px solid var(--amber)';
+  } else {
+    statusEl.textContent = '✓ SAFE TO TRADE';
+    statusEl.style.background = 'rgba(16,185,129,0.1)'; statusEl.style.color = 'var(--green)'; statusEl.style.border = '1px solid var(--green)';
+  }
 }
 
 // ── TRADING JOURNAL ────────────────────────────────────────────────────────────
@@ -1190,25 +1451,47 @@ function jInit() {
 // ── KPIs ──
 function jRenderKPIs() {
   const t = journalTrades;
+  const adv = ['j-kpi-exp','j-kpi-kelly','j-kpi-dd','j-kpi-streak-w','j-kpi-streak-l'];
   if (!t.length) {
-    ['j-kpi-total','j-kpi-wr','j-kpi-pnl','j-kpi-pf','j-kpi-rr','j-kpi-best','j-kpi-worst'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = id === 'j-kpi-total' ? '0' : '—';
+    ['j-kpi-total','j-kpi-wr','j-kpi-pnl','j-kpi-pf','j-kpi-rr','j-kpi-best','j-kpi-worst',...adv].forEach(id => {
+      const el = document.getElementById(id); if (el) el.textContent = id === 'j-kpi-total' ? '0' : '—';
     });
     return;
   }
-  const wins  = t.filter(x => x.result === 'WIN');
-  const loss  = t.filter(x => x.result === 'LOSS');
-  const pnl   = t.reduce((s, x) => s + (x.pnl || 0), 0);
+  const wins    = t.filter(x => x.result === 'WIN');
+  const loss    = t.filter(x => x.result === 'LOSS');
+  const pnl     = t.reduce((s, x) => s + (x.pnl || 0), 0);
   const gross_w = wins.reduce((s, x) => s + (x.pnl || 0), 0);
   const gross_l = Math.abs(loss.reduce((s, x) => s + (x.pnl || 0), 0));
-  const wr    = (wins.length / t.length * 100).toFixed(1);
-  const pf    = gross_l > 0 ? (gross_w / gross_l).toFixed(2) : '∞';
-  const rrs   = t.map(x => x.rr).filter(x => x);
-  const avgRR = rrs.length ? (rrs.reduce((a, b) => a + b, 0) / rrs.length).toFixed(2) : '—';
-  const best  = t.reduce((m, x) => (x.pnl || 0) > (m.pnl || -Infinity) ? x : m, t[0]);
-  const worst = t.reduce((m, x) => (x.pnl || 0) < (m.pnl || Infinity) ? x : m, t[0]);
+  const wrNum   = wins.length / t.length;
+  const wr      = (wrNum * 100).toFixed(1);
+  const pf      = gross_l > 0 ? (gross_w / gross_l).toFixed(2) : '∞';
+  const rrs     = t.map(x => x.rr).filter(x => x);
+  const avgRR   = rrs.length ? (rrs.reduce((a, b) => a + b, 0) / rrs.length).toFixed(2) : '—';
+  const best    = t.reduce((m, x) => (x.pnl || 0) > (m.pnl || -Infinity) ? x : m, t[0]);
+  const worst   = t.reduce((m, x) => (x.pnl || 0) < (m.pnl || Infinity) ? x : m, t[0]);
 
+  // Advanced metrics
+  const avgW     = wins.length ? gross_w / wins.length : 0;
+  const avgL     = loss.length ? gross_l / loss.length : 0;
+  const exp      = (wrNum * avgW) - ((1 - wrNum) * avgL);
+  const b        = avgL > 0 ? avgW / avgL : 0;
+  const kelly    = avgL > 0 ? Math.max(0, (b * wrNum - (1-wrNum)) / b) / 2 : 0;
+
+  // Max Drawdown from trade sequence
+  let peak = 0, cumPnl = 0, maxDD = 0;
+  [...t].reverse().forEach(tr => { cumPnl += (tr.pnl||0); if(cumPnl > peak) peak = cumPnl; const dd = peak > 0 ? (peak - cumPnl)/peak*100 : 0; if(dd > maxDD) maxDD = dd; });
+  const ddRecovery = maxDD > 0 ? (100 / (100 - maxDD) - 1) * 100 : 0;
+
+  // Consecutive streaks
+  let maxW = 0, maxL = 0, curW = 0, curL = 0;
+  [...t].reverse().forEach(tr => {
+    if (tr.result === 'WIN') { curW++; curL = 0; maxW = Math.max(maxW, curW); }
+    else if (tr.result === 'LOSS') { curL++; curW = 0; maxL = Math.max(maxL, curL); }
+    else { curW = 0; curL = 0; }
+  });
+
+  // Row 1
   document.getElementById('j-kpi-total').textContent = t.length;
   document.getElementById('j-kpi-wr').textContent = wr + '%';
   const pnlEl = document.getElementById('j-kpi-pnl');
@@ -1216,8 +1499,19 @@ function jRenderKPIs() {
   pnlEl.className = 'kpi-value ' + (pnl >= 0 ? 'green' : 'red');
   document.getElementById('j-kpi-pf').textContent = pf;
   document.getElementById('j-kpi-rr').textContent = avgRR;
-  document.getElementById('j-kpi-best').textContent = best.pnl >= 0 ? '+$' + best.pnl.toFixed(2) : '-$' + Math.abs(best.pnl).toFixed(2);
-  document.getElementById('j-kpi-worst').textContent = worst.pnl >= 0 ? '+$' + worst.pnl.toFixed(2) : '-$' + Math.abs(worst.pnl).toFixed(2);
+  document.getElementById('j-kpi-best').textContent = (best.pnl >= 0 ? '+$' : '-$') + Math.abs(best.pnl||0).toFixed(2);
+  document.getElementById('j-kpi-worst').textContent = (worst.pnl >= 0 ? '+$' : '-$') + Math.abs(worst.pnl||0).toFixed(2);
+
+  // Row 2 — Advanced
+  const expEl = document.getElementById('j-kpi-exp');
+  expEl.textContent = (exp >= 0 ? '+$' : '-$') + Math.abs(exp).toFixed(2);
+  expEl.className = 'kpi-value ' + (exp >= 0 ? 'amber' : 'red');
+  document.getElementById('j-kpi-exp-sub').textContent = exp >= 0 ? '✓ Positive edge' : '✗ Negative edge';
+  document.getElementById('j-kpi-kelly').textContent = (kelly * 100).toFixed(1) + '%';
+  document.getElementById('j-kpi-dd').textContent = maxDD.toFixed(1) + '%';
+  document.getElementById('j-kpi-dd-rec').textContent = 'Need +' + ddRecovery.toFixed(1) + '% to recover';
+  document.getElementById('j-kpi-streak-w').textContent = maxW;
+  document.getElementById('j-kpi-streak-l').textContent = maxL;
 }
 
 // ── CALENDAR ──
@@ -2110,6 +2404,16 @@ function showBtResults(r) {
   const calmar    = r.calmar.toFixed(2);
   const pf        = r.profit_factor.toFixed(2);
 
+  // ── Expectancy & Kelly calculation ──
+  const wr = r.win_rate / 100;
+  const lr = 1 - wr;
+  const avgW = r.avg_win;
+  const avgL = Math.abs(r.avg_loss);
+  const expectancy = (wr * avgW) - (lr * avgL);   // $ per trade
+  const b = avgL > 0 ? avgW / avgL : 0;           // reward/risk ratio
+  const kellyFull = avgL > 0 ? ((b * wr - lr) / b) : 0;
+  const kellyHalf = Math.max(0, kellyFull / 2);   // half-kelly (safer)
+
   document.getElementById('r-profit').textContent = (netProfit >= 0 ? '+$' : '-$') + Math.abs(netProfit).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
   document.getElementById('r-profit').className = 'kpi-value ' + (netProfit >= 0 ? 'green' : 'red');
   document.getElementById('r-return').textContent = (netProfit >= 0 ? '↑ +' : '↓ ') + retPct + '% return';
@@ -2123,6 +2427,14 @@ function showBtResults(r) {
   document.getElementById('r-avg-win').textContent = '$' + r.avg_win.toFixed(2);
   document.getElementById('r-avg-loss').textContent = '-$' + Math.abs(r.avg_loss).toFixed(2);
   document.getElementById('r-calmar2').textContent = calmar;
+  // Expectancy
+  const exEl = document.getElementById('r-expectancy');
+  exEl.textContent = (expectancy >= 0 ? '+$' : '-$') + Math.abs(expectancy).toFixed(2);
+  exEl.className = 'kpi-value ' + (expectancy >= 0 ? 'amber' : 'red');
+  document.getElementById('r-expectancy-sub').textContent = expectancy >= 0 ? '✓ Positive edge' : '✗ Negative edge';
+  // Kelly
+  document.getElementById('r-kelly').textContent = (kellyHalf * 100).toFixed(1) + '%';
+  document.getElementById('r-kelly-sub').textContent = 'Half-Kelly (R/R: ' + b.toFixed(2) + ')';
   document.getElementById('bt-result-label').textContent = 'RESULTS — ' + r.symbol + ' | ' + r.strategy + ' | ' + r.timeframe;
   document.getElementById('bt-candle-info').textContent = r.candles + ' candles processed';
 
@@ -2130,18 +2442,22 @@ function showBtResults(r) {
   const ddData   = r.dd_curve;
   const eqLabels = eqData.map((_, i) => i === 0 ? 'Start' : (i % Math.max(1, Math.floor(eqData.length / 20)) === 0 ? 'T' + i : ''));
 
+  const eqColor  = netProfit >= 0 ? '#10b981' : '#ef4444';
+  const eqBg     = netProfit >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)';
+  const gridClr  = 'rgba(30,34,53,0.8)';
+  const ttBg     = '#11131e';
   if (btEqChart) btEqChart.destroy();
   btEqChart = new Chart(document.getElementById('bt-equity-chart'), {
     type: 'line',
-    data: { labels: eqLabels, datasets: [{ data: eqData, borderColor: netProfit >= 0 ? '#00d26a' : '#f85149', borderWidth: 2, pointRadius: 0, fill: true, backgroundColor: netProfit >= 0 ? 'rgba(0,210,106,0.12)' : 'rgba(248,81,73,0.10)', tension: 0.3 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#21262d', titleColor: '#e6edf3', bodyColor: '#7d8590', borderColor: '#30363d', borderWidth: 1, callbacks: { label: v => '$' + v.raw.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) } } }, scales: { x: { ticks: { color: tc, font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }, grid: { color: 'rgba(33,38,45,0.6)' } }, y: { ticks: { color: tc, font: { size: 9 }, callback: v => '$' + v.toLocaleString() }, grid: { color: 'rgba(33,38,45,0.6)' } } } }
+    data: { labels: eqLabels, datasets: [{ data: eqData, borderColor: eqColor, borderWidth: 2, pointRadius: 0, fill: true, backgroundColor: eqBg, tension: 0.4 }] },
+    options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: ttBg, titleColor: '#f1f5f9', bodyColor: '#94a3b8', borderColor: '#252840', borderWidth: 1, callbacks: { label: v => '$' + v.raw.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) } } }, scales: { x: { ticks: { color: tc, font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }, grid: { color: gridClr } }, y: { ticks: { color: tc, font: { size: 9 }, callback: v => '$' + v.toLocaleString() }, grid: { color: gridClr } } } }
   });
 
   if (btDdChart) btDdChart.destroy();
   btDdChart = new Chart(document.getElementById('bt-dd-chart'), {
     type: 'line',
-    data: { labels: eqLabels, datasets: [{ data: ddData, borderColor: '#f85149', borderWidth: 1.5, pointRadius: 0, fill: true, backgroundColor: 'rgba(248,81,73,0.12)', tension: 0.3 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: tc, font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }, grid: { color: 'rgba(33,38,45,0.6)' } }, y: { ticks: { color: tc, font: { size: 9 }, callback: v => v + '%' }, grid: { color: 'rgba(33,38,45,0.6)' }, max: 0 } } }
+    data: { labels: eqLabels, datasets: [{ data: ddData, borderColor: '#ef4444', borderWidth: 1.5, pointRadius: 0, fill: true, backgroundColor: 'rgba(239,68,68,0.1)', tension: 0.4 }] },
+    options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: ttBg, titleColor: '#f1f5f9', bodyColor: '#94a3b8', borderColor: '#252840', borderWidth: 1, callbacks: { label: v => v.raw.toFixed(2) + '%' } } }, scales: { x: { ticks: { color: tc, font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }, grid: { color: gridClr } }, y: { ticks: { color: tc, font: { size: 9 }, callback: v => v + '%' }, grid: { color: gridClr }, max: 0 } } }
   });
 
   const tbody = document.getElementById('bt-trade-log');

@@ -948,7 +948,23 @@ def run_backtest(req: BacktestRequest):
     if n < 110:
         return JSONResponse({"error": f"Not enough data — only {n} candles. Try a wider date range or lower timeframe."}, status_code=400)
 
-    opens   = [r["open"]  for r in rates]
+    opens      = [r["open"]  for r in rates]
+    timestamps = [r["time"]  for r in rates]   # Unix UTC timestamps
+
+    # ── Session mask ───────────────────────────────────────────────────────────
+    def _in_session(ts: int, session: str) -> bool:
+        if session == "all":
+            return True
+        from datetime import timezone
+        dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+        h = dt.hour
+        if session == "london":   return 7 <= h < 16
+        if session == "newyork":  return 13 <= h < 21
+        if session == "lnny":     return 7 <= h < 21
+        if session == "asian":    return 0 <= h < 9
+        return True
+
+    sess = req.smc_session
 
     # ── Signal computation ─────────────────────────────────────────────────────
     strat = req.strategy
@@ -964,6 +980,13 @@ def run_backtest(req: BacktestRequest):
         signals = _compute_smc_choch_signals(opens, closes, highs, lows, n, swing_lb=lb)
     elif strat == "SMC - Liquidity Sweep":
         signals = _compute_smc_liquidity_signals(opens, closes, highs, lows, n, swing_lb=lb)
+
+    # Apply session filter to SMC signals
+    if strat.startswith("SMC"):
+        signals = [
+            sig if (sig and _in_session(timestamps[i], sess)) else None
+            for i, sig in enumerate(signals)
+        ]
     else:
         # All other strategies: candle-by-candle (no lookahead)
         signals = [None] * n
