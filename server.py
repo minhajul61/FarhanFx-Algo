@@ -297,6 +297,40 @@ def get_deals_today():
     return _mt5_call(fn)
 
 
+@app.get("/api/today_realized")
+def get_today_realized():
+    """Direct sum of today's closed trade P&L — no matching needed."""
+    def fn():
+        now            = datetime.now()
+        today_midnight = datetime(now.year, now.month, now.day)
+        deals = mt5.history_deals_get(today_midnight, now + timedelta(seconds=60))
+        if deals is None:
+            return {"realized": 0.0, "trades": 0, "wins": 0, "losses": 0}
+        total  = 0.0
+        trades = 0
+        wins   = 0
+        losses = 0
+        for d in deals:
+            if d.type not in (0, 1):        # skip balance, credit, bonus etc.
+                continue
+            if d.entry not in (1, 2, 3):    # only OUT / INOUT / OUT_BY
+                continue
+            net = d.profit + d.commission + d.swap
+            total += net
+            trades += 1
+            if net > 0:
+                wins += 1
+            else:
+                losses += 1
+        return {
+            "realized": round(total, 2),
+            "trades":   trades,
+            "wins":     wins,
+            "losses":   losses,
+        }
+    return _mt5_call(fn)
+
+
 # ── REPORTS ──────────────────────────────────────────────────────────────────────
 
 @app.get("/api/reports")
