@@ -184,17 +184,19 @@ def get_deals(days: int = 30, limit: int = 100):
             if d.type not in (0, 1):
                 continue
             result.append({
-                "ticket":     d.ticket,
-                "order":      d.order,
-                "symbol":     d.symbol,
-                "type":       "BUY" if d.type == 0 else "SELL",
-                "volume":     d.volume,
-                "price":      d.price,
-                "profit":     round(d.profit, 2),
-                "commission": round(d.commission, 2),
-                "swap":       round(d.swap, 2),
-                "time":       datetime.fromtimestamp(d.time).strftime("%Y-%m-%d %H:%M"),
-                "comment":    d.comment,
+                "ticket":      d.ticket,
+                "position_id": d.position_id,
+                "order":       d.order,
+                "symbol":      d.symbol,
+                "type":        "BUY" if d.type == 0 else "SELL",
+                "entry_type":  d.entry,   # 0=IN(open) 1=OUT(close) 2=INOUT
+                "volume":      d.volume,
+                "price":       d.price,
+                "profit":      round(d.profit, 2),
+                "commission":  round(d.commission, 2),
+                "swap":        round(d.swap, 2),
+                "time":        datetime.fromtimestamp(d.time).strftime("%Y-%m-%d %H:%M"),
+                "comment":     d.comment,
             })
         return result[-limit:]
     return _mt5_call(fn)

@@ -1940,8 +1940,9 @@ function jRenderTable() {
     const dirBadge = t.direction === 'BUY'
       ? '<span class="badge badge-green">▲ BUY</span>'
       : '<span class="badge badge-red">▼ SELL</span>';
-    const resBadge = t.result === 'WIN' ? '<span class="badge badge-green">WIN</span>'
+    const resBadge = t.result === 'WIN'  ? '<span class="badge badge-green">WIN</span>'
       : t.result === 'LOSS' ? '<span class="badge badge-red">LOSS</span>'
+      : t.result === 'OPEN' ? '<span class="badge" style="background:rgba(34,211,238,0.15);color:var(--cyan);border:1px solid var(--cyan)">LIVE</span>'
       : '<span class="badge badge-purple">BE</span>';
     const pnlColor = (t.pnl || 0) >= 0 ? 'var(--green)' : 'var(--red)';
     const pnlText = (t.pnl || 0) >= 0 ? '+$' + (t.pnl||0).toFixed(2) : '-$' + Math.abs(t.pnl||0).toFixed(2);
@@ -2109,58 +2110,135 @@ function jSyncSetState(state) {
   }
 }
 
+function jPipSize(symbol) {
+  const s = (symbol || '').toUpperCase().replace(/[CS]M$|[CS]$/, '');
+  if (s.includes('JPY'))  return 0.01;
+  if (s.includes('XAU') || s.includes('GOLD'))   return 0.1;
+  if (s.includes('XAG') || s.includes('SILVER')) return 0.01;
+  if (/NAS|US30|US500|SPX|UK1|GER|JP2|AUS|DAX|CAC/.test(s)) return 1.0;
+  if (/BTC|ETH|LTC|XRP|ADA|SOL|BNB/.test(s)) return 1.0;
+  return 0.0001;
+}
+
+function jSession(dateStr) {
+  const h = dateStr && dateStr.length >= 13 ? parseInt(dateStr.slice(11, 13)) : 0;
+  if (h >= 7  && h < 16) return 'London';
+  if (h >= 13 && h < 21) return 'NewYork';
+  if (h >= 0  && h < 9)  return 'Asian';
+  return 'Other';
+}
+
 async function jSyncMT5() {
   if (jSyncing) return;
   jSyncing = true;
   jSyncSetState('syncing');
 
-  const r = await apiFetch('/api/deals');
+  // Fetch both closed deals and open positions in parallel
+  const [dealsRaw, posRaw] = await Promise.all([
+    apiFetch('/api/deals?days=90&limit=500'),
+    apiFetch('/api/positions')
+  ]);
 
-  if (r && r.error) {
+  if (dealsRaw && dealsRaw.error) {
     jSyncSetState('error');
-    toastErr('Sync failed: ' + r.error);
+    toastErr('Sync failed: ' + dealsRaw.error);
     jSyncing = false; return;
   }
-  const deals = Array.isArray(r) ? r : (r.deals || []);
-  if (!deals.length) {
-    jSyncSetState('ok');
-    toast('MT5 sync complete — no new trades', true);
-    jSyncing = false; return;
-  }
+
+  const deals = Array.isArray(dealsRaw) ? dealsRaw : [];
+  const positions = Array.isArray(posRaw) ? posRaw : [];
 
   let added = 0;
-  deals.forEach(d => {
-    if (!d.symbol) return;
-    if (journalTrades.find(t => t.id === d.ticket)) return;   // skip duplicates
 
-    const dir     = (d.type || '').toString().toUpperCase().includes('BUY') ? 'BUY' : 'SELL';
+  // ── 1. CLOSED TRADES ─────────────────────────────────────────────────────────
+  // Build lookup of IN deals (position openers) by position_id
+  const inDeals = {};
+  deals.forEach(d => {
+    if (d.entry_type === 0 && d.position_id) inDeals[d.position_id] = d;
+  });
+
+  // Only process OUT deals (closing deals with real P&L)
+  deals.filter(d => d.entry_type === 1 || d.entry_type === 2).forEach(d => {
+    if (!d.symbol) return;
+    const uid = 'mt5_' + (d.position_id || d.ticket);
+    if (journalTrades.find(t => t.id === uid)) return;  // skip existing
+
+    const openDeal = inDeals[d.position_id];
+    // Closing deal type is opposite of trade direction
+    // (BUY trade closes with SELL deal, SELL trade closes with BUY deal)
+    const dir = d.entry_type === 1
+      ? (d.type === 'SELL' ? 'BUY' : 'SELL')   // invert for OUT deals
+      : (d.type === 'BUY'  ? 'BUY' : 'SELL');  // INOUT: type = direction
+
+    const entry   = openDeal ? openDeal.price : 0;
+    const exit    = d.price || 0;
     const pnl     = parseFloat(d.profit) || 0;
-    const dateStr = d.time ? d.time.replace(' ', 'T') : new Date().toISOString().slice(0, 16);
-    const hour    = dateStr.length >= 16 ? parseInt(dateStr.slice(11, 13)) : 0;
-    const session = hour >= 7 && hour < 16 ? 'London'
-                  : hour >= 13 && hour < 21 ? 'NewYork'
-                  : hour >= 0 && hour < 9   ? 'Asian' : 'Other';
+    const dateStr = (openDeal || d).time ? (openDeal || d).time.replace(' ', 'T') : new Date().toISOString().slice(0, 16);
+    const closeStr = d.time ? d.time.replace(' ', 'T') : '';
+
+    // Calculate pips from entry/exit
+    let pips = 0;
+    if (entry > 0 && exit > 0) {
+      const pip = jPipSize(d.symbol);
+      const diff = dir === 'BUY' ? exit - entry : entry - exit;
+      pips = Math.round((diff / pip) * 10) / 10;
+    }
+
+    // Calculate duration
+    let duration = '';
+    if (openDeal && openDeal.time && d.time) {
+      const ms = new Date(closeStr) - new Date(dateStr);
+      const mins = Math.floor(ms / 60000);
+      duration = mins < 60 ? `${mins}m` : `${Math.floor(mins/60)}h ${mins%60}m`;
+    }
 
     journalTrades.unshift({
-      id: d.ticket, date: dateStr,
+      id: uid, date: dateStr,
       symbol: d.symbol, direction: dir,
-      lots: d.volume || 0, entry: d.price || 0, exit: 0,
-      pips: 0, pnl, rr: null, sl: 0, tp: 0,
-      strategy: 'MT5 Import', session, duration: '',
-      notes: 'Imported from MT5' + (d.comment ? ' | ' + d.comment : ''),
+      lots: d.volume || 0,
+      entry, exit, pips, pnl,
+      rr: null, sl: 0, tp: 0,
+      strategy: 'MT5 Live',
+      session: jSession(dateStr),
+      duration,
+      notes: 'MT5 sync' + (d.comment ? ' | ' + d.comment : ''),
       emotion: '😊', rating: 3,
-      result: pnl > 0.5 ? 'WIN' : pnl < -0.5 ? 'LOSS' : 'BE'
+      result: pnl > 0.5 ? 'WIN' : pnl < -0.5 ? 'LOSS' : 'BE',
+      commission: d.commission || 0,
+      swap: d.swap || 0
+    });
+    added++;
+  });
+
+  // ── 2. OPEN POSITIONS ────────────────────────────────────────────────────────
+  positions.forEach(p => {
+    const uid = 'open_' + p.ticket;
+    if (journalTrades.find(t => t.id === uid)) return;
+    const dateStr = p.open_time ? p.open_time.replace(' ', 'T') : '';
+    journalTrades.unshift({
+      id: uid, date: dateStr,
+      symbol: p.symbol, direction: p.type,
+      lots: p.volume || 0,
+      entry: p.open_price, exit: 0, pips: 0,
+      pnl: p.profit || 0,
+      rr: null, sl: p.sl || 0, tp: p.tp || 0,
+      strategy: 'MT5 Live',
+      session: jSession(dateStr),
+      duration: 'OPEN',
+      notes: 'Live position | SL:' + (p.sl||'—') + ' TP:' + (p.tp||'—'),
+      emotion: '😊', rating: 3,
+      result: 'OPEN'
     });
     added++;
   });
 
   jSave();
-  jInit();                            // instant full refresh
+  jInit();
   jSyncSetState('ok');
   jSyncing = false;
 
-  if (added > 0) toast(`✓ Synced ${added} new trade${added>1?'s':''} from MT5`);
-  else           toast('MT5 sync complete — up to date', true);
+  if (added > 0) toast(`✓ Synced ${added} trade${added>1?'s':''} from MT5`);
+  else           toast('Journal up to date — no new trades', true);
 }
 
 function jToggleAutoSync() {
