@@ -205,11 +205,13 @@ def get_deals(days: int = 30, limit: int = 100):
 @app.get("/api/price/{symbol}")
 def get_price(symbol: str):
     def fn():
-        tick = mt5.symbol_info_tick(symbol)
+        real = _resolve_symbol(symbol)
+        mt5.symbol_select(real, True)
+        tick = mt5.symbol_info_tick(real)
         if tick is None:
             return {"error": f"Symbol '{symbol}' not found"}
         return {
-            "symbol": symbol,
+            "symbol": real,
             "bid":    tick.bid,
             "ask":    tick.ask,
             "spread": round((tick.ask - tick.bid) * 100000, 1),

@@ -316,7 +316,6 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <div class="field">
               <label>Symbol</label>
               <input id="o-symbol" class="sinput" list="jf-symbol-list" autocomplete="off"
-                oninput="this.value=this.value.toUpperCase()"
                 onblur="oFetchPrice()"
                 style="width:100%" value="EURUSDc" placeholder="Type or select..."/>
               <div id="o-price-preview" style="font-size:10px;color:var(--cyan);margin-top:3px;height:14px;white-space:nowrap;overflow:hidden"></div>
@@ -794,7 +793,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             </div>
             <div class="field" style="margin-bottom:0">
               <label>Symbol</label>
-              <input id="algo-symbol" class="sinput" list="jf-symbol-list" autocomplete="off" oninput="this.value=this.value.toUpperCase()" style="width:100%" value="EURUSDc" placeholder="Type or select symbol..."/>
+              <input id="algo-symbol" class="sinput" list="jf-symbol-list" autocomplete="off" style="width:100%" value="EURUSDc" placeholder="Type or select symbol..."/>
               <div class="server-presets" style="margin-top:6px">
                 <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='EURUSDc'">EURUSDc</button>
                 <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='GBPUSDc'">GBPUSDc</button>
@@ -2410,7 +2409,7 @@ function oUpdatePreviews() {
 
 // ── PLACE ORDER ────────────────────────────────────────────────────────────────
 async function placeOrder(side) {
-  const symbol  = document.getElementById('o-symbol').value.trim().toUpperCase();
+  const symbol  = document.getElementById('o-symbol').value.trim();
   const volume  = parseFloat(document.getElementById('o-volume').value);
   let sl        = parseFloat(document.getElementById('o-sl').value) || 0;
   let tp        = parseFloat(document.getElementById('o-tp').value) || 0;
