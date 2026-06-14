@@ -150,55 +150,119 @@ def get_positions():
         positions = mt5.positions_get()
         if positions is None:
             return []
-        return [
-            {
+        now_ts = datetime.now().timestamp()
+        result = []
+        for p in positions:
+            sym = mt5.symbol_info(p.symbol)
+            # Pip size
+            pip = 0.1 if sym and ("XAU" in p.symbol.upper() or "GOLD" in p.symbol.upper()) \
+                else 1.0 if sym and any(x in p.symbol.upper() for x in ["BTC","ETH","NAS","US30","US500","GER","UK1"]) \
+                else (sym.point * 10 if sym else 0.0001)
+            # Pips profit
+            diff = (p.price_current - p.price_open) if p.type == 0 else (p.price_open - p.price_current)
+            pips = round(diff / pip, 1) if pip else 0
+            # Duration
+            secs  = int(now_ts - p.time)
+            h, m  = secs // 3600, (secs % 3600) // 60
+            dur   = f"{h}h {m}m" if h > 0 else f"{m}m"
+            result.append({
                 "ticket":        p.ticket,
                 "symbol":        p.symbol,
                 "type":          "BUY" if p.type == 0 else "SELL",
                 "volume":        p.volume,
-                "open_price":    p.price_open,
-                "current_price": p.price_current,
-                "sl":            p.sl,
-                "tp":            p.tp,
+                "open_price":    round(p.price_open,    sym.digits if sym else 5),
+                "current_price": round(p.price_current, sym.digits if sym else 5),
+                "sl":            round(p.sl, sym.digits if sym else 5) if p.sl else 0,
+                "tp":            round(p.tp, sym.digits if sym else 5) if p.tp else 0,
                 "profit":        round(p.profit, 2),
                 "swap":          round(p.swap, 2),
+                "pips":          pips,
+                "duration":      dur,
                 "open_time":     datetime.fromtimestamp(p.time).strftime("%Y-%m-%d %H:%M"),
                 "comment":       p.comment,
-            }
-            for p in positions
-        ]
+            })
+        return result
     return _mt5_call(fn)
 
 
 # ── DEAL HISTORY ────────────────────────────────────────────────────────────────
 
 @app.get("/api/deals")
-def get_deals(days: int = 30, limit: int = 100):
+def get_deals(days: int = 30):
+    """Returns matched complete trades (IN+OUT paired by position_id)."""
     def fn():
         date_from = datetime.now() - timedelta(days=days)
-        deals = mt5.history_deals_get(date_from, datetime.now())
-        if deals is None:
+        # Fetch wider window to catch opening deals for positions opened before the range
+        date_from_wide = date_from - timedelta(days=180)
+        deals_all = mt5.history_deals_get(date_from_wide, datetime.now())
+        if deals_all is None:
             return []
-        result = []
-        for d in deals:
-            if d.type not in (0, 1):
+
+        # Split into IN and OUT maps by position_id
+        in_map: dict  = {}   # position_id -> IN deal
+        out_list       = []  # list of OUT deals within requested range
+
+        for d in deals_all:
+            if d.type not in (0, 1):  # only BUY/SELL deals
                 continue
+            if d.entry == 0:          # IN = opening deal
+                in_map[d.position_id] = d
+            elif d.entry == 1:        # OUT = closing deal
+                # Only include closings within the requested range
+                if d.time >= date_from.timestamp():
+                    out_list.append(d)
+
+        result = []
+        for out in out_list:
+            in_d   = in_map.get(out.position_id)
+            sym    = mt5.symbol_info(out.symbol)
+            digits = sym.digits if sym else 5
+
+            # Pip size
+            name = out.symbol.upper()
+            if "XAU" in name or "GOLD" in name:   pip = 0.1
+            elif any(x in name for x in ["BTC","ETH","NAS","US30","US500","GER","UK1","JP2","AUS","HK","SPX"]): pip = 1.0
+            elif sym:                               pip = sym.point * 10
+            else:                                   pip = 0.0001
+
+            # Pips (based on entry type)
+            if in_d and pip:
+                is_buy = in_d.type == 0
+                diff   = (out.price - in_d.price) if is_buy else (in_d.price - out.price)
+                pips   = round(diff / pip, 1)
+            else:
+                pips = 0
+
+            # Duration
+            if in_d:
+                secs = int(out.time - in_d.time)
+                h, m = secs // 3600, (secs % 3600) // 60
+                duration = f"{h}h {m}m" if h > 0 else f"{m}m"
+            else:
+                duration = "—"
+
+            net = round(out.profit + out.commission + out.swap, 2)
             result.append({
-                "ticket":      d.ticket,
-                "position_id": d.position_id,
-                "order":       d.order,
-                "symbol":      d.symbol,
-                "type":        "BUY" if d.type == 0 else "SELL",
-                "entry_type":  d.entry,   # 0=IN(open) 1=OUT(close) 2=INOUT
-                "volume":      d.volume,
-                "price":       d.price,
-                "profit":      round(d.profit, 2),
-                "commission":  round(d.commission, 2),
-                "swap":        round(d.swap, 2),
-                "time":        datetime.fromtimestamp(d.time).strftime("%Y-%m-%d %H:%M"),
-                "comment":     d.comment,
+                "position_id":  out.position_id,
+                "symbol":       out.symbol,
+                "type":         "BUY" if (in_d.type if in_d else out.type) == 0 else "SELL",
+                "volume":       out.volume,
+                "entry_price":  round(in_d.price, digits) if in_d else None,
+                "exit_price":   round(out.price,  digits),
+                "entry_time":   datetime.fromtimestamp(in_d.time).strftime("%Y-%m-%d %H:%M") if in_d else "—",
+                "exit_time":    datetime.fromtimestamp(out.time).strftime("%Y-%m-%d %H:%M"),
+                "duration":     duration,
+                "pips":         pips,
+                "gross_profit": round(out.profit, 2),
+                "commission":   round(out.commission, 2),
+                "swap":         round(out.swap, 2),
+                "net_profit":   net,
+                "comment":      out.comment or "",
+                "win":          net > 0,
             })
-        return result[-limit:]
+
+        result.sort(key=lambda x: x["exit_time"], reverse=True)
+        return result
     return _mt5_call(fn)
 
 
