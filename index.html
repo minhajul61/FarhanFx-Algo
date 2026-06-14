@@ -966,7 +966,112 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <!-- Row 1: Date | Symbol | Direction -->
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
               <div class="field"><label>Date &amp; Time</label><input type="datetime-local" id="jf-date" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
-              <div class="field"><label>Symbol</label><input id="jf-symbol" placeholder="EURUSD" style="text-transform:uppercase"></div>
+              <div class="field"><label>Symbol</label>
+                <input id="jf-symbol" list="jf-symbol-list" placeholder="Type or select..." autocomplete="off"
+                  oninput="this.value=this.value.toUpperCase()"
+                  style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%;transition:border-color 0.2s">
+                <datalist id="jf-symbol-list">
+                  <!-- ── FOREX MAJOR ── -->
+                  <option value="EURUSD">EURUSD — Euro / US Dollar</option>
+                  <option value="GBPUSD">GBPUSD — British Pound / US Dollar</option>
+                  <option value="USDJPY">USDJPY — US Dollar / Japanese Yen</option>
+                  <option value="USDCHF">USDCHF — US Dollar / Swiss Franc</option>
+                  <option value="AUDUSD">AUDUSD — Australian Dollar / US Dollar</option>
+                  <option value="NZDUSD">NZDUSD — New Zealand Dollar / US Dollar</option>
+                  <option value="USDCAD">USDCAD — US Dollar / Canadian Dollar</option>
+                  <!-- CXM Direct variants -->
+                  <option value="EURUSDc">EURUSDc — CXM Direct</option>
+                  <option value="GBPUSDc">GBPUSDc — CXM Direct</option>
+                  <option value="USDJPYc">USDJPYc — CXM Direct</option>
+                  <option value="USDCHFc">USDCHFc — CXM Direct</option>
+                  <option value="AUDUSDc">AUDUSDc — CXM Direct</option>
+                  <option value="NZDUSDc">NZDUSDc — CXM Direct</option>
+                  <option value="USDCADc">USDCADc — CXM Direct</option>
+                  <!-- ── FOREX MINOR ── -->
+                  <option value="EURGBP">EURGBP — Euro / British Pound</option>
+                  <option value="EURJPY">EURJPY — Euro / Japanese Yen</option>
+                  <option value="GBPJPY">GBPJPY — British Pound / Japanese Yen</option>
+                  <option value="EURCAD">EURCAD — Euro / Canadian Dollar</option>
+                  <option value="EURCHF">EURCHF — Euro / Swiss Franc</option>
+                  <option value="EURAUD">EURAUD — Euro / Australian Dollar</option>
+                  <option value="EURNZD">EURNZD — Euro / New Zealand Dollar</option>
+                  <option value="GBPAUD">GBPAUD — British Pound / Australian Dollar</option>
+                  <option value="GBPCAD">GBPCAD — British Pound / Canadian Dollar</option>
+                  <option value="GBPCHF">GBPCHF — British Pound / Swiss Franc</option>
+                  <option value="GBPNZD">GBPNZD — British Pound / New Zealand Dollar</option>
+                  <option value="AUDJPY">AUDJPY — Australian Dollar / Japanese Yen</option>
+                  <option value="CADJPY">CADJPY — Canadian Dollar / Japanese Yen</option>
+                  <option value="CHFJPY">CHFJPY — Swiss Franc / Japanese Yen</option>
+                  <option value="NZDJPY">NZDJPY — New Zealand Dollar / Japanese Yen</option>
+                  <option value="AUDCAD">AUDCAD — Australian Dollar / Canadian Dollar</option>
+                  <option value="AUDCHF">AUDCHF — Australian Dollar / Swiss Franc</option>
+                  <option value="AUDNZD">AUDNZD — Australian Dollar / New Zealand Dollar</option>
+                  <option value="CADCHF">CADCHF — Canadian Dollar / Swiss Franc</option>
+                  <option value="NZDCAD">NZDCAD — New Zealand Dollar / Canadian Dollar</option>
+                  <option value="NZDCHF">NZDCHF — New Zealand Dollar / Swiss Franc</option>
+                  <!-- ── FOREX EXOTIC ── -->
+                  <option value="USDZAR">USDZAR — US Dollar / South African Rand</option>
+                  <option value="USDMXN">USDMXN — US Dollar / Mexican Peso</option>
+                  <option value="USDTRY">USDTRY — US Dollar / Turkish Lira</option>
+                  <option value="USDSGD">USDSGD — US Dollar / Singapore Dollar</option>
+                  <option value="USDHKD">USDHKD — US Dollar / Hong Kong Dollar</option>
+                  <option value="USDNOK">USDNOK — US Dollar / Norwegian Krone</option>
+                  <option value="USDSEK">USDSEK — US Dollar / Swedish Krona</option>
+                  <option value="USDDKK">USDDKK — US Dollar / Danish Krone</option>
+                  <option value="USDPLN">USDPLN — US Dollar / Polish Zloty</option>
+                  <option value="USDHUF">USDHUF — US Dollar / Hungarian Forint</option>
+                  <option value="EURPLN">EURPLN — Euro / Polish Zloty</option>
+                  <option value="EURNOK">EURNOK — Euro / Norwegian Krone</option>
+                  <option value="EURSEK">EURSEK — Euro / Swedish Krona</option>
+                  <!-- ── METALS & COMMODITIES ── -->
+                  <option value="XAUUSD">XAUUSD — Gold / US Dollar</option>
+                  <option value="XAGUSD">XAGUSD — Silver / US Dollar</option>
+                  <option value="XPTUSD">XPTUSD — Platinum / US Dollar</option>
+                  <option value="XPDUSD">XPDUSD — Palladium / US Dollar</option>
+                  <option value="USOIL">USOIL — Crude Oil (WTI)</option>
+                  <option value="UKOIL">UKOIL — Crude Oil (Brent)</option>
+                  <option value="NATGAS">NATGAS — Natural Gas</option>
+                  <!-- CXM Direct variants -->
+                  <option value="XAUUSDc">XAUUSDc — Gold CXM Direct</option>
+                  <option value="XAGUSDc">XAGUSDc — Silver CXM Direct</option>
+                  <!-- ── INDICES ── -->
+                  <option value="NAS100">NAS100 — NASDAQ 100</option>
+                  <option value="US500">US500 — S&amp;P 500</option>
+                  <option value="US30">US30 — Dow Jones 30</option>
+                  <option value="GER40">GER40 — DAX 40 Germany</option>
+                  <option value="UK100">UK100 — FTSE 100 UK</option>
+                  <option value="JPN225">JPN225 — Nikkei 225 Japan</option>
+                  <option value="AUS200">AUS200 — ASX 200 Australia</option>
+                  <option value="FRA40">FRA40 — CAC 40 France</option>
+                  <option value="HK50">HK50 — Hang Seng 50</option>
+                  <option value="ESP35">ESP35 — IBEX 35 Spain</option>
+                  <option value="EU50">EU50 — Euro Stoxx 50</option>
+                  <option value="SWI20">SWI20 — SMI 20 Switzerland</option>
+                  <!-- CXM Direct variants -->
+                  <option value="NAS100s">NAS100s — NASDAQ CXM Direct</option>
+                  <option value="US500s">US500s — S&amp;P 500 CXM Direct</option>
+                  <option value="US30s">US30s — Dow Jones CXM Direct</option>
+                  <option value="GER40s">GER40s — DAX CXM Direct</option>
+                  <option value="UK100s">UK100s — FTSE CXM Direct</option>
+                  <option value="JPN225s">JPN225s — Nikkei CXM Direct</option>
+                  <!-- ── CRYPTO ── -->
+                  <option value="BTCUSD">BTCUSD — Bitcoin / US Dollar</option>
+                  <option value="ETHUSD">ETHUSD — Ethereum / US Dollar</option>
+                  <option value="LTCUSD">LTCUSD — Litecoin / US Dollar</option>
+                  <option value="XRPUSD">XRPUSD — Ripple / US Dollar</option>
+                  <option value="ADAUSD">ADAUSD — Cardano / US Dollar</option>
+                  <option value="DOTUSD">DOTUSD — Polkadot / US Dollar</option>
+                  <option value="BNBUSD">BNBUSD — Binance Coin / US Dollar</option>
+                  <option value="SOLUSD">SOLUSD — Solana / US Dollar</option>
+                  <option value="AVAXUSD">AVAXUSD — Avalanche / US Dollar</option>
+                  <option value="DOGUSD">DOGUSD — Dogecoin / US Dollar</option>
+                  <option value="MATICUSD">MATICUSD — Polygon / US Dollar</option>
+                  <option value="LNKUSD">LNKUSD — Chainlink / US Dollar</option>
+                  <option value="UNIUSD">UNIUSD — Uniswap / US Dollar</option>
+                  <option value="ATOMUSD">ATOMUSD — Cosmos / US Dollar</option>
+                  <option value="XLMUSD">XLMUSD — Stellar / US Dollar</option>
+                </datalist>
+              </div>
               <div class="field"><label>Direction</label>
                 <div style="display:flex;gap:8px;margin-top:2px">
                   <button id="jf-dir-buy" onclick="jSetDir('BUY')" style="flex:1;padding:10px;border-radius:8px;font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:var(--green);transition:all 0.2s">▲ BUY</button>
