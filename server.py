@@ -210,10 +210,11 @@ _MT5_ERR = {
 @app.post("/api/connect")
 def connect_mt5(req: ConnectRequest):
     def fn():
-        # Ensure MT5 is initialized (re-init if needed)
-        if not mt5.initialize():
+        # Ensure MT5 is initialized — 10s timeout so we don't block forever
+        if not mt5.initialize(timeout=10000):
             code, msg = mt5.last_error()
-            return {"error": _MT5_ERR.get(code, f"MT5 init failed: {msg} (code {code})"), "code": code}
+            hint = "Open MetaTrader 5 terminal first, then try again"
+            return {"error": hint, "code": code}
 
         # Login with 25-second internal timeout so wrapper can catch it
         ok = mt5.login(
