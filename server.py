@@ -193,27 +193,57 @@ class ConnectRequest(BaseModel):
     password: str
     server:   str
 
+_MT5_ERR = {
+    -10004: "MT5 terminal not found — open MetaTrader 5 first",
+    -10003: "MT5 initialization failed — restart MetaTrader 5",
+    -10002: "MT5 connection timeout — check internet connection",
+    -10001: "MT5 internal error",
+        1:  "Connection timeout — check server name and internet",
+        2:  "Invalid server — check broker server name",
+        5:  "No MT5 terminal connection — open MetaTrader 5",
+}
+
 @app.post("/api/connect")
 def connect_mt5(req: ConnectRequest):
     def fn():
-        ok = mt5.login(login=req.login, password=req.password, server=req.server)
+        # Ensure MT5 is initialized (re-init if needed)
+        if not mt5.initialize():
+            code, msg = mt5.last_error()
+            return {"error": _MT5_ERR.get(code, f"MT5 init failed: {msg} (code {code})"), "code": code}
+
+        # Login with 25-second internal timeout so wrapper can catch it
+        ok = mt5.login(
+            login=req.login,
+            password=req.password,
+            server=req.server,
+            timeout=25000        # ms — MT5 gives up after 25s
+        )
         if not ok:
-            err = mt5.last_error()
-            return {"error": f"Login failed: {err[1]} (code {err[0]})"}
+            code, msg = mt5.last_error()
+            friendly = _MT5_ERR.get(code)
+            if not friendly:
+                if code in (-2, -10002): friendly = "Wrong server name or no internet"
+                elif "password" in msg.lower() or code in (3, 6): friendly = "Wrong account number or password"
+                else: friendly = f"{msg} (code {code})"
+            return {"error": friendly, "code": code}
+
         info = mt5.account_info()
         if info is None:
-            return {"error": "Logged in but could not get account info"}
+            return {"error": "Logged in but account info unavailable — try again"}
+
         return {
             "success":  True,
             "login":    info.login,
             "name":     info.name,
             "server":   info.server,
-            "balance":  info.balance,
+            "balance":  round(info.balance, 2),
+            "equity":   round(info.equity, 2),
             "currency": info.currency,
             "leverage": info.leverage,
         }
-    result = _mt5_call(fn, timeout=15)
-    if "error" in result:
+
+    result = _mt5_call(fn, timeout=35)   # 35s — larger than mt5.login timeout
+    if isinstance(result, dict) and "error" in result:
         return JSONResponse(result, status_code=401)
     return result
 

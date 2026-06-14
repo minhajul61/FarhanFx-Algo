@@ -1866,32 +1866,41 @@ async function handleAction() {
   if (!login || !password || !server) {
     btn.style.background = 'var(--red)';
     btn.textContent = 'FILL ALL FIELDS';
-    setTimeout(() => { btn.style.background = 'linear-gradient(135deg,var(--accent),var(--accent2))'; btn.textContent = 'CONNECT TO MT5 →'; }, 1800);
+    setTimeout(() => { btn.style.background = ''; btn.textContent = 'CONNECT TO MT5 →'; }, 2000);
     return;
   }
 
   btn.style.background = 'var(--cyan)';
   btn.textContent = 'CONNECTING...';
   btn.disabled = true;
-  setLoginStatus('AUTHENTICATING WITH MT5...', 'var(--cyan)');
 
-  const r = await apiFetch('/api/connect', {
-    method: 'POST',
-    body: JSON.stringify({ login, password, server })
-  });
+  const msgs = ['CONNECTING TO SERVER...','AUTHENTICATING...','LOADING ACCOUNT...','ALMOST DONE...'];
+  let mi = 0; setLoginStatus(msgs[0], 'var(--cyan)');
+  const t = setInterval(() => { mi=(mi+1)%msgs.length; setLoginStatus(msgs[mi],'var(--cyan)'); }, 4000);
 
-  if (r.error) {
-    btn.style.background = 'var(--red)';
-    btn.textContent = 'LOGIN FAILED';
-    btn.disabled = false;
-    setLoginStatus(r.error, 'var(--red)');
-    setTimeout(() => { btn.style.background = 'linear-gradient(135deg,var(--accent),var(--accent2))'; btn.textContent = 'CONNECT TO MT5 →'; setLoginStatus('TRY AGAIN', 'var(--text2)'); }, 3000);
-    return;
-  }
+  try {
+    const token = _getAuthToken();
+    const ctrl  = new AbortController();
+    const kt    = setTimeout(() => ctrl.abort(), 38000);
+    const resp  = await fetch(API + '/api/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ login, password, server }),
+      signal: ctrl.signal,
+    }).catch(() => null);
+    clearTimeout(kt);
+    const r = resp ? await resp.json().catch(() => ({error:'Server error'})) : {error:'Timed out — check MetaTrader 5 is open'};
 
-  btn.textContent = '✓ CONNECTED';
-  setLoginStatus('MT5 LOGIN SUCCESS', 'var(--green)');
-  setTimeout(() => showApp(r), 700);
+    if (r.error) {
+      btn.style.background = 'var(--red)'; btn.textContent = 'LOGIN FAILED'; btn.disabled = false;
+      setLoginStatus(r.error, 'var(--red)');
+      setTimeout(() => { btn.style.background = ''; btn.textContent = 'CONNECT TO MT5 →'; setLoginStatus('TRY AGAIN', 'var(--text2)'); }, 4000);
+      return;
+    }
+    btn.textContent = '✓ CONNECTED';
+    setLoginStatus('MT5 LOGIN SUCCESS ✓', 'var(--green)');
+    setTimeout(() => showApp(r), 700);
+  } finally { clearInterval(t); }
 }
 
 function showApp(accountInfo) {
@@ -3838,26 +3847,51 @@ async function doModalConnect() {
   const statusEl = document.getElementById('mt5-mstatus');
   errEl.style.display = 'none';
   if (!login || !password || !server) {
-    errEl.textContent = 'Please fill Account Number, Password and Server.';
+    errEl.textContent = 'Fill Account Number, Password and Server — all required.';
     errEl.style.display = 'block'; return;
   }
+
   btn.disabled = true; btn.textContent = 'CONNECTING...'; btn.style.background = 'var(--cyan)';
-  statusEl.textContent = 'Authenticating with MT5...';
-  const r = await apiFetch('/api/connect', { method: 'POST', body: JSON.stringify({ login, password, server }) });
-  if (r.error) {
-    btn.disabled = false; btn.textContent = 'CONNECT →'; btn.style.background = '';
-    errEl.textContent = r.error; errEl.style.display = 'block';
-    statusEl.textContent = 'Connection failed — check credentials';
-    return;
+
+  // Animated status messages while waiting (MT5 login can take 10-25s)
+  const msgs = ['Connecting to broker server...','Authenticating credentials...','Retrieving account info...','Almost there...'];
+  let mi = 0;
+  statusEl.textContent = msgs[0];
+  const msgTimer = setInterval(() => { mi = (mi + 1) % msgs.length; statusEl.textContent = msgs[mi]; }, 4000);
+
+  try {
+    const token = _getAuthToken();
+    const ctrl  = new AbortController();
+    const killTimer = setTimeout(() => ctrl.abort(), 38000); // 38s fetch timeout
+    const resp = await fetch(API + '/api/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ login, password, server }),
+      signal: ctrl.signal,
+    }).catch(e => null);
+    clearTimeout(killTimer);
+
+    const r = resp ? await resp.json().catch(() => ({ error: 'Server error' })) : { error: 'Connection timed out — check MetaTrader 5 is running' };
+
+    if (r.error) {
+      errEl.textContent = r.error;
+      errEl.style.display = 'block';
+      statusEl.textContent = 'Check credentials and try again';
+      btn.disabled = false; btn.textContent = 'CONNECT →'; btn.style.background = '';
+      return;
+    }
+    statusEl.textContent = `✓ Logged in as ${r.name || r.login}`;
+    btn.textContent = '✓ CONNECTED'; btn.style.background = 'var(--green)';
+    setTimeout(() => {
+      closeMT5Modal();
+      document.getElementById('login-screen').style.display = 'none';
+      showApp(r);
+      loadMT5Symbols();
+      setTimeout(loadAccount, 500);
+    }, 700);
+  } finally {
+    clearInterval(msgTimer);
   }
-  btn.textContent = '✓ CONNECTED'; statusEl.textContent = 'MT5 login success!';
-  setTimeout(() => {
-    closeMT5Modal();
-    document.getElementById('login-screen').style.display = 'none';
-    showApp(r);
-    loadMT5Symbols();
-    setTimeout(loadAccount, 500);
-  }, 600);
 }
 
 async function doModalSession() {
