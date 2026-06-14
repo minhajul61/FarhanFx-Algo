@@ -1087,23 +1087,6 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 elif fast[-2] > slow[-2] and fast[-1] < slow[-1]:
                     signal = "SELL"
 
-            elif strategy == "RSI":
-                rsi = _rsi(closes)
-                _strategies[sid]["indicator"] = f"RSI: {rsi}"
-                if rsi < 30:
-                    signal = "BUY"
-                elif rsi > 70:
-                    signal = "SELL"
-
-            elif strategy == "Bollinger Bands":
-                upper, mid, lower = _bollinger(closes)
-                price = closes[-1]
-                _strategies[sid]["indicator"] = f"BB: {lower:.5f} / {mid:.5f} / {upper:.5f}"
-                if price < lower:
-                    signal = "BUY"
-                elif price > upper:
-                    signal = "SELL"
-
             elif strategy == "EMA Trend":
                 ema20 = _ema(closes, 20)
                 ema100 = _ema(closes, 100)
@@ -1122,25 +1105,6 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 if fast[-2] < slow[-2] and fast[-1] > slow[-1] and rsi < 60:
                     signal = "BUY"
                 elif fast[-2] > slow[-2] and fast[-1] < slow[-1] and rsi > 40:
-                    signal = "SELL"
-
-            elif strategy == "MACD Cross":
-                macd, sig = _macd(closes)
-                hist = [m - s for m, s in zip(macd, sig)]
-                _strategies[sid]["indicator"] = f"MACD:{macd[-1]:.5f}  SIG:{sig[-1]:.5f}  HIST:{hist[-1]:.5f}"
-                # Histogram flip crossing zero → momentum entry
-                if hist[-2] <= 0 and hist[-1] > 0:
-                    signal = "BUY"
-                elif hist[-2] >= 0 and hist[-1] < 0:
-                    signal = "SELL"
-
-            elif strategy == "Stochastic":
-                kv, dv = _stochastic(highs, lows, closes)
-                _strategies[sid]["indicator"] = f"Stoch %K:{kv[-1]:.1f}  %D:{dv[-1]:.1f}"
-                # %K crosses above %D in oversold zone → BUY
-                if kv[-2] < dv[-2] and kv[-1] > dv[-1] and kv[-1] < 35:
-                    signal = "BUY"
-                elif kv[-2] > dv[-2] and kv[-1] < dv[-1] and kv[-1] > 65:
                     signal = "SELL"
 
             elif strategy == "Supertrend":
