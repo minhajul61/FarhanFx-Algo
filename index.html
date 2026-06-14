@@ -492,6 +492,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           Reports &amp; Analytics
           <div style="display:flex;align-items:center;gap:8px">
             <select id="rpt-months" onchange="loadReports()" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-family:var(--font);font-size:10px;outline:none">
+              <option value="1">1 month</option>
               <option value="3">3 months</option>
               <option value="6">6 months</option>
               <option value="12" selected>12 months</option>
@@ -500,21 +501,118 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <button class="sbtn" onclick="loadReports()" style="font-size:10px;padding:4px 10px">↻ SYNC</button>
           </div>
         </div>
-        <div class="kpi-grid">
-          <div class="kpi"><div class="kpi-label">Best Month</div><div class="kpi-value green" id="rpt-best-val">—</div><div class="kpi-delta" id="rpt-best-lbl">—</div></div>
-          <div class="kpi"><div class="kpi-label">Worst Month</div><div class="kpi-value red" id="rpt-worst-val">—</div><div class="kpi-delta" id="rpt-worst-lbl">—</div></div>
-          <div class="kpi"><div class="kpi-label">Avg Monthly P&amp;L</div><div class="kpi-value cyan" id="rpt-avg-val">—</div><div class="kpi-delta" id="rpt-avg-lbl">—</div></div>
-          <div class="kpi"><div class="kpi-label">Profitable Months</div><div class="kpi-value green" id="rpt-prof-val">—</div><div class="kpi-delta" id="rpt-prof-lbl">—</div></div>
+
+        <!-- ① OVERVIEW KPIs -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px" id="rpt-kpi-row1">
+          <div class="kpi" style="border-top:2px solid var(--green)"><div class="kpi-label">Net P&L</div><div class="kpi-value" id="rpt-net-pnl">—</div><div class="kpi-delta" id="rpt-net-sub">—</div></div>
+          <div class="kpi" style="border-top:2px solid var(--cyan)"><div class="kpi-label">Win Rate</div><div class="kpi-value cyan" id="rpt-winrate">—</div><div class="kpi-delta" id="rpt-wl">—</div></div>
+          <div class="kpi" style="border-top:2px solid var(--accent)"><div class="kpi-label">Profit Factor</div><div class="kpi-value purple" id="rpt-pf">—</div><div class="kpi-delta" id="rpt-pf-sub">gross win / gross loss</div></div>
+          <div class="kpi" style="border-top:2px solid var(--amber)"><div class="kpi-label">Max Drawdown</div><div class="kpi-value amber" id="rpt-dd">—</div><div class="kpi-delta" id="rpt-dd-sub">—</div></div>
         </div>
-        <div class="two-col">
-          <div class="panel"><div class="panel-title">Symbol Performance</div><div style="position:relative;height:220px"><canvas id="pairChart"></canvas></div></div>
-          <div class="panel"><div class="panel-title">Monthly P&amp;L</div><div style="position:relative;height:220px"><canvas id="distChart"></canvas></div></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+          <div class="kpi" style="border-top:2px solid var(--green)"><div class="kpi-label">Avg Win</div><div class="kpi-value green" id="rpt-avg-win">—</div><div class="kpi-delta" id="rpt-avg-win-sub">per winning trade</div></div>
+          <div class="kpi" style="border-top:2px solid var(--red)"><div class="kpi-label">Avg Loss</div><div class="kpi-value red" id="rpt-avg-loss">—</div><div class="kpi-delta" id="rpt-avg-loss-sub">per losing trade</div></div>
+          <div class="kpi" style="border-top:2px solid var(--cyan)"><div class="kpi-label">Avg Trade</div><div class="kpi-value cyan" id="rpt-avg-trade">—</div><div class="kpi-delta" id="rpt-avg-trade-sub">expectancy per trade</div></div>
+          <div class="kpi" style="border-top:2px solid var(--text2)"><div class="kpi-label">Total Trades</div><div class="kpi-value" id="rpt-total">—</div><div class="kpi-delta" id="rpt-total-sub">—</div></div>
         </div>
+
+        <!-- ② HIGHLIGHTS ROW -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
+
+          <!-- Best/Worst Trade -->
+          <div class="panel" style="margin:0">
+            <div class="panel-title" style="font-size:11px">🏆 Best &amp; Worst Trade</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div style="background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.3);border-radius:8px;padding:10px">
+                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">BEST TRADE</div>
+                <div class="kpi-value green" id="rpt-best-trade" style="font-size:18px">—</div>
+                <div style="font-size:10px;color:var(--text3)" id="rpt-best-trade-info">—</div>
+              </div>
+              <div style="background:rgba(248,81,73,0.08);border:1px solid rgba(248,81,73,0.3);border-radius:8px;padding:10px">
+                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">WORST TRADE</div>
+                <div class="kpi-value red" id="rpt-worst-trade" style="font-size:18px">—</div>
+                <div style="font-size:10px;color:var(--text3)" id="rpt-worst-trade-info">—</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Best/Worst Day -->
+          <div class="panel" style="margin:0">
+            <div class="panel-title" style="font-size:11px">📅 Best &amp; Worst Day</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div style="background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.3);border-radius:8px;padding:10px">
+                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">BEST DAY</div>
+                <div class="kpi-value green" id="rpt-best-day" style="font-size:18px">—</div>
+                <div style="font-size:10px;color:var(--text3)" id="rpt-best-day-info">—</div>
+              </div>
+              <div style="background:rgba(248,81,73,0.08);border:1px solid rgba(248,81,73,0.3);border-radius:8px;padding:10px">
+                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">WORST DAY</div>
+                <div class="kpi-value red" id="rpt-worst-day" style="font-size:18px">—</div>
+                <div style="font-size:10px;color:var(--text3)" id="rpt-worst-day-info">—</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Best/Worst Pair -->
+          <div class="panel" style="margin:0">
+            <div class="panel-title" style="font-size:11px">💹 Best &amp; Worst Pair</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div style="background:rgba(63,185,80,0.08);border:1px solid rgba(63,185,80,0.3);border-radius:8px;padding:10px">
+                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">BEST PAIR</div>
+                <div class="kpi-value green" id="rpt-best-pair" style="font-size:14px">—</div>
+                <div style="font-size:10px;color:var(--text3)" id="rpt-best-pair-info">—</div>
+              </div>
+              <div style="background:rgba(248,81,73,0.08);border:1px solid rgba(248,81,73,0.3);border-radius:8px;padding:10px">
+                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">WORST PAIR</div>
+                <div class="kpi-value red" id="rpt-worst-pair" style="font-size:14px">—</div>
+                <div style="font-size:10px;color:var(--text3)" id="rpt-worst-pair-info">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ③ CHARTS ROW -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+          <div class="panel" style="margin:0"><div class="panel-title">Monthly P&L</div><div style="position:relative;height:200px"><canvas id="rpt-monthly-chart"></canvas></div></div>
+          <div class="panel" style="margin:0"><div class="panel-title">Day of Week Performance</div><div style="position:relative;height:200px"><canvas id="rpt-dow-chart"></canvas></div></div>
+        </div>
+
+        <!-- ④ SESSION ANALYSIS -->
         <div class="panel">
-          <div class="panel-title">Monthly Summary — MT5 Live Data</div>
+          <div class="panel-title">🌍 Session Analysis (UTC)</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
+            <div style="text-align:center;padding:6px;font-size:9px;color:var(--text3)">ASIAN<br><span style="font-size:8px">00:00–08:59 UTC</span></div>
+            <div style="text-align:center;padding:6px;font-size:9px;color:var(--text3)">LONDON<br><span style="font-size:8px">09:00–16:59 UTC</span></div>
+            <div style="text-align:center;padding:6px;font-size:9px;color:var(--text3)">NEW YORK<br><span style="font-size:8px">17:00–21:59 UTC</span></div>
+            <div style="text-align:center;padding:6px;font-size:9px;color:var(--text3)">OFF-HOURS<br><span style="font-size:8px">22:00–23:59 UTC</span></div>
+          </div>
+          <div id="rpt-sessions" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px"></div>
+        </div>
+
+        <!-- ⑤ DAY OF WEEK TABLE -->
+        <div class="panel">
+          <div class="panel-title">📊 Day of Week Breakdown</div>
           <table>
-            <thead><tr><th>MONTH</th><th>TRADES</th><th>WINS</th><th>LOSSES</th><th>WIN RATE</th><th>NET P&amp;L</th></tr></thead>
-            <tbody id="rpt-tbody"><tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px">Loading...</td></tr></tbody>
+            <thead><tr><th>DAY</th><th>TRADES</th><th>WINS</th><th>LOSSES</th><th>WIN RATE</th><th>NET P&L</th><th>AVG/TRADE</th><th>RATING</th></tr></thead>
+            <tbody id="rpt-dow-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- ⑥ SYMBOL PERFORMANCE TABLE -->
+        <div class="panel">
+          <div class="panel-title">💹 Symbol Performance</div>
+          <table>
+            <thead><tr><th>SYMBOL</th><th>TRADES</th><th>WINS</th><th>LOSSES</th><th>WIN RATE</th><th>PROFIT FACTOR</th><th>NET P&L</th><th>AVG/TRADE</th></tr></thead>
+            <tbody id="rpt-sym-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- ⑦ MONTHLY TABLE -->
+        <div class="panel">
+          <div class="panel-title">📅 Monthly Summary</div>
+          <table>
+            <thead><tr><th>MONTH</th><th>TRADES</th><th>WINS</th><th>LOSSES</th><th>WIN RATE</th><th>NET P&L</th><th>STATUS</th></tr></thead>
+            <tbody id="rpt-tbody"></tbody>
           </table>
         </div>
       </div>
@@ -2826,94 +2924,188 @@ async function closeAllPositions() {
 }
 
 // ── REPORTS ────────────────────────────────────────────────────────────────────
-let _pairChart = null, _distChart = null;
+let _rptMonthlyChart = null, _rptDowChart = null;
+
+const _rptChartOpts = (tickSize=10) => ({
+  responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { display: false }, tooltip: { callbacks: {
+    label: ctx => (ctx.raw >= 0 ? '+$' : '-$') + Math.abs(ctx.raw).toFixed(2)
+  }}},
+  scales: {
+    x: { ticks: { color: '#8b949e', font: { size: tickSize } }, grid: { color: '#21262d' } },
+    y: { ticks: { color: '#8b949e', font: { size: tickSize },
+                  callback: v => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(0) },
+         grid: { color: '#21262d' } }
+  }
+});
+
+function _rptFmt(v) { return (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2); }
+function _rptWrColor(wr) { return wr >= 60 ? 'var(--green)' : wr >= 50 ? 'var(--cyan)' : 'var(--red)'; }
+function _rptPnlColor(v) { return v >= 0 ? 'var(--green)' : 'var(--red)'; }
+function _rptBar(pct, color) {
+  return `<div style="background:var(--bg);border-radius:4px;height:5px;margin-top:5px">
+    <div style="background:${color};width:${Math.min(Math.abs(pct),100)}%;height:100%;border-radius:4px"></div></div>`;
+}
 
 async function loadReports() {
   const months = document.getElementById('rpt-months')?.value || 12;
   document.getElementById('rpt-tbody').innerHTML =
-    '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px">Syncing with MT5...</td></tr>';
+    '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px">⏳ Syncing with MT5...</td></tr>';
 
   const data = await apiFetch('/api/reports?months=' + months);
   if (!data || data.error) {
     document.getElementById('rpt-tbody').innerHTML =
-      '<tr><td colspan="6" style="text-align:center;color:var(--red);padding:20px">' + (data?.error || 'Failed to load') + '</td></tr>';
+      `<tr><td colspan="7" style="text-align:center;color:var(--red);padding:20px">${data?.error || 'Failed to load'}</td></tr>`;
     return;
   }
+  const { summary: s, monthly, by_symbol, by_dow, by_session } = data;
 
-  const { monthly, by_symbol, summary } = data;
+  // ── ① Overview KPIs ─────────────────────────────────────────────────────────
+  const setEl = (id, val, color) => { const e = document.getElementById(id); if (e) { e.textContent = val; if (color) e.style.color = color; } };
 
-  // KPI strip
-  const fmt = v => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
-  if (summary.best_month?.label) {
-    document.getElementById('rpt-best-val').textContent  = fmt(summary.best_month.pnl);
-    document.getElementById('rpt-best-lbl').textContent  = summary.best_month.label;
+  setEl('rpt-net-pnl',    _rptFmt(s.net_pnl), _rptPnlColor(s.net_pnl));
+  setEl('rpt-net-sub',    `${s.total_trades} trades over ${months} month(s)`);
+  setEl('rpt-winrate',    s.win_rate + '%', _rptWrColor(s.win_rate));
+  setEl('rpt-wl',         `${s.wins}W / ${s.losses}L`);
+  setEl('rpt-pf',         s.profit_factor, s.profit_factor >= 1.5 ? 'var(--green)' : s.profit_factor >= 1 ? 'var(--cyan)' : 'var(--red)');
+  setEl('rpt-pf-sub',     `+$${s.gross_win?.toFixed(2) || 0} / $${s.gross_loss?.toFixed(2) || 0}`);
+  setEl('rpt-dd',         '-$' + (s.max_drawdown || 0).toFixed(2), 'var(--amber)');
+  setEl('rpt-dd-sub',     `${s.profitable_days || 0} of ${s.total_days || 0} days profitable`);
+  setEl('rpt-avg-win',    '+$' + (s.avg_win || 0).toFixed(2), 'var(--green)');
+  setEl('rpt-avg-loss',   '-$' + Math.abs(s.avg_loss || 0).toFixed(2), 'var(--red)');
+  setEl('rpt-avg-trade',  _rptFmt(s.avg_trade || 0), _rptPnlColor(s.avg_trade || 0));
+  setEl('rpt-avg-trade-sub', `${s.profitable_months || 0}/${s.total_months || 0} profitable months`);
+  setEl('rpt-total',      s.total_trades || 0);
+  setEl('rpt-total-sub',  `Avg ${s.avg_monthly?.toFixed(2) >= 0 ? '+' : ''}$${(s.avg_monthly||0).toFixed(2)}/month`);
+
+  // ── ② Highlights ─────────────────────────────────────────────────────────────
+  if (s.best_trade?.pnl != null) {
+    setEl('rpt-best-trade', '+$' + s.best_trade.pnl.toFixed(2), 'var(--green)');
+    setEl('rpt-best-trade-info', `${s.best_trade.symbol} · ${s.best_trade.date}`);
   }
-  if (summary.worst_month?.label) {
-    document.getElementById('rpt-worst-val').textContent = fmt(summary.worst_month.pnl);
-    document.getElementById('rpt-worst-lbl').textContent = summary.worst_month.label;
+  if (s.worst_trade?.pnl != null) {
+    setEl('rpt-worst-trade', '-$' + Math.abs(s.worst_trade.pnl).toFixed(2), 'var(--red)');
+    setEl('rpt-worst-trade-info', `${s.worst_trade.symbol} · ${s.worst_trade.date}`);
   }
-  document.getElementById('rpt-avg-val').textContent  = fmt(summary.avg_monthly || 0);
-  document.getElementById('rpt-avg-lbl').textContent  = months + '-month average';
-  document.getElementById('rpt-prof-val').textContent = (summary.profitable_months || 0) + '/' + (summary.total_months || 0);
-  document.getElementById('rpt-prof-lbl').textContent = summary.total_months > 0
-    ? Math.round(summary.profitable_months / summary.total_months * 100) + '% success rate' : '—';
+  if (s.best_day?.pnl != null) {
+    setEl('rpt-best-day', '+$' + s.best_day.pnl.toFixed(2), 'var(--green)');
+    setEl('rpt-best-day-info', `${s.best_day.date} · ${s.best_day.trades} trades`);
+  }
+  if (s.worst_day?.pnl != null) {
+    setEl('rpt-worst-day', '-$' + Math.abs(s.worst_day.pnl).toFixed(2), 'var(--red)');
+    setEl('rpt-worst-day-info', `${s.worst_day.date} · ${s.worst_day.trades} trades`);
+  }
+  if (s.best_pair?.pnl != null) {
+    setEl('rpt-best-pair', s.best_pair.symbol, 'var(--green)');
+    setEl('rpt-best-pair-info', `+$${s.best_pair.pnl.toFixed(2)} · ${s.best_pair.trades} trades`);
+  }
+  if (s.worst_pair?.pnl != null) {
+    setEl('rpt-worst-pair', s.worst_pair.symbol, 'var(--red)');
+    setEl('rpt-worst-pair-info', `-$${Math.abs(s.worst_pair.pnl).toFixed(2)} · ${s.worst_pair.trades} trades`);
+  }
 
-  // Monthly table
+  // ── ③ Monthly Chart ───────────────────────────────────────────────────────────
+  if (_rptMonthlyChart) _rptMonthlyChart.destroy();
+  const mCtx = document.getElementById('rpt-monthly-chart')?.getContext('2d');
+  const monthlyAsc = [...monthly].reverse();
+  if (mCtx && monthlyAsc.length > 0) {
+    _rptMonthlyChart = new Chart(mCtx, {
+      type: 'bar',
+      data: { labels: monthlyAsc.map(m => m.label),
+              datasets: [{ data: monthlyAsc.map(m => m.pnl),
+                backgroundColor: monthlyAsc.map(m => m.pnl >= 0 ? 'rgba(63,185,80,0.75)' : 'rgba(248,81,73,0.75)'),
+                borderRadius: 4 }] },
+      options: _rptChartOpts(9)
+    });
+  }
+
+  // ── ④ Day-of-Week Chart ────────────────────────────────────────────────────────
+  if (_rptDowChart) _rptDowChart.destroy();
+  const dCtx = document.getElementById('rpt-dow-chart')?.getContext('2d');
+  if (dCtx && by_dow?.length > 0) {
+    _rptDowChart = new Chart(dCtx, {
+      type: 'bar',
+      data: { labels: by_dow.map(d => d.day.slice(0,3)),
+              datasets: [{ data: by_dow.map(d => d.pnl),
+                backgroundColor: by_dow.map(d => d.pnl >= 0 ? 'rgba(88,166,255,0.75)' : 'rgba(248,81,73,0.75)'),
+                borderRadius: 4 }] },
+      options: _rptChartOpts(11)
+    });
+  }
+
+  // ── ⑤ Session Cards ───────────────────────────────────────────────────────────
+  const sessEl = document.getElementById('rpt-sessions');
+  if (sessEl && by_session?.length > 0) {
+    const maxSessTrades = Math.max(...by_session.map(s => s.trades), 1);
+    const sessColors = { Asian: '#f0a500', London: '#58a6ff', 'New York': '#3fb950', 'Off-Hours': '#8b949e' };
+    sessEl.innerHTML = by_session.map(sess => {
+      const c = sessColors[sess.session] || 'var(--accent)';
+      const barPct = sess.trades / maxSessTrades * 100;
+      return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:11px;font-weight:700;color:${c};margin-bottom:8px">${sess.session}</div>
+        <div style="font-size:22px;font-weight:800;color:${_rptPnlColor(sess.pnl)}">${_rptFmt(sess.pnl)}</div>
+        <div style="font-size:11px;color:${_rptWrColor(sess.win_rate)};margin:4px 0">${sess.win_rate}% WR</div>
+        <div style="font-size:10px;color:var(--text3)">${sess.trades} trades · ${sess.wins}W ${sess.losses}L</div>
+        ${_rptBar(barPct, c)}
+      </div>`;
+    }).join('');
+  }
+
+  // ── ⑥ Day-of-Week Table ───────────────────────────────────────────────────────
+  const maxDowPnl = Math.max(...(by_dow||[]).map(d => Math.abs(d.pnl)), 1);
+  document.getElementById('rpt-dow-tbody').innerHTML = (by_dow || []).map(d => {
+    const pnlC = _rptPnlColor(d.pnl); const wrC = _rptWrColor(d.win_rate);
+    const rating = d.win_rate >= 65 && d.pnl > 0 ? '🔥 Strong' : d.win_rate >= 50 && d.pnl >= 0 ? '✅ Good' :
+                   d.trades === 0 ? '—' : d.pnl > 0 ? '⚠️ Avg' : '❌ Weak';
+    const avg = d.trades > 0 ? _rptFmt(+(d.pnl / d.trades).toFixed(2)) : '—';
+    const barW = d.trades > 0 ? Math.round(Math.abs(d.pnl) / maxDowPnl * 80) : 0;
+    const pnlCell = `<span style="color:${pnlC};font-weight:700">${_rptFmt(d.pnl)}</span>
+      <div style="background:var(--bg);border-radius:3px;height:4px;margin-top:3px;width:100px">
+        <div style="background:${pnlC};width:${barW}px;height:100%;border-radius:3px"></div></div>`;
+    return `<tr>
+      <td style="font-weight:700">${d.day}</td>
+      <td>${d.trades}</td>
+      <td style="color:var(--green)">${d.wins}</td>
+      <td style="color:var(--red)">${d.losses}</td>
+      <td style="color:${wrC};font-weight:700">${d.trades > 0 ? d.win_rate + '%' : '—'}</td>
+      <td>${pnlCell}</td>
+      <td style="color:var(--text2);font-size:11px">${avg}</td>
+      <td style="font-size:11px">${rating}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:16px">No data</td></tr>';
+
+  // ── ⑦ Symbol Table ─────────────────────────────────────────────────────────────
+  document.getElementById('rpt-sym-tbody').innerHTML = (by_symbol || []).map(s => {
+    const pnlC = _rptPnlColor(s.pnl); const wrC = _rptWrColor(s.win_rate);
+    const pfC  = s.profit_factor >= 1.5 ? 'var(--green)' : s.profit_factor >= 1 ? 'var(--cyan)' : 'var(--red)';
+    return `<tr>
+      <td style="font-weight:700;color:var(--cyan)">${s.symbol}</td>
+      <td>${s.trades}</td>
+      <td style="color:var(--green)">${s.wins}</td>
+      <td style="color:var(--red)">${s.losses}</td>
+      <td style="color:${wrC};font-weight:700">${s.win_rate}%</td>
+      <td style="color:${pfC};font-weight:700">${s.profit_factor}</td>
+      <td style="font-weight:800;color:${pnlC}">${_rptFmt(s.pnl)}</td>
+      <td style="color:var(--text2);font-size:11px">${_rptFmt(s.avg_trade)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:16px">No data</td></tr>';
+
+  // ── ⑧ Monthly Table ────────────────────────────────────────────────────────────
   document.getElementById('rpt-tbody').innerHTML = monthly.map(m => {
-    const nc = m.pnl >= 0 ? 'var(--green)' : 'var(--red)';
-    const wr = m.win_rate >= 60 ? 'var(--green)' : m.win_rate >= 50 ? 'var(--cyan)' : 'var(--red)';
+    const pnlC = _rptPnlColor(m.pnl); const wrC = _rptWrColor(m.win_rate);
+    const badge = m.pnl >= 0
+      ? `<span class="badge badge-green">PROFIT</span>`
+      : `<span class="badge badge-red">LOSS</span>`;
     return `<tr>
       <td style="font-weight:700">${m.label}</td>
       <td>${m.trades}</td>
       <td style="color:var(--green)">${m.wins}</td>
       <td style="color:var(--red)">${m.losses}</td>
-      <td style="color:${wr}">${m.win_rate}%</td>
-      <td style="font-weight:800;color:${nc}">${m.pnl >= 0 ? '+$' : '-$'}${Math.abs(m.pnl).toFixed(2)}</td>
+      <td style="color:${wrC};font-weight:700">${m.win_rate}%</td>
+      <td style="font-weight:800;color:${pnlC};font-size:14px">${_rptFmt(m.pnl)}</td>
+      <td>${badge}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px">No closed trades in this period</td></tr>';
-
-  // Symbol chart
-  if (_pairChart) _pairChart.destroy();
-  const pairCtx = document.getElementById('pairChart')?.getContext('2d');
-  if (pairCtx && by_symbol.length > 0) {
-    _pairChart = new Chart(pairCtx, {
-      type: 'bar',
-      data: {
-        labels: by_symbol.map(s => s.symbol),
-        datasets: [{
-          label: 'Net P&L',
-          data: by_symbol.map(s => s.pnl),
-          backgroundColor: by_symbol.map(s => s.pnl >= 0 ? 'rgba(63,185,80,0.7)' : 'rgba(248,81,73,0.7)'),
-          borderRadius: 4,
-        }]
-      },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
-        scales: { x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
-                  y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } } } }
-    });
-  }
-
-  // Monthly P&L bar chart (oldest → newest)
-  if (_distChart) _distChart.destroy();
-  const distCtx = document.getElementById('distChart')?.getContext('2d');
-  const monthlyAsc = [...monthly].reverse();
-  if (distCtx && monthlyAsc.length > 0) {
-    _distChart = new Chart(distCtx, {
-      type: 'bar',
-      data: {
-        labels: monthlyAsc.map(m => m.label),
-        datasets: [{
-          label: 'Monthly P&L',
-          data: monthlyAsc.map(m => m.pnl),
-          backgroundColor: monthlyAsc.map(m => m.pnl >= 0 ? 'rgba(63,185,80,0.7)' : 'rgba(248,81,73,0.7)'),
-          borderRadius: 4,
-        }]
-      },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
-        scales: { x: { ticks: { color: '#8b949e', font: { size: 9 } }, grid: { color: '#21262d' } },
-                  y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } } } }
-    });
-  }
+  }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px">No closed trades in this period</td></tr>';
 }
 
 // ── DEAL HISTORY ───────────────────────────────────────────────────────────────

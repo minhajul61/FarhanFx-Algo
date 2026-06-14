@@ -382,73 +382,197 @@ def get_today_realized():
     return _mt5_call(fn)
 
 
-# ── REPORTS ──────────────────────────────────────────────────────────────────────
+# ── REPORTS — comprehensive analytics ──────────────────────────────────────────
+
+def _session_name(utc_hour: int) -> str:
+    if 0 <= utc_hour < 9:   return "Asian"
+    if 9 <= utc_hour < 17:  return "London"
+    if 17 <= utc_hour < 22: return "New York"
+    return "Off-Hours"
 
 @app.get("/api/reports")
 def get_reports(months: int = 12):
-    """Returns real monthly P&L breakdown from MT5 deal history."""
+    """Full analytics: monthly, daily, symbol, day-of-week, session breakdown."""
     def fn():
-        date_from = datetime.now() - timedelta(days=months * 31)
-        date_from_wide = date_from - timedelta(days=180)
-        deals_all = mt5.history_deals_get(date_from_wide, datetime.now())
+        now        = datetime.now()
+        date_from  = now - timedelta(days=months * 31)
+        date_wide  = date_from - timedelta(days=180)
+        deals_all  = mt5.history_deals_get(date_wide, now + timedelta(seconds=60))
         if deals_all is None:
-            return {"monthly": [], "by_symbol": [], "summary": {}}
+            return {"monthly": [], "by_symbol": [], "by_day": [], "by_session": [],
+                    "daily_pnl": [], "summary": {}}
 
         cutoff_ts = date_from.timestamp()
 
-        # Build IN map and collect OUT deals
-        in_map = {}
+        in_map   = {}
         out_list = []
         for d in deals_all:
             if d.type not in (0, 1):
                 continue
-            if d.entry == 0:
+            is_close = not (d.profit == 0.0 and d.commission == 0.0 and d.swap == 0.0)
+            if not is_close:
                 in_map[d.position_id] = d
-            elif d.entry == 1 and d.time >= cutoff_ts:
+            elif d.time >= cutoff_ts:
                 out_list.append(d)
 
-        # Group by month
-        monthly: dict = {}
-        by_symbol: dict = {}
+        # ── Accumulators ──────────────────────────────────────────────────────
+        monthly:    dict = {}
+        by_symbol:  dict = {}
+        by_dow:     dict = {i: {"day": d, "trades": 0, "wins": 0, "losses": 0, "pnl": 0.0}
+                            for i, d in enumerate(["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"])}
+        by_session: dict = {s: {"session": s, "trades": 0, "wins": 0, "losses": 0, "pnl": 0.0}
+                            for s in ["Asian","London","New York","Off-Hours"]}
+        daily:      dict = {}
 
-        for out in out_list:
-            net = round(out.profit + out.commission + out.swap, 2)
-            dt  = datetime.fromtimestamp(out.time)
-            key = dt.strftime("%Y-%m")          # e.g. "2026-06"
-            label = dt.strftime("%b %Y")        # e.g. "Jun 2026"
+        all_nets   = []
+        best_trade = {"pnl": None, "symbol": "", "date": ""}
+        worst_trade= {"pnl": None, "symbol": "", "date": ""}
+        running_balance = 0.0
+        peak    = 0.0
+        max_dd  = 0.0
 
-            if key not in monthly:
-                monthly[key] = {"label": label, "trades": 0, "wins": 0, "losses": 0, "pnl": 0.0}
-            monthly[key]["trades"] += 1
-            monthly[key]["pnl"]    = round(monthly[key]["pnl"] + net, 2)
-            if net > 0: monthly[key]["wins"]   += 1
-            else:       monthly[key]["losses"] += 1
+        for out in sorted(out_list, key=lambda x: x.time):
+            in_d = in_map.get(out.position_id)
+            net  = round(out.profit + out.commission + out.swap, 2)
+            dt   = datetime.fromtimestamp(out.time)
+            utc_dt = datetime.utcfromtimestamp(out.time)
 
+            all_nets.append(net)
+            running_balance += net
+            if running_balance > peak:
+                peak = running_balance
+            dd = round(peak - running_balance, 2)
+            if dd > max_dd:
+                max_dd = dd
+
+            # Best / worst trade
+            if best_trade["pnl"] is None or net > best_trade["pnl"]:
+                best_trade = {"pnl": net, "symbol": out.symbol, "date": dt.strftime("%Y-%m-%d")}
+            if worst_trade["pnl"] is None or net < worst_trade["pnl"]:
+                worst_trade = {"pnl": net, "symbol": out.symbol, "date": dt.strftime("%Y-%m-%d")}
+
+            # Monthly
+            mkey   = dt.strftime("%Y-%m");  mlabel = dt.strftime("%b %Y")
+            if mkey not in monthly:
+                monthly[mkey] = {"label": mlabel, "key": mkey, "trades": 0, "wins": 0, "losses": 0, "pnl": 0.0}
+            monthly[mkey]["trades"] += 1
+            monthly[mkey]["pnl"]     = round(monthly[mkey]["pnl"] + net, 2)
+            if net > 0: monthly[mkey]["wins"]   += 1
+            else:       monthly[mkey]["losses"] += 1
+
+            # Daily
+            dkey = dt.strftime("%Y-%m-%d")
+            if dkey not in daily:
+                daily[dkey] = {"date": dkey, "label": dt.strftime("%d %b"), "trades": 0, "wins": 0, "losses": 0, "pnl": 0.0}
+            daily[dkey]["trades"] += 1
+            daily[dkey]["pnl"]     = round(daily[dkey]["pnl"] + net, 2)
+            if net > 0: daily[dkey]["wins"]   += 1
+            else:       daily[dkey]["losses"] += 1
+
+            # Symbol
             sym = out.symbol
             if sym not in by_symbol:
-                by_symbol[sym] = {"symbol": sym, "trades": 0, "wins": 0, "pnl": 0.0}
+                by_symbol[sym] = {"symbol": sym, "trades": 0, "wins": 0, "losses": 0,
+                                  "pnl": 0.0, "gross_win": 0.0, "gross_loss": 0.0,
+                                  "avg_pips": 0.0, "pips_sum": 0.0}
             by_symbol[sym]["trades"] += 1
             by_symbol[sym]["pnl"]    = round(by_symbol[sym]["pnl"] + net, 2)
-            if net > 0: by_symbol[sym]["wins"] += 1
+            if net > 0:
+                by_symbol[sym]["wins"]      += 1
+                by_symbol[sym]["gross_win"] = round(by_symbol[sym]["gross_win"] + net, 2)
+            else:
+                by_symbol[sym]["losses"]     += 1
+                by_symbol[sym]["gross_loss"] = round(by_symbol[sym]["gross_loss"] + net, 2)
 
-        monthly_list = sorted(monthly.values(), key=lambda x: x["label"], reverse=True)
+            # Day-of-week (local time)
+            dow = dt.weekday()  # 0=Mon … 6=Sun
+            by_dow[dow]["trades"] += 1
+            by_dow[dow]["pnl"]    = round(by_dow[dow]["pnl"] + net, 2)
+            if net > 0: by_dow[dow]["wins"]   += 1
+            else:       by_dow[dow]["losses"] += 1
+
+            # Session (UTC hour)
+            sess = _session_name(utc_dt.hour)
+            by_session[sess]["trades"] += 1
+            by_session[sess]["pnl"]    = round(by_session[sess]["pnl"] + net, 2)
+            if net > 0: by_session[sess]["wins"]   += 1
+            else:       by_session[sess]["losses"] += 1
+
+        # ── Post-process ──────────────────────────────────────────────────────
+        def wr(w, t): return round(w / t * 100, 1) if t > 0 else 0
+        def pf(gw, gl): return round(abs(gw / gl), 2) if gl != 0 else 0
+
+        monthly_list = sorted(monthly.values(), key=lambda x: x["key"], reverse=True)
         for m in monthly_list:
-            t = m["trades"]
-            m["win_rate"] = round(m["wins"] / t * 100, 1) if t > 0 else 0
+            m["win_rate"] = wr(m["wins"], m["trades"])
 
-        sym_list = sorted(by_symbol.values(), key=lambda x: abs(x["pnl"]), reverse=True)
+        daily_list = sorted(daily.values(), key=lambda x: x["date"], reverse=True)
+        for d in daily_list:
+            d["win_rate"] = wr(d["wins"], d["trades"])
 
-        # Summary
-        all_pnl = [m["pnl"] for m in monthly_list]
+        sym_list = sorted(by_symbol.values(), key=lambda x: x["trades"], reverse=True)
+        for s in sym_list:
+            s["win_rate"]    = wr(s["wins"], s["trades"])
+            s["profit_factor"]= pf(s["gross_win"], s["gross_loss"])
+            s["avg_trade"]   = round(s["pnl"] / s["trades"], 2) if s["trades"] > 0 else 0
+
+        dow_list = [by_dow[i] for i in range(7)]
+        for d in dow_list:
+            d["win_rate"] = wr(d["wins"], d["trades"])
+
+        sess_list = [by_session[s] for s in ["Asian","London","New York","Off-Hours"]]
+        for s in sess_list:
+            s["win_rate"] = wr(s["wins"], s["trades"])
+
+        wins   = [n for n in all_nets if n > 0]
+        losses = [n for n in all_nets if n <= 0]
+        total  = len(all_nets)
+        gross_w = sum(wins)
+        gross_l = abs(sum(losses))
+
+        daily_pnl_vals = [d["pnl"] for d in sorted(daily.values(), key=lambda x: x["date"])]
+        best_day  = max(daily.values(), key=lambda x: x["pnl"])  if daily else {}
+        worst_day = min(daily.values(), key=lambda x: x["pnl"]) if daily else {}
+
+        monthly_pnl = [m["pnl"] for m in monthly_list]
         summary = {
-            "total_months": len(monthly_list),
-            "best_month":   max(monthly_list, key=lambda x: x["pnl"]) if monthly_list else {},
-            "worst_month":  min(monthly_list, key=lambda x: x["pnl"]) if monthly_list else {},
-            "avg_monthly":  round(sum(all_pnl) / len(all_pnl), 2) if all_pnl else 0,
-            "total_pnl":    round(sum(all_pnl), 2),
-            "profitable_months": sum(1 for p in all_pnl if p > 0),
+            "total_trades":      total,
+            "wins":              len(wins),
+            "losses":            len(losses),
+            "win_rate":          wr(len(wins), total),
+            "net_pnl":           round(sum(all_nets), 2),
+            "gross_win":         round(gross_w, 2),
+            "gross_loss":        round(gross_l, 2),
+            "profit_factor":     pf(gross_w, gross_l),
+            "avg_win":           round(gross_w / len(wins),   2) if wins   else 0,
+            "avg_loss":          round(sum(losses) / len(losses), 2) if losses else 0,
+            "avg_trade":         round(sum(all_nets) / total, 2) if total else 0,
+            "best_trade":        best_trade,
+            "worst_trade":       worst_trade,
+            "best_day":          best_day,
+            "worst_day":         worst_day,
+            "max_drawdown":      round(max_dd, 2),
+            "total_months":      len(monthly_list),
+            "profitable_months": sum(1 for p in monthly_pnl if p > 0),
+            "avg_monthly":       round(sum(monthly_pnl) / len(monthly_pnl), 2) if monthly_pnl else 0,
+            "best_month":        max(monthly_list, key=lambda x: x["pnl"]) if monthly_list else {},
+            "worst_month":       min(monthly_list, key=lambda x: x["pnl"]) if monthly_list else {},
+            "total_days":        len(daily),
+            "profitable_days":   sum(1 for d in daily.values() if d["pnl"] > 0),
+            "best_session":      max(sess_list, key=lambda x: x["pnl"]) if sess_list else {},
+            "best_pair":         max(sym_list, key=lambda x: x["pnl"]) if sym_list else {},
+            "worst_pair":        min(sym_list, key=lambda x: x["pnl"]) if sym_list else {},
+            "best_dow":          max(dow_list, key=lambda x: x["pnl"])  if dow_list else {},
+            "worst_dow":         min(dow_list, key=lambda x: x["pnl"])  if dow_list else {},
         }
-        return {"monthly": monthly_list, "by_symbol": sym_list[:10], "summary": summary}
+        return {
+            "summary":    summary,
+            "monthly":    monthly_list,
+            "daily":      daily_list[:60],
+            "by_symbol":  sym_list,
+            "by_dow":     dow_list,
+            "by_session": sess_list,
+        }
     return _mt5_call(fn)
 
 
