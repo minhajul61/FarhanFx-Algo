@@ -717,6 +717,49 @@ def _williams_r(highs, lows, closes, period=14):
 def _sma(prices, period):
     return sum(prices[-period:]) / period if len(prices) >= period else prices[-1]
 
+def _supertrend(highs, lows, closes, period=10, mult=3.0):
+    """Returns list of direction values: 1=bullish, -1=bearish"""
+    tr = []
+    for i in range(len(closes)):
+        if i == 0:
+            tr.append(highs[i] - lows[i])
+        else:
+            tr.append(max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1])))
+    # Smooth ATR (Wilder)
+    atr = [sum(tr[:period]) / period]
+    for i in range(period, len(tr)):
+        atr.append((atr[-1] * (period-1) + tr[i]) / period)
+    # Pad ATR list to match length
+    atr_full = [atr[0]] * (period - 1) + atr
+
+    ub = [(highs[i]+lows[i])/2 + mult*atr_full[i] for i in range(len(closes))]
+    lb = [(highs[i]+lows[i])/2 - mult*atr_full[i] for i in range(len(closes))]
+    fub, flb = ub[:], lb[:]
+    direction = [1] * len(closes)
+    for i in range(1, len(closes)):
+        flb[i] = max(lb[i], flb[i-1]) if closes[i-1] > flb[i-1] else lb[i]
+        fub[i] = min(ub[i], fub[i-1]) if closes[i-1] < fub[i-1] else ub[i]
+        if closes[i] > fub[i-1]:
+            direction[i] = 1
+        elif closes[i] < flb[i-1]:
+            direction[i] = -1
+        else:
+            direction[i] = direction[i-1]
+    return direction
+
+def _ichimoku(highs, lows, tenkan=9, kijun=26, senkou=52):
+    """Returns (tenkan_sen, kijun_sen, span_a, span_b) lists"""
+    def mid(n, i):
+        h = max(highs[max(0,i-n+1):i+1])
+        l = min(lows[max(0,i-n+1):i+1])
+        return (h+l)/2
+    n = len(highs)
+    tk = [mid(tenkan, i) for i in range(n)]
+    kj = [mid(kijun, i) for i in range(n)]
+    sa = [(tk[i]+kj[i])/2 for i in range(n)]
+    sb = [mid(senkou, i) for i in range(n)]
+    return tk, kj, sa, sb
+
 
 # ── SMC (Smart Money Concepts) Helpers ──────────────────────────────────────────
 
@@ -1016,6 +1059,8 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 continue
 
             closes = [r["close"] for r in rates]
+            highs  = [r["high"]  for r in rates]
+            lows   = [r["low"]   for r in rates]
 
             def get_tick_pip():
                 t = mt5.symbol_info_tick(symbol)
@@ -1077,6 +1122,82 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 if fast[-2] < slow[-2] and fast[-1] > slow[-1] and rsi < 60:
                     signal = "BUY"
                 elif fast[-2] > slow[-2] and fast[-1] < slow[-1] and rsi > 40:
+                    signal = "SELL"
+
+            elif strategy == "MACD Cross":
+                macd, sig = _macd(closes)
+                hist = [m - s for m, s in zip(macd, sig)]
+                _strategies[sid]["indicator"] = f"MACD:{macd[-1]:.5f}  SIG:{sig[-1]:.5f}  HIST:{hist[-1]:.5f}"
+                # Histogram flip crossing zero → momentum entry
+                if hist[-2] <= 0 and hist[-1] > 0:
+                    signal = "BUY"
+                elif hist[-2] >= 0 and hist[-1] < 0:
+                    signal = "SELL"
+
+            elif strategy == "Stochastic":
+                kv, dv = _stochastic(highs, lows, closes)
+                _strategies[sid]["indicator"] = f"Stoch %K:{kv[-1]:.1f}  %D:{dv[-1]:.1f}"
+                # %K crosses above %D in oversold zone → BUY
+                if kv[-2] < dv[-2] and kv[-1] > dv[-1] and kv[-1] < 35:
+                    signal = "BUY"
+                elif kv[-2] > dv[-2] and kv[-1] < dv[-1] and kv[-1] > 65:
+                    signal = "SELL"
+
+            elif strategy == "Supertrend":
+                direction = _supertrend(highs, lows, closes, period=10, mult=3.0)
+                trend_txt = "▲ BULLISH" if direction[-1] == 1 else "▼ BEARISH"
+                _strategies[sid]["indicator"] = f"Supertrend: {trend_txt}"
+                # Direction flip = entry signal
+                if direction[-2] == -1 and direction[-1] == 1:
+                    signal = "BUY"
+                elif direction[-2] == 1 and direction[-1] == -1:
+                    signal = "SELL"
+
+            elif strategy == "Ichimoku":
+                tk, kj, sa, sb = _ichimoku(highs, lows)
+                price = closes[-1]
+                cloud_top = max(sa[-1], sb[-1])
+                cloud_bot = min(sa[-1], sb[-1])
+                _strategies[sid]["indicator"] = (
+                    f"T:{tk[-1]:.5f}  K:{kj[-1]:.5f}  "
+                    f"Cloud:{cloud_bot:.5f}–{cloud_top:.5f}  Price:{price:.5f}"
+                )
+                # TK cross above cloud = strong BUY
+                if tk[-2] < kj[-2] and tk[-1] > kj[-1] and price > cloud_top:
+                    signal = "BUY"
+                elif tk[-2] > kj[-2] and tk[-1] < kj[-1] and price < cloud_bot:
+                    signal = "SELL"
+
+            elif strategy == "AI Confluence":
+                # Consensus of 4 independent signals — only trades on 4/4 agreement
+                ema50  = _ema(closes, 50)
+                ema200 = _ema(closes, 200)
+                rsi    = _rsi(closes, 14)
+                macd, msig = _macd(closes)
+                mhist = [m - s for m, s in zip(macd, msig)]
+                kv, dv = _stochastic(highs, lows, closes)
+                price  = closes[-1]
+
+                # Individual signals
+                trend_bull = price > ema50[-1] > ema200[-1]
+                trend_bear = price < ema50[-1] < ema200[-1]
+                rsi_bull   = 40 < rsi < 60     # healthy uptrend zone
+                rsi_bear   = 40 < rsi < 60     # healthy downtrend zone (symmetric)
+                macd_bull  = mhist[-1] > 0 and mhist[-1] > mhist[-2]
+                macd_bear  = mhist[-1] < 0 and mhist[-1] < mhist[-2]
+                stoch_bull = kv[-1] < 50 and kv[-1] > dv[-1]
+                stoch_bear = kv[-1] > 50 and kv[-1] < dv[-1]
+
+                buy_score  = sum([trend_bull, rsi_bull, macd_bull, stoch_bull])
+                sell_score = sum([trend_bear, rsi_bear, macd_bear, stoch_bear])
+
+                _strategies[sid]["indicator"] = (
+                    f"🤖 AI Score → BUY:{buy_score}/4  SELL:{sell_score}/4  "
+                    f"RSI:{rsi}  Stoch:{kv[-1]:.0f}  MACD-H:{mhist[-1]:.5f}"
+                )
+                if buy_score >= 4:
+                    signal = "BUY"
+                elif sell_score >= 4:
                     signal = "SELL"
 
             if signal:

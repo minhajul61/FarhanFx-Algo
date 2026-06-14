@@ -834,8 +834,24 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <div class="field" style="margin-bottom:0">
               <label>Strategy</label>
               <select id="algo-strategy" class="sinput" style="width:100%">
-                <option>MA Cross</option><option>RSI</option><option>Bollinger Bands</option>
-                <option>EMA Trend</option><option>Scalper</option>
+                <optgroup label="── Classic ──">
+                  <option value="MA Cross">MA Cross</option>
+                  <option value="EMA Trend">EMA Trend</option>
+                  <option value="Scalper">Scalper</option>
+                </optgroup>
+                <optgroup label="── Oscillator ──">
+                  <option value="RSI">RSI</option>
+                  <option value="Stochastic">Stochastic</option>
+                  <option value="Bollinger Bands">Bollinger Bands</option>
+                </optgroup>
+                <optgroup label="── Momentum ──">
+                  <option value="MACD Cross">MACD Cross</option>
+                  <option value="Supertrend">Supertrend</option>
+                </optgroup>
+                <optgroup label="── Advanced ──">
+                  <option value="Ichimoku">Ichimoku Cloud</option>
+                  <option value="AI Confluence">🤖 AI Confluence</option>
+                </optgroup>
               </select>
             </div>
             <div class="field" style="margin-bottom:0">
@@ -884,7 +900,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         </div>
 
         <!-- STRATEGY INFO CARDS -->
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:8px">
           <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--cyan)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='MA Cross'">
             <div style="font-size:10px;color:var(--cyan);letter-spacing:1px;margin-bottom:4px">MA CROSS</div>
             <div style="font-size:10px;color:var(--text3)">EMA 20/50 crossover</div>
@@ -895,7 +911,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           </div>
           <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--green)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Bollinger Bands'">
             <div style="font-size:10px;color:var(--green);letter-spacing:1px;margin-bottom:4px">BOLLINGER</div>
-            <div style="font-size:10px;color:var(--text3)">Price outside BB bands</div>
+            <div style="font-size:10px;color:var(--text3)">Price outside BB(20,2)</div>
           </div>
           <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='EMA Trend'">
             <div style="font-size:10px;color:var(--red);letter-spacing:1px;margin-bottom:4px">EMA TREND</div>
@@ -904,6 +920,28 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Scalper'">
             <div style="font-size:10px;color:var(--accent);letter-spacing:1px;margin-bottom:4px">SCALPER</div>
             <div style="font-size:10px;color:var(--text3)">EMA 5/13 + RSI7 fast</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px">
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='#a78bfa'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='MACD Cross'">
+            <div style="font-size:10px;color:#a78bfa;letter-spacing:1px;margin-bottom:4px">MACD CROSS</div>
+            <div style="font-size:10px;color:var(--text3)">Histogram flip signal</div>
+          </div>
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='#06b6d4'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Stochastic'">
+            <div style="font-size:10px;color:#06b6d4;letter-spacing:1px;margin-bottom:4px">STOCHASTIC</div>
+            <div style="font-size:10px;color:var(--text3)">%K/%D cross OB/OS zone</div>
+          </div>
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='#f97316'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Supertrend'">
+            <div style="font-size:10px;color:#f97316;letter-spacing:1px;margin-bottom:4px">SUPERTREND</div>
+            <div style="font-size:10px;color:var(--text3)">ATR(10) × 3.0 flip</div>
+          </div>
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='#e879f9'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Ichimoku'">
+            <div style="font-size:10px;color:#e879f9;letter-spacing:1px;margin-bottom:4px">ICHIMOKU</div>
+            <div style="font-size:10px;color:var(--text3)">TK cross + cloud filter</div>
+          </div>
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(245,158,11,0.08));transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--amber)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='AI Confluence'">
+            <div style="font-size:10px;background:linear-gradient(90deg,var(--accent),var(--amber));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">🤖 AI CONFLUENCE</div>
+            <div style="font-size:10px;color:var(--text3)">EMA+RSI+MACD+Stoch 4/4</div>
           </div>
         </div>
 
@@ -2890,7 +2928,18 @@ async function loadStrategies() {
     el.innerHTML = '<div style="text-align:center;color:var(--text3);padding:30px;font-size:12px">No strategies running. Start one above.</div>';
     return;
   }
-  const colorMap = { 'MA Cross':'var(--cyan)', 'RSI':'var(--amber)', 'Bollinger Bands':'var(--green)', 'EMA Trend':'var(--red)', 'Scalper':'var(--accent)' };
+  const colorMap = {
+    'MA Cross':       'var(--cyan)',
+    'RSI':            'var(--amber)',
+    'Bollinger Bands':'var(--green)',
+    'EMA Trend':      'var(--red)',
+    'Scalper':        'var(--accent)',
+    'MACD Cross':     '#a78bfa',
+    'Stochastic':     '#06b6d4',
+    'Supertrend':     '#f97316',
+    'Ichimoku':       '#e879f9',
+    'AI Confluence':  'var(--amber)',
+  };
   el.innerHTML = data.map(s => {
     const color = colorMap[s.strategy] || 'var(--cyan)';
     const isRunning = s.status === 'running';
