@@ -445,16 +445,23 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         <div class="panel">
           <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
             Trade History — MT5 Sync
-            <div style="display:flex;align-items:center;gap:8px">
-              <span id="deals-stats" style="font-size:10px;color:var(--text3)"></span>
-              <select id="history-days" onchange="loadDeals()" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-family:var(--font);font-size:10px;outline:none">
-                <option value="7">7 days</option>
-                <option value="30" selected>30 days</option>
-                <option value="90">90 days</option>
-                <option value="365">1 year</option>
-              </select>
-              <button class="sbtn" onclick="loadDeals()" style="font-size:10px;padding:4px 10px">↻ SYNC</button>
-            </div>
+            <span id="deals-stats" style="font-size:10px;color:var(--text3)"></span>
+          </div>
+          <!-- Filter bar -->
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">
+            <input id="deals-search" type="text" placeholder="Search symbol, type, ticket…" oninput="dealsApplyFilter()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text);font-family:var(--font);font-size:11px;outline:none;width:190px"/>
+            <input id="deals-date-from" type="date" onchange="dealsApplyFilter()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-family:var(--font);font-size:11px;outline:none"/>
+            <span style="font-size:10px;color:var(--text3)">→</span>
+            <input id="deals-date-to" type="date" onchange="dealsApplyFilter()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-family:var(--font);font-size:11px;outline:none"/>
+            <select id="history-days" onchange="loadDeals()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-family:var(--font);font-size:11px;outline:none">
+              <option value="7">7 days</option>
+              <option value="30" selected>30 days</option>
+              <option value="90">90 days</option>
+              <option value="365">1 year</option>
+            </select>
+            <button class="sbtn" onclick="dealsApplyFilter()" style="font-size:10px;padding:5px 10px">⚙ FILTER</button>
+            <button class="sbtn" onclick="dealsClearFilter()" style="font-size:10px;padding:5px 10px;color:var(--text2)">✕ CLEAR</button>
+            <button class="sbtn" onclick="loadDeals()" style="font-size:10px;padding:5px 10px;margin-left:auto">↻ SYNC</button>
           </div>
           <table>
             <thead>
@@ -467,6 +474,15 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             </thead>
             <tbody id="deals-tbody"><tr><td colspan="13" style="text-align:center;color:var(--text3);padding:20px">Loading...</td></tr></tbody>
           </table>
+          <!-- Pagination -->
+          <div id="deals-pagination" style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;gap:8px;display:none">
+            <span id="deals-page-info" style="font-size:11px;color:var(--text3)"></span>
+            <div style="display:flex;gap:6px">
+              <button class="sbtn" id="deals-prev" onclick="dealsChangePage(-1)" style="font-size:10px;padding:4px 12px">◀ Prev</button>
+              <div id="deals-page-nums" style="display:flex;gap:4px"></div>
+              <button class="sbtn" id="deals-next" onclick="dealsChangePage(1)" style="font-size:10px;padding:4px 12px">Next ▶</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2767,6 +2783,7 @@ async function closePosition(ticket) {
   if (r.error) { toastErr('Close failed: ' + r.error); return; }
   toast('Position #' + ticket + ' closed ✓');
   loadPositions();
+  loadDeals();
   loadAccount();
 }
 
@@ -2784,6 +2801,7 @@ async function closeAllPositions() {
     toast(`Closed ${r.closed}. Errors: ${errs.map(e=>e.error).join(', ')}`, true);
   }
   loadPositions();
+  loadDeals();
   loadAccount();
 }
 
@@ -2879,62 +2897,156 @@ async function loadReports() {
 }
 
 // ── DEAL HISTORY ───────────────────────────────────────────────────────────────
+// ── DEAL HISTORY — data store + pagination ─────────────────────────────────────
+let _allDeals   = [];     // raw server data (full period)
+let _filtDeals  = [];     // after search/date filter
+let _dealsPage  = 1;
+const DEALS_PER_PAGE = 25;
+
 async function loadDeals() {
   const days  = document.getElementById('history-days')?.value || 30;
   const tbody = document.getElementById('deals-tbody');
   tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text3);padding:16px">Syncing with MT5...</td></tr>';
 
   const data = await apiFetch('/api/deals?days=' + days);
-  if (!Array.isArray(data) || data.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text3);padding:20px">No closed trades in this period</td></tr>';
+  if (!Array.isArray(data)) {
+    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text3);padding:20px">No data</td></tr>';
     return;
   }
 
-  // Compute summary stats
+  _allDeals  = data;
+  _dealsPage = 1;
+  _updateDealsKPIs(data);   // always use full dataset for KPIs
+  dealsApplyFilter();
+}
+
+function _updateDealsKPIs(data) {
   const wins    = data.filter(d => d.win);
   const losses  = data.filter(d => !d.win);
   const netPnl  = data.reduce((s, d) => s + d.net_profit, 0);
   const winRate = data.length ? Math.round(wins.length / data.length * 100) : 0;
 
-  // Today using LOCAL date (server also uses local time)
-  const now = new Date();
+  // Today filter using local date
+  const now   = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-  const todayTrades = data.filter(d => d.exit_time.startsWith(today));
+  const todayTrades = data.filter(d => (d.exit_time||'').startsWith(today));
   const todayPnl    = todayTrades.reduce((s, d) => s + d.net_profit, 0);
 
-  // Update summary strip
+  // Win Rate KPI
   const wrEl = document.getElementById('trd-win-rate');
   if (wrEl) { wrEl.textContent = winRate + '%'; wrEl.style.color = winRate >= 50 ? 'var(--green)' : 'var(--red)'; }
   const wlEl = document.getElementById('trd-wl-count');
   if (wlEl) wlEl.textContent = `${wins.length}W / ${losses.length}L`;
 
+  // Net P&L KPI
   const netEl = document.getElementById('trd-net-pnl');
   if (netEl) { netEl.textContent = (netPnl >= 0 ? '+$' : '-$') + Math.abs(netPnl).toFixed(2); netEl.style.color = netPnl >= 0 ? 'var(--green)' : 'var(--red)'; }
-  document.getElementById('trd-net-sub').textContent = `${data.length} closed trades`;
+  const netSubEl = document.getElementById('trd-net-sub');
+  if (netSubEl) netSubEl.textContent = `${data.length} closed trades`;
 
+  // Dashboard main KPI cards (top of page)
+  const kwEl = document.getElementById('kpi-winrate');
+  if (kwEl) { kwEl.textContent = winRate + '%'; kwEl.style.color = winRate >= 50 ? 'var(--green)' : 'var(--red)'; }
+  const kwSub = document.getElementById('kpi-wl');
+  if (kwSub) kwSub.textContent = `${wins.length}W / ${losses.length}L`;
+  const knEl = document.getElementById('kpi-netpnl');
+  if (knEl) { knEl.textContent = (netPnl >= 0 ? '+$' : '-$') + Math.abs(netPnl).toFixed(2); knEl.style.color = netPnl >= 0 ? 'var(--green)' : 'var(--red)'; }
+  const knSub = document.getElementById('kpi-netpnl-sub');
+  if (knSub) knSub.textContent = `${data.length} closed trades`;
+
+  // TODAY REALIZED
   const todEl  = document.getElementById('trd-today-pnl');
   const todSub = document.getElementById('trd-today-sub');
-  if (todayTrades.length === 0) {
-    todEl.textContent  = '—';
-    todEl.style.color  = 'var(--text3)';
-    todSub.textContent = 'no closed trades today';
-    todSub.style.color = 'var(--text3)';
-  } else {
-    todEl.textContent  = (todayPnl >= 0 ? '+$' : '-$') + Math.abs(todayPnl).toFixed(2);
-    todEl.style.color  = todayPnl >= 0 ? 'var(--green)' : 'var(--red)';
-    todSub.textContent = `${todayTrades.length} trade${todayTrades.length>1?'s':''} closed`;
-    todSub.style.color = 'var(--text3)';
+  if (todEl) {
+    if (todayTrades.length === 0) {
+      todEl.textContent = '—'; todEl.style.color = 'var(--text3)';
+      if (todSub) { todSub.textContent = 'no closed trades today'; todSub.style.color = 'var(--text3)'; }
+    } else {
+      todEl.textContent = (todayPnl >= 0 ? '+$' : '-$') + Math.abs(todayPnl).toFixed(2);
+      todEl.style.color = todayPnl >= 0 ? 'var(--green)' : 'var(--red)';
+      if (todSub) { todSub.textContent = `${todayTrades.length} trade${todayTrades.length>1?'s':''} closed`; todSub.style.color = 'var(--text3)'; }
+    }
+  }
+  // Also update dashboard today realized KPI card
+  const dTodEl  = document.getElementById('kpi-today');
+  const dTodSub = document.getElementById('kpi-today-sub');
+  if (dTodEl) {
+    if (todayTrades.length === 0) {
+      dTodEl.textContent = '—'; dTodEl.style.color = 'var(--text3)';
+    } else {
+      dTodEl.textContent = (todayPnl >= 0 ? '+$' : '-$') + Math.abs(todayPnl).toFixed(2);
+      dTodEl.style.color = todayPnl >= 0 ? 'var(--green)' : 'var(--red)';
+    }
+    if (dTodSub) dTodSub.textContent = `${todayTrades.length} trades closed`;
+  }
+}
+
+function dealsApplyFilter() {
+  const q    = (document.getElementById('deals-search')?.value || '').toLowerCase().trim();
+  const from = document.getElementById('deals-date-from')?.value || '';
+  const to   = document.getElementById('deals-date-to')?.value   || '';
+
+  _filtDeals = _allDeals.filter(d => {
+    if (q) {
+      const hay = `${d.position_id} ${d.symbol} ${d.type}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    if (from && (d.exit_time||'') < from) return false;
+    if (to   && (d.exit_time||'').slice(0,10) > to) return false;
+    return true;
+  });
+
+  _dealsPage = 1;
+  dealsRenderPage();
+}
+
+function dealsClearFilter() {
+  const s = document.getElementById('deals-search'); if (s) s.value = '';
+  const f = document.getElementById('deals-date-from'); if (f) f.value = '';
+  const t = document.getElementById('deals-date-to');   if (t) t.value = '';
+  _filtDeals = [..._allDeals];
+  _dealsPage = 1;
+  dealsRenderPage();
+}
+
+function dealsChangePage(delta) {
+  const maxPage = Math.ceil(_filtDeals.length / DEALS_PER_PAGE);
+  _dealsPage = Math.max(1, Math.min(_dealsPage + delta, maxPage));
+  dealsRenderPage();
+}
+
+function dealsGoPage(n) {
+  _dealsPage = n;
+  dealsRenderPage();
+}
+
+function dealsRenderPage() {
+  const tbody = document.getElementById('deals-tbody');
+  const pagEl = document.getElementById('deals-pagination');
+  const statsEl = document.getElementById('deals-stats');
+
+  const total   = _filtDeals.length;
+  const maxPage = Math.max(1, Math.ceil(total / DEALS_PER_PAGE));
+  _dealsPage    = Math.min(_dealsPage, maxPage);
+
+  const start = (_dealsPage - 1) * DEALS_PER_PAGE;
+  const slice = _filtDeals.slice(start, start + DEALS_PER_PAGE);
+
+  if (total === 0) {
+    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text3);padding:20px">No trades match filter</td></tr>';
+    if (pagEl) pagEl.style.display = 'none';
+    if (statsEl) statsEl.textContent = '0 trades';
+    return;
   }
 
-  const statsEl = document.getElementById('deals-stats');
-  if (statsEl) statsEl.textContent = `${data.length} trades · ${wins.length}W / ${losses.length}L · ${winRate}% WR`;
+  const wins    = _filtDeals.filter(d => d.win).length;
+  const losses  = _filtDeals.filter(d => !d.win).length;
+  const wr      = Math.round(wins / total * 100);
+  if (statsEl) statsEl.textContent = `${total} trades · ${wins}W / ${losses}L · ${wr}% WR`;
 
-  tbody.innerHTML = data.map((d, i) => {
+  tbody.innerHTML = slice.map(d => {
     const nc = d.net_profit >= 0 ? 'var(--green)' : 'var(--red)';
     const pc = d.pips       >= 0 ? 'var(--green)' : 'var(--red)';
-    const resultBadge = d.win
-      ? `<span class="badge badge-green">WIN</span>`
-      : `<span class="badge badge-red">LOSS</span>`;
     return `<tr>
       <td style="font-family:monospace;color:var(--text3);font-size:11px">#${d.position_id}</td>
       <td style="font-weight:700">${d.symbol}</td>
@@ -2951,9 +3063,37 @@ async function loadDeals() {
       <td style="font-size:10px;color:var(--text3)">${d.exit_time}</td>
     </tr>`;
   }).join('');
+
+  // Pagination controls
+  if (pagEl) {
+    pagEl.style.display = total > DEALS_PER_PAGE ? 'flex' : 'none';
+    const pageInfo = document.getElementById('deals-page-info');
+    if (pageInfo) pageInfo.textContent = `Page ${_dealsPage} of ${maxPage} · showing ${start+1}–${Math.min(start+DEALS_PER_PAGE, total)} of ${total}`;
+
+    // Page number buttons (max 7 shown)
+    const numEl = document.getElementById('deals-page-nums');
+    if (numEl) {
+      const range = [], spread = 3;
+      for (let i = 1; i <= maxPage; i++) {
+        if (i === 1 || i === maxPage || (i >= _dealsPage - spread && i <= _dealsPage + spread)) range.push(i);
+      }
+      let html = '', prev = 0;
+      range.forEach(p => {
+        if (prev && p - prev > 1) html += `<span style="color:var(--text3);padding:0 2px">…</span>`;
+        html += `<button onclick="dealsGoPage(${p})" class="sbtn" style="font-size:10px;padding:3px 8px;min-width:28px;${p===_dealsPage?'background:var(--accent);color:#fff;border-color:var(--accent)':''}">${p}</button>`;
+        prev = p;
+      });
+      numEl.innerHTML = html;
+    }
+
+    const prevBtn = document.getElementById('deals-prev');
+    const nextBtn = document.getElementById('deals-next');
+    if (prevBtn) prevBtn.disabled = _dealsPage <= 1;
+    if (nextBtn) nextBtn.disabled = _dealsPage >= maxPage;
+  }
 }
 
-// Auto-refresh: positions every 5s, deals every 60s when Trades page is active
+// Auto-refresh: positions every 5s, deals every 30s when Trades page is active
 let _tradesTimer = null;
 let _dealsTimer  = null;
 
@@ -2962,7 +3102,7 @@ function startTradesRefresh() {
   loadPositions();
   loadDeals();
   _tradesTimer = setInterval(loadPositions, 5000);   // live P&L every 5s
-  _dealsTimer  = setInterval(loadDeals,    60000);   // deal history every 60s
+  _dealsTimer  = setInterval(loadDeals,    30000);   // deal history every 30s
 }
 
 function stopTradesRefresh() {
