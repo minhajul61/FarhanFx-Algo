@@ -2340,8 +2340,8 @@ function oUpdatePreviews() {
 async function placeOrder(side) {
   const symbol  = document.getElementById('o-symbol').value.trim();
   const volume  = parseFloat(document.getElementById('o-volume').value);
-  let sl        = parseFloat(document.getElementById('o-sl').value) || 0;
-  let tp        = parseFloat(document.getElementById('o-tp').value) || 0;
+  const slVal   = parseFloat(document.getElementById('o-sl').value) || 0;
+  const tpVal   = parseFloat(document.getElementById('o-tp').value) || 0;
   const comment = document.getElementById('o-comment').value;
 
   if (!symbol || !volume) { toast('Fill symbol and volume', false); return; }
@@ -2353,29 +2353,13 @@ async function placeOrder(side) {
   const origHTML  = activeBtn.innerHTML;
   activeBtn.innerHTML = '⏳ ...';
 
-  // Convert pips → absolute price levels
-  if (oMode === 'pips' && (sl > 0 || tp > 0)) {
-    let tick = oCurrentTick;
-    if (!tick) {
-      tick = await apiFetch('/api/price/' + symbol);
-      if (!tick || tick.error) {
-        toast('Cannot get price for ' + symbol, false);
-        buyBtn.disabled = false; sellBtn.disabled = false;
-        activeBtn.innerHTML = origHTML; return;
-      }
-      oCurrentTick = tick;
-    }
-    const pip   = getPipSize(symbol);
-    const isBuy = side === 'BUY';
-    const ref   = isBuy ? tick.ask : tick.bid;
-    if (sl > 0) sl = parseFloat((isBuy ? ref - sl*pip : ref + sl*pip).toFixed(5));
-    if (tp > 0) tp = parseFloat((isBuy ? ref + tp*pip : ref - tp*pip).toFixed(5));
-  }
+  // In PIPS mode: send sl_pips/tp_pips — server converts to price using live MT5 tick
+  // In PRICE mode: send sl/tp as absolute price levels
+  const body = oMode === 'pips'
+    ? { symbol, order_type: side, volume, sl: 0, tp: 0, sl_pips: slVal, tp_pips: tpVal, comment }
+    : { symbol, order_type: side, volume, sl: slVal, tp: tpVal, sl_pips: 0, tp_pips: 0, comment };
 
-  const r = await apiFetch('/api/order', {
-    method: 'POST',
-    body: JSON.stringify({ symbol, order_type: side, volume, sl, tp, comment })
-  });
+  const r = await apiFetch('/api/order', { method: 'POST', body: JSON.stringify(body) });
 
   buyBtn.disabled = false; sellBtn.disabled = false;
   activeBtn.innerHTML = origHTML;

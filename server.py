@@ -223,23 +223,40 @@ def get_symbols():
 
 @app.get("/api/price/{symbol}")
 def get_price(symbol: str):
+    import time as _t
     def fn():
         real = _resolve_symbol(symbol)
         mt5.symbol_select(real, True)
-        tick = mt5.symbol_info_tick(real)
-        if tick is None:
-            return {"error": f"Symbol '{symbol}' not found"}
-        return {
-            "symbol": real,
-            "bid":    tick.bid,
-            "ask":    tick.ask,
-            "spread": round((tick.ask - tick.bid) * 100000, 1),
-            "time":   datetime.fromtimestamp(tick.time).strftime("%H:%M:%S"),
-        }
+        for _ in range(5):            # retry up to 5× after subscribe
+            tick = mt5.symbol_info_tick(real)
+            if tick is not None and tick.bid > 0:
+                return {
+                    "symbol": real,
+                    "bid":    tick.bid,
+                    "ask":    tick.ask,
+                    "spread": round((tick.ask - tick.bid) * 100000, 1),
+                    "time":   datetime.fromtimestamp(tick.time).strftime("%H:%M:%S"),
+                }
+            _t.sleep(0.2)
+        return {"error": f"No tick data for '{symbol}'"}
     result = _mt5_call(fn)
     if "error" in result:
         return JSONResponse(result, status_code=404)
     return result
+
+
+def _pip_size(sym_info) -> float:
+    """Return pip size for a symbol based on its name."""
+    name = sym_info.name.upper()
+    if "XAU" in name or "GOLD" in name:           return 0.1
+    if "XAG" in name or "SILVER" in name:          return 0.01
+    if any(x in name for x in ["BTC","ETH","LTC","XRP","ADA","SOL","BNB","DOT","AVAX","DOGE","MATIC","LINK","UNI"]):
+        return 1.0
+    if any(x in name for x in ["NAS","US30","US500","SPX","UK1","GER","JP2","AUS","HK","FRA","DAX","CAC"]):
+        return 1.0
+    if any(x in name for x in ["OIL","WTI","BRENT","GAS"]):
+        return 0.01
+    return round(10 * sym_info.point, 10)  # standard 5-digit forex
 
 
 # ── PLACE ORDER ─────────────────────────────────────────────────────────────────
@@ -250,50 +267,64 @@ class OrderRequest(BaseModel):
     volume:     float
     sl:         Optional[float] = 0.0
     tp:         Optional[float] = 0.0
+    sl_pips:    Optional[float] = 0.0   # alternative: send pips, server converts
+    tp_pips:    Optional[float] = 0.0
     comment:    str = "FarhanFX Algo"
 
 @app.post("/api/order")
 def place_order(req: OrderRequest):
+    import time as _t
     def fn():
         real = _resolve_symbol(req.symbol)
         sym = mt5.symbol_info(real)
         if sym is None:
-            return {"error": f"Symbol '{req.symbol}' not found"}
-        if not sym.visible:
-            mt5.symbol_select(real, True)
-        req.symbol = real
+            return {"error": f"Symbol '{req.symbol}' not found on this broker"}
+        mt5.symbol_select(real, True)
 
-        tick = mt5.symbol_info_tick(req.symbol)
-        if tick is None:
-            return {"error": "Cannot get tick data"}
+        tick = None
+        for _ in range(5):
+            tick = mt5.symbol_info_tick(real)
+            if tick is not None and tick.bid > 0:
+                break
+            _t.sleep(0.2)
+        if tick is None or tick.bid == 0:
+            return {"error": f"No price data for '{real}' — check MT5 Market Watch"}
 
         is_buy = req.order_type.upper() == "BUY"
+        price  = tick.ask if is_buy else tick.bid
+
+        # Convert pips → price if client sent pips mode
+        sl, tp = req.sl or 0.0, req.tp or 0.0
+        if req.sl_pips and req.sl_pips > 0:
+            pip = _pip_size(sym)
+            sl = round(price - req.sl_pips * pip, sym.digits) if is_buy \
+                 else round(price + req.sl_pips * pip, sym.digits)
+        if req.tp_pips and req.tp_pips > 0:
+            pip = _pip_size(sym)
+            tp = round(price + req.tp_pips * pip, sym.digits) if is_buy \
+                 else round(price - req.tp_pips * pip, sym.digits)
+
         request = {
-            "action":       mt5.TRADE_ACTION_DEAL,
-            "symbol":       req.symbol,
-            "volume":       req.volume,
-            "type":         mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL,
-            "price":        tick.ask if is_buy else tick.bid,
-            "sl":           req.sl,
-            "tp":           req.tp,
-            "deviation":    20,
-            "magic":        234000,
-            "comment":      req.comment,
-            "type_time":    mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
+            "action":    mt5.TRADE_ACTION_DEAL,
+            "symbol":    real,
+            "volume":    req.volume,
+            "type":      mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL,
+            "price":     price,
+            "sl":        sl,
+            "tp":        tp,
+            "deviation": 30,
+            "magic":     234000,
+            "comment":   req.comment,
+            "type_time": mt5.ORDER_TIME_GTC,
         }
-        # Try all filling modes — CXM Direct requirements vary by instrument
-        result = None
         for filling in [mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_RETURN]:
             request["type_filling"] = filling
             result = mt5.order_send(request)
             if result.retcode == mt5.TRADE_RETCODE_DONE:
-                break
-            if result.retcode != 10038:  # 10038 = invalid filling — try next
-                break
-        if result.retcode != mt5.TRADE_RETCODE_DONE:
-            return {"error": f"{result.comment} (retcode {result.retcode})"}
-        return {"success": True, "ticket": result.order, "price": result.price}
+                return {"success": True, "ticket": result.order, "price": result.price}
+            if result.retcode != 10038:   # not a filling error — stop retrying
+                return {"error": f"{result.comment} (retcode {result.retcode})"}
+        return {"error": f"{result.comment} (retcode {result.retcode})"}
 
     result = _mt5_call(fn, timeout=15)
     if "error" in result:
