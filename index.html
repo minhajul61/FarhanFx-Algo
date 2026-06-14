@@ -471,29 +471,33 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
       <!-- REPORTS PAGE -->
       <div class="page" id="page-reports">
-        <div class="page-title">Reports &amp; Analytics</div>
+        <div class="page-title" style="display:flex;justify-content:space-between;align-items:center">
+          Reports &amp; Analytics
+          <div style="display:flex;align-items:center;gap:8px">
+            <select id="rpt-months" onchange="loadReports()" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-family:var(--font);font-size:10px;outline:none">
+              <option value="3">3 months</option>
+              <option value="6">6 months</option>
+              <option value="12" selected>12 months</option>
+              <option value="24">24 months</option>
+            </select>
+            <button class="sbtn" onclick="loadReports()" style="font-size:10px;padding:4px 10px">↻ SYNC</button>
+          </div>
+        </div>
         <div class="kpi-grid">
-          <div class="kpi"><div class="kpi-label">Best Month</div><div class="kpi-value green">+$732</div><div class="kpi-delta">June 2025</div></div>
-          <div class="kpi"><div class="kpi-label">Worst Month</div><div class="kpi-value red">-$180</div><div class="kpi-delta">July 2024</div></div>
-          <div class="kpi"><div class="kpi-label">Avg Monthly</div><div class="kpi-value cyan">+$268</div><div class="kpi-delta">Over 18 months</div></div>
-          <div class="kpi"><div class="kpi-label">Profitable Months</div><div class="kpi-value green">15/18</div><div class="kpi-delta">83.3% success</div></div>
+          <div class="kpi"><div class="kpi-label">Best Month</div><div class="kpi-value green" id="rpt-best-val">—</div><div class="kpi-delta" id="rpt-best-lbl">—</div></div>
+          <div class="kpi"><div class="kpi-label">Worst Month</div><div class="kpi-value red" id="rpt-worst-val">—</div><div class="kpi-delta" id="rpt-worst-lbl">—</div></div>
+          <div class="kpi"><div class="kpi-label">Avg Monthly P&amp;L</div><div class="kpi-value cyan" id="rpt-avg-val">—</div><div class="kpi-delta" id="rpt-avg-lbl">—</div></div>
+          <div class="kpi"><div class="kpi-label">Profitable Months</div><div class="kpi-value green" id="rpt-prof-val">—</div><div class="kpi-delta" id="rpt-prof-lbl">—</div></div>
         </div>
         <div class="two-col">
-          <div class="panel"><div class="panel-title">Pair Performance</div><div style="position:relative;height:220px"><canvas id="pairChart"></canvas></div></div>
-          <div class="panel"><div class="panel-title">Trade Distribution</div><div style="position:relative;height:220px"><canvas id="distChart"></canvas></div></div>
+          <div class="panel"><div class="panel-title">Symbol Performance</div><div style="position:relative;height:220px"><canvas id="pairChart"></canvas></div></div>
+          <div class="panel"><div class="panel-title">Monthly P&amp;L</div><div style="position:relative;height:220px"><canvas id="distChart"></canvas></div></div>
         </div>
         <div class="panel">
-          <div class="panel-title">Monthly Summary</div>
+          <div class="panel-title">Monthly Summary — MT5 Live Data</div>
           <table>
-            <thead><tr><th>MONTH</th><th>TRADES</th><th>WINS</th><th>LOSSES</th><th>WIN RATE</th><th>P&amp;L</th></tr></thead>
-            <tbody>
-              <tr><td>Jun 2025</td><td>21</td><td>15</td><td>6</td><td class="cyan">71.4%</td><td class="green">+$732</td></tr>
-              <tr><td>May 2025</td><td>18</td><td>13</td><td>5</td><td class="cyan">72.2%</td><td class="green">+$350</td></tr>
-              <tr><td>Apr 2025</td><td>20</td><td>14</td><td>6</td><td class="cyan">70.0%</td><td class="green">+$330</td></tr>
-              <tr><td>Mar 2025</td><td>19</td><td>12</td><td>7</td><td class="cyan">63.1%</td><td class="green">+$440</td></tr>
-              <tr><td>Feb 2025</td><td>16</td><td>11</td><td>5</td><td class="cyan">68.7%</td><td class="green">+$490</td></tr>
-              <tr><td>Jan 2025</td><td>17</td><td>10</td><td>7</td><td class="cyan">58.8%</td><td class="red">-$140</td></tr>
-            </tbody>
+            <thead><tr><th>MONTH</th><th>TRADES</th><th>WINS</th><th>LOSSES</th><th>WIN RATE</th><th>NET P&amp;L</th></tr></thead>
+            <tbody id="rpt-tbody"><tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px">Loading...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1456,26 +1460,58 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       <!-- SETTINGS PAGE -->
       <div class="page" id="page-settings">
         <div class="page-title">Settings</div>
-        <div class="panel">
-          <div class="setting-group">
-            <h3>Account</h3>
-            <div class="setting-row"><div><div class="setting-label">Username</div><div class="setting-sub">Your login name</div></div><input class="sinput" id="s-username" value="farhan"/></div>
-            <div class="setting-row"><div><div class="setting-label">Email</div><div class="setting-sub">Notifications sent here</div></div><input class="sinput" value="farhan@farhanfx.com"/></div>
-            <div class="setting-row"><div><div class="setting-label">Password</div><div class="setting-sub">Change your password</div></div><button class="sbtn">CHANGE →</button></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+          <!-- Trading Defaults -->
+          <div class="panel">
+            <div class="panel-title">Trading Defaults</div>
+            <div class="setting-group" style="margin-top:0">
+              <div class="setting-row"><div><div class="setting-label">Default Lot Size</div><div class="setting-sub">Used by Quick Order &amp; AI Auto-Trade</div></div><input class="sinput" id="s-lot" type="number" step="0.01" min="0.01" value="0.01" style="width:100px"/></div>
+              <div class="setting-row"><div><div class="setting-label">Default SL (pips)</div><div class="setting-sub">Pre-filled stop loss</div></div><input class="sinput" id="s-sl" type="number" min="1" value="30" style="width:100px"/></div>
+              <div class="setting-row"><div><div class="setting-label">Default TP (pips)</div><div class="setting-sub">Pre-filled take profit</div></div><input class="sinput" id="s-tp" type="number" min="1" value="60" style="width:100px"/></div>
+              <div class="setting-row"><div><div class="setting-label">Default Symbol</div><div class="setting-sub">Used in AI Analysis &amp; Quick Order</div></div><input class="sinput" id="s-symbol" type="text" value="XAUUSDc" style="width:100px"/></div>
+              <div class="setting-row"><div><div class="setting-label">Magic Number</div><div class="setting-sub">EA identifier for orders</div></div><input class="sinput" id="s-magic" type="number" value="234000" style="width:100px"/></div>
+            </div>
           </div>
-          <div class="setting-group">
-            <h3>Trading</h3>
-            <div class="setting-row"><div><div class="setting-label">Risk per Trade</div><div class="setting-sub">% of balance per trade</div></div><input class="sinput" value="1.0%" style="width:120px"/></div>
-            <div class="setting-row"><div><div class="setting-label">Max Daily Loss</div><div class="setting-sub">Auto-stop when hit</div></div><input class="sinput" value="3.0%" style="width:120px"/></div>
-            <div class="setting-row"><div><div class="setting-label">Auto Trading</div><div class="setting-sub">Enable algo execution</div></div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
-            <div class="setting-row"><div><div class="setting-label">Trade Notifications</div><div class="setting-sub">Alert on open/close</div></div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+
+          <!-- Risk Management -->
+          <div class="panel">
+            <div class="panel-title">Risk Management</div>
+            <div class="setting-group" style="margin-top:0">
+              <div class="setting-row"><div><div class="setting-label">Risk per Trade (%)</div><div class="setting-sub">Used by Risk Calculator</div></div><input class="sinput" id="s-risk-pct" type="number" step="0.1" min="0.1" max="10" value="1.0" style="width:100px"/></div>
+              <div class="setting-row"><div><div class="setting-label">Max Daily Loss (%)</div><div class="setting-sub">AI auto-trade stops when hit</div></div><input class="sinput" id="s-max-daily-loss" type="number" step="0.5" min="0.5" max="20" value="3.0" style="width:100px"/></div>
+              <div class="setting-row"><div><div class="setting-label">Max Daily Loss ($)</div><div class="setting-sub">Fixed dollar circuit breaker (0 = off)</div></div><input class="sinput" id="s-max-daily-loss-usd" type="number" step="10" min="0" value="0" style="width:100px"/></div>
+              <div class="setting-row"><div><div class="setting-label">Max Open Trades</div><div class="setting-sub">AI won't open more than this</div></div><input class="sinput" id="s-max-trades" type="number" min="1" max="50" value="5" style="width:100px"/></div>
+              <div class="setting-row"><div><div class="setting-label">Min AI Confidence (%)</div><div class="setting-sub">AI auto-trade minimum signal strength</div></div><input class="sinput" id="s-ai-conf" type="number" min="50" max="100" value="70" style="width:100px"/></div>
+            </div>
           </div>
-          <div class="setting-group">
-            <h3>Notifications</h3>
-            <div class="setting-row"><div><div class="setting-label">Email Alerts</div><div class="setting-sub">Daily P&amp;L summary</div></div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
-            <div class="setting-row"><div><div class="setting-label">Drawdown Alert</div><div class="setting-sub">Alert if DD exceeds 5%</div></div><div class="toggle" onclick="this.classList.toggle('on')"></div></div>
+
+          <!-- Backtest Settings -->
+          <div class="panel">
+            <div class="panel-title">Backtest Defaults</div>
+            <div class="setting-group" style="margin-top:0">
+              <div class="setting-row"><div><div class="setting-label">Commission per Lot ($)</div><div class="setting-sub">Round-trip commission, e.g. $7</div></div><input class="sinput" id="s-commission" type="number" step="0.5" min="0" value="7" style="width:100px"/></div>
+              <div class="setting-row"><div><div class="setting-label">Spread (pips)</div><div class="setting-sub">Average spread to model</div></div><input class="sinput" id="s-spread" type="number" step="0.1" min="0" value="1.5" style="width:100px"/></div>
+              <div class="setting-row"><div><div class="setting-label">Initial Capital ($)</div><div class="setting-sub">Backtest starting balance</div></div><input class="sinput" id="s-capital" type="number" step="100" min="100" value="10000" style="width:100px"/></div>
+              <div class="setting-row"><div><div class="setting-label">Default Risk % / Trade</div><div class="setting-sub">Backtest position sizing</div></div><input class="sinput" id="s-bt-risk" type="number" step="0.1" min="0.1" value="1.0" style="width:100px"/></div>
+            </div>
           </div>
-          <button class="sbtn" style="margin-top:8px" onclick="saveSettings()">SAVE CHANGES →</button>
+
+          <!-- Display Settings -->
+          <div class="panel">
+            <div class="panel-title">Display</div>
+            <div class="setting-group" style="margin-top:0">
+              <div class="setting-row"><div><div class="setting-label">Sound Alerts</div><div class="setting-sub">Beep on trade open/close</div></div><div id="s-toggle-sound" class="toggle" onclick="this.classList.toggle('on')"></div></div>
+              <div class="setting-row"><div><div class="setting-label">Toast Notifications</div><div class="setting-sub">Pop-up messages</div></div><div id="s-toggle-toast" class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+              <div class="setting-row"><div><div class="setting-label">Show Commission in P&amp;L</div><div class="setting-sub">Include commissions in net P&amp;L display</div></div><div id="s-toggle-comm" class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+            </div>
+          </div>
+
+        </div>
+        <div style="margin-top:16px;display:flex;gap:12px;align-items:center">
+          <button class="sbtn" style="padding:10px 28px;font-size:12px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="saveSettings()">💾 SAVE SETTINGS</button>
+          <button class="sbtn" style="padding:10px 20px;font-size:12px" onclick="resetSettings()">RESET DEFAULTS</button>
+          <span id="s-save-status" style="font-size:11px;color:var(--text3)"></span>
         </div>
       </div>
 
@@ -1671,6 +1707,7 @@ function showApp(accountInfo) {
   document.getElementById('main-btn').style.background = 'linear-gradient(135deg,var(--accent),var(--accent2))';
   document.getElementById('main-btn').textContent = 'CONNECT TO MT5 →';
   document.getElementById('main-btn').disabled = false;
+  applySettingsToUI(loadSettings());
   if (!chartsInit) { initCharts(); chartsInit = true; }
   connectWS();
   loadAccount();
@@ -1700,6 +1737,8 @@ function showPage(id, el) {
   if (id === 'algo')     { startAlgoRefresh(); }
   if (id === 'journal')  { jInit(); }
   if (id === 'risk')     { rcCalcPos(); rcCalcKelly(); rcCalcPropDD(); }
+  if (id === 'reports')  { loadReports(); }
+  if (id === 'settings') { applySettingsToUI(loadSettings()); }
 }
 
 // ── RISK CALCULATOR ────────────────────────────────────────────────────────────
@@ -2363,56 +2402,29 @@ async function jSyncMT5() {
   let added = 0;
 
   // ── 1. CLOSED TRADES ─────────────────────────────────────────────────────────
-  // Build lookup of IN deals (position openers) by position_id
-  const inDeals = {};
+  // /api/deals returns already-matched trade pairs with entry_price/exit_price/net_profit
   deals.forEach(d => {
-    if (d.entry_type === 0 && d.position_id) inDeals[d.position_id] = d;
-  });
-
-  // Only process OUT deals (closing deals with real P&L)
-  deals.filter(d => d.entry_type === 1 || d.entry_type === 2).forEach(d => {
     if (!d.symbol) return;
-    const uid = 'mt5_' + (d.position_id || d.ticket);
+    const uid = 'mt5_' + d.position_id;
     if (journalTrades.find(t => t.id === uid)) return;  // skip existing
 
-    const openDeal = inDeals[d.position_id];
-    // Closing deal type is opposite of trade direction
-    // (BUY trade closes with SELL deal, SELL trade closes with BUY deal)
-    const dir = d.entry_type === 1
-      ? (d.type === 'SELL' ? 'BUY' : 'SELL')   // invert for OUT deals
-      : (d.type === 'BUY'  ? 'BUY' : 'SELL');  // INOUT: type = direction
-
-    const entry   = openDeal ? openDeal.price : 0;
-    const exit    = d.price || 0;
-    const pnl     = parseFloat(d.profit) || 0;
-    const dateStr = (openDeal || d).time ? (openDeal || d).time.replace(' ', 'T') : new Date().toISOString().slice(0, 16);
-    const closeStr = d.time ? d.time.replace(' ', 'T') : '';
-
-    // Calculate pips from entry/exit
-    let pips = 0;
-    if (entry > 0 && exit > 0) {
-      const pip = jPipSize(d.symbol);
-      const diff = dir === 'BUY' ? exit - entry : entry - exit;
-      pips = Math.round((diff / pip) * 10) / 10;
-    }
-
-    // Calculate duration
-    let duration = '';
-    if (openDeal && openDeal.time && d.time) {
-      const ms = new Date(closeStr) - new Date(dateStr);
-      const mins = Math.floor(ms / 60000);
-      duration = mins < 60 ? `${mins}m` : `${Math.floor(mins/60)}h ${mins%60}m`;
-    }
+    const dir      = d.type || 'BUY';
+    const entry    = d.entry_price || 0;
+    const exit     = d.exit_price  || 0;
+    const pnl      = parseFloat(d.net_profit) || 0;
+    const dateStr  = d.entry_time ? d.entry_time.replace(' ', 'T') : new Date().toISOString().slice(0, 16);
 
     journalTrades.unshift({
       id: uid, date: dateStr,
       symbol: d.symbol, direction: dir,
       lots: d.volume || 0,
-      entry, exit, pips, pnl,
+      entry, exit,
+      pips: d.pips || 0,
+      pnl,
       rr: null, sl: 0, tp: 0,
       strategy: 'MT5 Live',
       session: jSession(dateStr),
-      duration,
+      duration: d.duration || '',
       notes: 'MT5 sync' + (d.comment ? ' | ' + d.comment : ''),
       emotion: '😊', rating: 3,
       result: pnl > 0.5 ? 'WIN' : pnl < -0.5 ? 'LOSS' : 'BE',
@@ -2494,12 +2506,67 @@ function jExportCSV() {
 }
 
 // ── SETTINGS ───────────────────────────────────────────────────────────────────
-function saveSettings() {
-  const btn = document.querySelector('#page-settings .sbtn');
-  const orig = btn.textContent;
-  btn.style.background = 'var(--accent)'; btn.style.color = '#fff'; btn.textContent = '✓ SAVED!';
-  setTimeout(() => { btn.style.background = 'transparent'; btn.style.color = 'var(--accent)'; btn.textContent = orig; }, 1800);
+const SETTINGS_DEFAULTS = {
+  lot: 0.01, sl: 30, tp: 60, symbol: 'XAUUSDc', magic: 234000,
+  riskPct: 1.0, maxDailyLossPct: 3.0, maxDailyLossUsd: 0, maxTrades: 5, aiConf: 70,
+  commission: 7, spread: 1.5, capital: 10000, btRisk: 1.0,
+  soundAlerts: false, toastNotif: true, showComm: true,
+};
+
+function loadSettings() {
+  try { return Object.assign({}, SETTINGS_DEFAULTS, JSON.parse(localStorage.getItem('farhanfx_settings') || '{}')); }
+  catch { return { ...SETTINGS_DEFAULTS }; }
 }
+
+function applySettingsToUI(s) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('s-lot', s.lot); set('s-sl', s.sl); set('s-tp', s.tp);
+  set('s-symbol', s.symbol); set('s-magic', s.magic);
+  set('s-risk-pct', s.riskPct); set('s-max-daily-loss', s.maxDailyLossPct);
+  set('s-max-daily-loss-usd', s.maxDailyLossUsd); set('s-max-trades', s.maxTrades);
+  set('s-ai-conf', s.aiConf);
+  set('s-commission', s.commission); set('s-spread', s.spread);
+  set('s-capital', s.capital); set('s-bt-risk', s.btRisk);
+  const tog = (id, v) => { const el = document.getElementById(id); if (el) { if (v) el.classList.add('on'); else el.classList.remove('on'); } };
+  tog('s-toggle-sound', s.soundAlerts); tog('s-toggle-toast', s.toastNotif); tog('s-toggle-comm', s.showComm);
+}
+
+function saveSettings() {
+  const g = id => { const el = document.getElementById(id); return el ? el.value : null; };
+  const tog = id => document.getElementById(id)?.classList.contains('on') || false;
+  const s = {
+    lot: parseFloat(g('s-lot')) || 0.01,
+    sl:  parseInt(g('s-sl'))   || 30,
+    tp:  parseInt(g('s-tp'))   || 60,
+    symbol: g('s-symbol') || 'XAUUSDc',
+    magic: parseInt(g('s-magic')) || 234000,
+    riskPct: parseFloat(g('s-risk-pct')) || 1.0,
+    maxDailyLossPct: parseFloat(g('s-max-daily-loss')) || 3.0,
+    maxDailyLossUsd: parseFloat(g('s-max-daily-loss-usd')) || 0,
+    maxTrades: parseInt(g('s-max-trades')) || 5,
+    aiConf: parseInt(g('s-ai-conf')) || 70,
+    commission: parseFloat(g('s-commission')) || 7,
+    spread: parseFloat(g('s-spread')) || 1.5,
+    capital: parseFloat(g('s-capital')) || 10000,
+    btRisk: parseFloat(g('s-bt-risk')) || 1.0,
+    soundAlerts: tog('s-toggle-sound'),
+    toastNotif: tog('s-toggle-toast'),
+    showComm: tog('s-toggle-comm'),
+  };
+  localStorage.setItem('farhanfx_settings', JSON.stringify(s));
+  const st = document.getElementById('s-save-status');
+  if (st) { st.textContent = '✓ Saved at ' + new Date().toLocaleTimeString(); st.style.color = 'var(--green)'; }
+  toast('Settings saved ✓');
+}
+
+function resetSettings() {
+  localStorage.removeItem('farhanfx_settings');
+  applySettingsToUI(SETTINGS_DEFAULTS);
+  const st = document.getElementById('s-save-status');
+  if (st) { st.textContent = 'Reset to defaults'; st.style.color = 'var(--text3)'; }
+}
+
+function getSettings() { return loadSettings(); }
 
 // ── MT5 API HELPERS ────────────────────────────────────────────────────────────
 async function apiFetch(path, opts = {}) {
@@ -2698,6 +2765,97 @@ async function closePosition(ticket) {
   toast('Position #' + ticket + ' closed');
   loadPositions();
   loadAccount();
+}
+
+// ── REPORTS ────────────────────────────────────────────────────────────────────
+let _pairChart = null, _distChart = null;
+
+async function loadReports() {
+  const months = document.getElementById('rpt-months')?.value || 12;
+  document.getElementById('rpt-tbody').innerHTML =
+    '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px">Syncing with MT5...</td></tr>';
+
+  const data = await apiFetch('/api/reports?months=' + months);
+  if (!data || data.error) {
+    document.getElementById('rpt-tbody').innerHTML =
+      '<tr><td colspan="6" style="text-align:center;color:var(--red);padding:20px">' + (data?.error || 'Failed to load') + '</td></tr>';
+    return;
+  }
+
+  const { monthly, by_symbol, summary } = data;
+
+  // KPI strip
+  const fmt = v => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+  if (summary.best_month?.label) {
+    document.getElementById('rpt-best-val').textContent  = fmt(summary.best_month.pnl);
+    document.getElementById('rpt-best-lbl').textContent  = summary.best_month.label;
+  }
+  if (summary.worst_month?.label) {
+    document.getElementById('rpt-worst-val').textContent = fmt(summary.worst_month.pnl);
+    document.getElementById('rpt-worst-lbl').textContent = summary.worst_month.label;
+  }
+  document.getElementById('rpt-avg-val').textContent  = fmt(summary.avg_monthly || 0);
+  document.getElementById('rpt-avg-lbl').textContent  = months + '-month average';
+  document.getElementById('rpt-prof-val').textContent = (summary.profitable_months || 0) + '/' + (summary.total_months || 0);
+  document.getElementById('rpt-prof-lbl').textContent = summary.total_months > 0
+    ? Math.round(summary.profitable_months / summary.total_months * 100) + '% success rate' : '—';
+
+  // Monthly table
+  document.getElementById('rpt-tbody').innerHTML = monthly.map(m => {
+    const nc = m.pnl >= 0 ? 'var(--green)' : 'var(--red)';
+    const wr = m.win_rate >= 60 ? 'var(--green)' : m.win_rate >= 50 ? 'var(--cyan)' : 'var(--red)';
+    return `<tr>
+      <td style="font-weight:700">${m.label}</td>
+      <td>${m.trades}</td>
+      <td style="color:var(--green)">${m.wins}</td>
+      <td style="color:var(--red)">${m.losses}</td>
+      <td style="color:${wr}">${m.win_rate}%</td>
+      <td style="font-weight:800;color:${nc}">${m.pnl >= 0 ? '+$' : '-$'}${Math.abs(m.pnl).toFixed(2)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px">No closed trades in this period</td></tr>';
+
+  // Symbol chart
+  if (_pairChart) _pairChart.destroy();
+  const pairCtx = document.getElementById('pairChart')?.getContext('2d');
+  if (pairCtx && by_symbol.length > 0) {
+    _pairChart = new Chart(pairCtx, {
+      type: 'bar',
+      data: {
+        labels: by_symbol.map(s => s.symbol),
+        datasets: [{
+          label: 'Net P&L',
+          data: by_symbol.map(s => s.pnl),
+          backgroundColor: by_symbol.map(s => s.pnl >= 0 ? 'rgba(63,185,80,0.7)' : 'rgba(248,81,73,0.7)'),
+          borderRadius: 4,
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+        scales: { x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
+                  y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } } } }
+    });
+  }
+
+  // Monthly P&L bar chart (oldest → newest)
+  if (_distChart) _distChart.destroy();
+  const distCtx = document.getElementById('distChart')?.getContext('2d');
+  const monthlyAsc = [...monthly].reverse();
+  if (distCtx && monthlyAsc.length > 0) {
+    _distChart = new Chart(distCtx, {
+      type: 'bar',
+      data: {
+        labels: monthlyAsc.map(m => m.label),
+        datasets: [{
+          label: 'Monthly P&L',
+          data: monthlyAsc.map(m => m.pnl),
+          backgroundColor: monthlyAsc.map(m => m.pnl >= 0 ? 'rgba(63,185,80,0.7)' : 'rgba(248,81,73,0.7)'),
+          borderRadius: 4,
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+        scales: { x: { ticks: { color: '#8b949e', font: { size: 9 } }, grid: { color: '#21262d' } },
+                  y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } } } }
+    });
+  }
 }
 
 // ── DEAL HISTORY ───────────────────────────────────────────────────────────────
@@ -3072,9 +3230,53 @@ async function runAiAnalysis() {
   if (aiAutoEnabled && (data.signal === 'BUY' || data.signal === 'SELL')) {
     const minConf = parseInt(document.getElementById('ai-min-conf').value) || 65;
     if (data.confidence >= minConf) {
-      await executeAiTrade(data);
+      const blocked = await aiSafeguardCheck();
+      if (!blocked) await executeAiTrade(data);
     }
   }
+}
+
+async function aiSafeguardCheck() {
+  const s = getSettings();
+
+  // 1. Max open trades check
+  const posData = await apiFetch('/api/positions');
+  if (Array.isArray(posData) && posData.length >= s.maxTrades) {
+    toast(`⛔ AI blocked: max open trades (${s.maxTrades}) reached`, true);
+    return true;
+  }
+
+  // 2. Daily loss circuit breaker — check today's closed P&L
+  const dealsData = await apiFetch('/api/deals?days=1');
+  if (Array.isArray(dealsData)) {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const todayPnl = dealsData.filter(d => d.exit_time.startsWith(today)).reduce((s, d) => s + d.net_profit, 0);
+
+    // Floating losses from open positions
+    const floatPnl = Array.isArray(posData) ? posData.reduce((s, p) => s + p.profit, 0) : 0;
+    const totalDayLoss = todayPnl + floatPnl;
+
+    if (s.maxDailyLossUsd > 0 && totalDayLoss <= -s.maxDailyLossUsd) {
+      toast(`⛔ AI blocked: daily loss limit $${s.maxDailyLossUsd} hit`, true);
+      // Auto-disable AI trading
+      if (aiAutoEnabled) toggleAiAuto();
+      return true;
+    }
+
+    // % based check requires account balance
+    if (s.maxDailyLossPct > 0) {
+      const acct = await apiFetch('/api/account');
+      const balance = acct?.balance || 0;
+      if (balance > 0 && totalDayLoss <= -(balance * s.maxDailyLossPct / 100)) {
+        toast(`⛔ AI blocked: daily loss ${s.maxDailyLossPct}% of balance hit`, true);
+        if (aiAutoEnabled) toggleAiAuto();
+        return true;
+      }
+    }
+  }
+
+  return false; // all checks passed
 }
 
 function renderAiResult(data) {
@@ -3158,6 +3360,17 @@ function toggleAiAuto() {
   const btn   = document.getElementById('ai-auto-btn');
   const panel = document.getElementById('ai-auto-panel');
   if (aiAutoEnabled) {
+    // Pre-fill from Settings
+    const s = getSettings();
+    const volEl = document.getElementById('ai-vol');
+    const slEl  = document.getElementById('ai-sl');
+    const tpEl  = document.getElementById('ai-tp');
+    const confEl = document.getElementById('ai-min-conf');
+    if (volEl && !parseFloat(volEl.value)) volEl.value = s.lot;
+    if (slEl  && !parseFloat(slEl.value))  slEl.value  = s.sl;
+    if (tpEl  && !parseFloat(tpEl.value))  tpEl.value  = s.tp;
+    if (confEl) confEl.value = s.aiConf;
+
     btn.textContent = 'AUTO: ON';
     btn.style.background    = 'var(--green)';
     btn.style.borderColor   = 'var(--green)';
@@ -3166,7 +3379,7 @@ function toggleAiAuto() {
     // Start auto loop — analyze every 30s
     aiAutoTimer = setInterval(runAiAnalysis, 30000);
     runAiAnalysis();  // run immediately
-    toast('🧠 AI Auto-Trade ENABLED');
+    toast('🧠 AI Auto-Trade ENABLED — Max ' + s.maxTrades + ' trades, ' + s.maxDailyLossPct + '% daily loss limit');
   } else {
     btn.textContent = 'AUTO: OFF';
     btn.style.background  = 'transparent';
@@ -3677,16 +3890,19 @@ async function runBacktest() {
       return;
     }
   }
+  const _s = getSettings();
   const payload = {
     strategy: strategy,
     symbol:   document.getElementById('bt-pair').value,
     timeframe:document.getElementById('bt-tf').value,
     date_from:document.getElementById('bt-from').value,
     date_to:  document.getElementById('bt-to').value,
-    capital:  parseFloat(document.getElementById('bt-capital').value) || 10000,
-    risk_pct: parseFloat(document.getElementById('bt-risk').value) || 1.0,
+    capital:  parseFloat(document.getElementById('bt-capital').value) || _s.capital,
+    risk_pct: parseFloat(document.getElementById('bt-risk').value) || _s.btRisk,
     sl_pips:  parseFloat(document.getElementById('bt-sl').value) || 20,
     tp_pips:  parseFloat(document.getElementById('bt-tp').value) || 40,
+    commission:  _s.commission,
+    spread_pips: _s.spread,
     custom_buy:  strategy === 'Custom Strategy' ? getBtRules('buy')  : [],
     custom_sell: strategy === 'Custom Strategy' ? getBtRules('sell') : [],
     smc_swing_lb: parseInt(document.getElementById('smc-swing-lb')?.value) || 5,

@@ -271,6 +271,76 @@ def get_deals(days: int = 30):
     return _mt5_call(fn)
 
 
+# ── REPORTS ──────────────────────────────────────────────────────────────────────
+
+@app.get("/api/reports")
+def get_reports(months: int = 12):
+    """Returns real monthly P&L breakdown from MT5 deal history."""
+    def fn():
+        date_from = datetime.now() - timedelta(days=months * 31)
+        date_from_wide = date_from - timedelta(days=180)
+        deals_all = mt5.history_deals_get(date_from_wide, datetime.now())
+        if deals_all is None:
+            return {"monthly": [], "by_symbol": [], "summary": {}}
+
+        cutoff_ts = date_from.timestamp()
+
+        # Build IN map and collect OUT deals
+        in_map = {}
+        out_list = []
+        for d in deals_all:
+            if d.type not in (0, 1):
+                continue
+            if d.entry == 0:
+                in_map[d.position_id] = d
+            elif d.entry == 1 and d.time >= cutoff_ts:
+                out_list.append(d)
+
+        # Group by month
+        monthly: dict = {}
+        by_symbol: dict = {}
+
+        for out in out_list:
+            net = round(out.profit + out.commission + out.swap, 2)
+            dt  = datetime.fromtimestamp(out.time)
+            key = dt.strftime("%Y-%m")          # e.g. "2026-06"
+            label = dt.strftime("%b %Y")        # e.g. "Jun 2026"
+
+            if key not in monthly:
+                monthly[key] = {"label": label, "trades": 0, "wins": 0, "losses": 0, "pnl": 0.0}
+            monthly[key]["trades"] += 1
+            monthly[key]["pnl"]    = round(monthly[key]["pnl"] + net, 2)
+            if net > 0: monthly[key]["wins"]   += 1
+            else:       monthly[key]["losses"] += 1
+
+            sym = out.symbol
+            if sym not in by_symbol:
+                by_symbol[sym] = {"symbol": sym, "trades": 0, "wins": 0, "pnl": 0.0}
+            by_symbol[sym]["trades"] += 1
+            by_symbol[sym]["pnl"]    = round(by_symbol[sym]["pnl"] + net, 2)
+            if net > 0: by_symbol[sym]["wins"] += 1
+
+        monthly_list = sorted(monthly.values(), key=lambda x: x["label"], reverse=True)
+        for m in monthly_list:
+            t = m["trades"]
+            m["win_rate"] = round(m["wins"] / t * 100, 1) if t > 0 else 0
+
+        sym_list = sorted(by_symbol.values(), key=lambda x: abs(x["pnl"]), reverse=True)
+
+        # Summary
+        all_pnl = [m["pnl"] for m in monthly_list]
+        summary = {
+            "total_months": len(monthly_list),
+            "best_month":   max(monthly_list, key=lambda x: x["pnl"]) if monthly_list else {},
+            "worst_month":  min(monthly_list, key=lambda x: x["pnl"]) if monthly_list else {},
+            "avg_monthly":  round(sum(all_pnl) / len(all_pnl), 2) if all_pnl else 0,
+            "total_pnl":    round(sum(all_pnl), 2),
+            "profitable_months": sum(1 for p in all_pnl if p > 0),
+        }
+        return {"monthly": monthly_list, "by_symbol": sym_list[:10], "summary": summary}
+    return _mt5_call(fn)
+
+
 # ── SYMBOLS LIST ────────────────────────────────────────────────────────────────
 
 @app.get("/api/symbols")
@@ -679,7 +749,8 @@ TF_MAP = {
     "M1": mt5.TIMEFRAME_M1, "M5": mt5.TIMEFRAME_M5,
     "M15": mt5.TIMEFRAME_M15, "M30": mt5.TIMEFRAME_M30,
     "H1": mt5.TIMEFRAME_H1, "H4": mt5.TIMEFRAME_H4,
-    "D1": mt5.TIMEFRAME_D1,
+    "D1": mt5.TIMEFRAME_D1, "W1": mt5.TIMEFRAME_W1,
+    "MN1": mt5.TIMEFRAME_MN1,
 }
 
 def _resolve_symbol(symbol: str) -> str:
@@ -1578,6 +1649,8 @@ class BacktestRequest(BaseModel):
     risk_pct:     float = 1.0
     sl_pips:      float = 20.0
     tp_pips:      float = 40.0
+    commission:   float = 7.0    # round-trip commission per lot in $
+    spread_pips:  float = 1.5    # average spread in pips
     custom_buy:   List[RuleCondition] = []
     custom_sell:  List[RuleCondition] = []
     smc_swing_lb: int   = 5       # bars for swing detection
@@ -1793,15 +1866,19 @@ def run_backtest(req: BacktestRequest):
             signals[i] = sig
 
     # ── Simulate trades ────────────────────────────────────────────────────────
-    capital   = req.capital
-    equity    = capital
-    sl_p      = req.sl_pips * pip
-    tp_p      = req.tp_pips * pip
-    risk_amt  = capital * req.risk_pct / 100
+    capital      = req.capital
+    equity       = capital
+    sl_p         = req.sl_pips * pip
+    tp_p         = req.tp_pips * pip
+    risk_amt     = capital * req.risk_pct / 100
+    spread_cost  = req.spread_pips * pip  # price cost of spread per unit
+
+    # Lot size based on risk (approximate: $10 per pip per lot for major pairs)
+    lot_size = max(0.01, round(risk_amt / (req.sl_pips * 10), 2))
 
     trades    = []
     equity_curve = [capital]
-    position  = None   # {"side","entry","sl","tp","open_time","open_idx"}
+    position  = None   # {"side","entry","sl","tp","open_time","open_idx","lot"}
 
     for i in range(100, n):
         c_high = highs[i]
@@ -1823,25 +1900,31 @@ def run_backtest(req: BacktestRequest):
                     hit_sl = True
 
             if hit_tp or hit_sl:
-                pnl = risk_amt * req.tp_pips / req.sl_pips if hit_tp else -risk_amt
+                gross = risk_amt * req.tp_pips / req.sl_pips if hit_tp else -risk_amt
+                commission_cost = req.commission * position["lot"]
+                spread_deduct   = spread_cost / pip * 10 * position["lot"] / max(req.sl_pips, 1) * risk_amt / req.sl_pips
+                pnl = round(gross - commission_cost - spread_deduct, 2)
                 equity += pnl
                 trades.append({
-                    "num":       len(trades) + 1,
-                    "side":      position["side"],
-                    "entry":     round(position["entry"], 5),
-                    "exit":      round(position["tp"] if hit_tp else position["sl"], 5),
-                    "result":    "WIN" if hit_tp else "LOSS",
-                    "pnl":       round(pnl, 2),
-                    "open_time": position["open_time"],
-                    "close_time":times[i],
-                    "duration":  f"{i - position['open_idx']} bars",
+                    "num":        len(trades) + 1,
+                    "side":       position["side"],
+                    "entry":      round(position["entry"], 5),
+                    "exit":       round(position["tp"] if hit_tp else position["sl"], 5),
+                    "result":     "WIN" if hit_tp else "LOSS",
+                    "pnl":        pnl,
+                    "gross":      round(gross, 2),
+                    "commission": round(commission_cost, 2),
+                    "open_time":  position["open_time"],
+                    "close_time": times[i],
+                    "duration":   f"{i - position['open_idx']} bars",
                 })
                 equity_curve.append(round(equity, 2))
                 position = None
 
         # Open new trade on signal (only if no open position)
         if not position and signals[i]:
-            entry = c_close
+            # Apply spread: BUY fills at Ask (close + spread), SELL fills at Bid (close)
+            entry = c_close + spread_cost if signals[i] == "BUY" else c_close
             if signals[i] == "BUY":
                 sl = entry - sl_p
                 tp = entry + tp_p
@@ -1855,6 +1938,7 @@ def run_backtest(req: BacktestRequest):
                 "tp":        tp,
                 "open_time": times[i],
                 "open_idx":  i,
+                "lot":       lot_size,
             }
 
     # Close any open position at last price
@@ -1917,6 +2001,9 @@ def run_backtest(req: BacktestRequest):
         "calmar":      calmar,
         "avg_win":     round(gross_win / len(wins), 2) if wins else 0,
         "avg_loss":    round(-gross_loss / len(losses), 2) if losses else 0,
+        "commission":   req.commission,
+        "spread_pips":  req.spread_pips,
+        "total_commission": round(sum(t.get("commission", 0) for t in trades), 2),
         "equity_curve": equity_curve,
         "dd_curve":     dd_curve,
         "trades":      trades[-50:],   # last 50 trades for table
