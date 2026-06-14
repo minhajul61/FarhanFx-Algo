@@ -573,7 +573,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
         <!-- ③ CHARTS ROW -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
-          <div class="panel" style="margin:0"><div class="panel-title">Monthly P&L <span style="font-size:10px;color:var(--text3);font-weight:400">(all history)</span></div><div style="position:relative;height:240px"><canvas id="rpt-monthly-chart"></canvas></div></div>
+          <div class="panel" style="margin:0"><div class="panel-title" id="rpt-monthly-chart-title">Monthly P&L <span style="font-size:10px;color:var(--text3);font-weight:400">(all history)</span></div><div style="position:relative;height:240px"><canvas id="rpt-monthly-chart"></canvas></div></div>
           <div class="panel" style="margin:0"><div class="panel-title">Day of Week Performance</div><div style="position:relative;height:200px"><canvas id="rpt-dow-chart"></canvas></div></div>
         </div>
 
@@ -3004,18 +3004,29 @@ async function loadReports() {
     setEl('rpt-worst-pair-info', `-$${Math.abs(s.worst_pair.pnl).toFixed(2)} · ${s.worst_pair.trades} trades`);
   }
 
-  // ── ③ Monthly Chart ───────────────────────────────────────────────────────────
+  // ── ③ Monthly / Daily Chart ───────────────────────────────────────────────────
   if (_rptMonthlyChart) _rptMonthlyChart.destroy();
   const mCtx = document.getElementById('rpt-monthly-chart')?.getContext('2d');
-  const mData = (monthly_chart && monthly_chart.length > 0) ? monthly_chart : [...monthly].reverse();
+  const mAll  = (monthly_chart && monthly_chart.length > 0) ? monthly_chart : [...monthly].reverse();
+  const daily = data.daily || [];
+
+  // If only 1-2 months of history exist, show daily P&L instead (more informative)
+  const useDailyChart = mAll.length <= 2 && daily.length > 1;
+  const mData   = useDailyChart ? [...daily].reverse() : mAll;
+  const mLabel  = useDailyChart ? d => d.label : m => m.label;
+  const titleEl = document.getElementById('rpt-monthly-chart-title');
+  if (titleEl) titleEl.innerHTML = useDailyChart
+    ? 'Daily P&L <span style="font-size:10px;color:var(--text3);font-weight:400">(last ' + daily.length + ' days)</span>'
+    : 'Monthly P&L <span style="font-size:10px;color:var(--text3);font-weight:400">(all history · ' + mAll.length + ' months)</span>';
+
   if (mCtx && mData.length > 0) {
     _rptMonthlyChart = new Chart(mCtx, {
       type: 'bar',
-      data: { labels: mData.map(m => m.label),
+      data: { labels: mData.map(mLabel),
               datasets: [{ data: mData.map(m => m.pnl),
                 backgroundColor: mData.map(m => m.pnl >= 0 ? 'rgba(63,185,80,0.75)' : 'rgba(248,81,73,0.75)'),
                 borderRadius: 4 }] },
-      options: _rptChartOpts(mData.length > 18 ? 8 : 9)
+      options: _rptChartOpts(mData.length > 20 ? 7 : mData.length > 12 ? 8 : 9)
     });
   }
 
