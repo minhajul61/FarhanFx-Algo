@@ -3113,21 +3113,25 @@ function dealsRenderPage() {
   }
 }
 
-// Auto-refresh: positions every 5s, deals every 30s when Trades page is active
+// Auto-refresh timers for Trades page
 let _tradesTimer = null;
 let _dealsTimer  = null;
+let _todayTimer  = null;
 
 function startTradesRefresh() {
   stopTradesRefresh();
   loadPositions();
   loadDeals();
-  _tradesTimer = setInterval(loadPositions, 5000);   // live P&L every 5s
-  _dealsTimer  = setInterval(loadDeals,    30000);   // deal history every 30s
+  loadTodayRealized();
+  _tradesTimer = setInterval(loadPositions,     5000);   // live P&L every 5s
+  _dealsTimer  = setInterval(loadDeals,        30000);   // deal history every 30s
+  _todayTimer  = setInterval(loadTodayRealized, 10000);  // today realized every 10s
 }
 
 function stopTradesRefresh() {
   if (_tradesTimer) { clearInterval(_tradesTimer); _tradesTimer = null; }
   if (_dealsTimer)  { clearInterval(_dealsTimer);  _dealsTimer  = null; }
+  if (_todayTimer)  { clearInterval(_todayTimer);  _todayTimer  = null; }
 }
 
 // ── QUICK ORDER HELPERS ─────────────────────────────────────────────────────────
