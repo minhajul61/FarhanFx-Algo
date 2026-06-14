@@ -191,12 +191,17 @@ def get_positions():
 def get_deals(days: int = 30):
     """Returns matched complete trades (IN+OUT paired by position_id)."""
     def fn():
-        date_from = datetime.now() - timedelta(days=days)
+        # Use midnight of (today - days + 1) so days=1 = all of today,
+        # days=7 = last 7 calendar days, etc. (avoids missing early-AM trades)
+        now = datetime.now()
+        date_from = datetime(now.year, now.month, now.day) - timedelta(days=days - 1)
         # Fetch wider window to catch opening deals for positions opened before the range
         date_from_wide = date_from - timedelta(days=180)
-        deals_all = mt5.history_deals_get(date_from_wide, datetime.now())
+        deals_all = mt5.history_deals_get(date_from_wide, now)
         if deals_all is None:
             return []
+
+        cutoff_ts = date_from.timestamp()
 
         # Split into IN and OUT maps by position_id
         in_map: dict  = {}   # position_id -> IN deal
@@ -208,8 +213,8 @@ def get_deals(days: int = 30):
             if d.entry == 0:          # IN = opening deal
                 in_map[d.position_id] = d
             elif d.entry == 1:        # OUT = closing deal
-                # Only include closings within the requested range
-                if d.time >= date_from.timestamp():
+                # Only include closings within the requested range (from midnight)
+                if d.time >= cutoff_ts:
                     out_list.append(d)
 
         result = []
