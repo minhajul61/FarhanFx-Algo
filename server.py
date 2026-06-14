@@ -673,17 +673,21 @@ def cancel_pending(ticket: int):
 
 # ── CLOSE POSITION ──────────────────────────────────────────────────────────────
 
-@app.post("/api/close/{ticket}")
-def close_position(ticket: int):
-    def fn():
-        pos = mt5.positions_get(ticket=ticket)
-        if not pos:
-            return {"error": "Position not found"}
-        p = pos[0]
-        tick = mt5.symbol_info_tick(p.symbol)
-        if tick is None:
-            return {"error": "Cannot get tick"}
-        is_buy = p.type == 0
+def _do_close_position(ticket: int):
+    """Close a single position by ticket. Returns dict with success or error."""
+    all_pos = mt5.positions_get()
+    if all_pos is None:
+        all_pos = []
+    pos_list = [p for p in all_pos if p.ticket == ticket]
+    if not pos_list:
+        return {"error": "Position not found"}
+    p = pos_list[0]
+    tick = mt5.symbol_info_tick(p.symbol)
+    if tick is None:
+        return {"error": f"Cannot get tick for {p.symbol}"}
+    is_buy = p.type == 0
+    # Try FOK first, fall back to IOC, then RETURN
+    for filling in (mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_RETURN):
         request = {
             "action":       mt5.TRADE_ACTION_DEAL,
             "symbol":       p.symbol,
@@ -691,19 +695,46 @@ def close_position(ticket: int):
             "type":         mt5.ORDER_TYPE_SELL if is_buy else mt5.ORDER_TYPE_BUY,
             "position":     ticket,
             "price":        tick.bid if is_buy else tick.ask,
-            "deviation":    20,
+            "deviation":    30,
             "magic":        234000,
             "comment":      "FarhanFX Close",
             "type_time":    mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
+            "type_filling": filling,
         }
         result = mt5.order_send(request)
-        if result.retcode != mt5.TRADE_RETCODE_DONE:
+        if result is not None and result.retcode == mt5.TRADE_RETCODE_DONE:
+            return {"success": True, "ticket": ticket}
+        # retcode 10030 = unsupported filling mode → try next
+        if result is not None and result.retcode != 10030:
             return {"error": f"{result.comment} (retcode {result.retcode})"}
-        return {"success": True}
+    return {"error": f"Order failed: {result.comment} (retcode {result.retcode})"}
 
-    result = _mt5_call(fn, timeout=15)
+
+@app.post("/api/close/{ticket}")
+def close_position(ticket: int):
+    result = _mt5_call(lambda: _do_close_position(ticket), timeout=15)
     if "error" in result:
+        return JSONResponse(result, status_code=400)
+    return result
+
+
+@app.post("/api/close_all")
+def close_all_positions():
+    def fn():
+        all_pos = mt5.positions_get()
+        if not all_pos:
+            return {"closed": 0, "errors": []}
+        closed, errors = 0, []
+        for p in all_pos:
+            r = _do_close_position(p.ticket)
+            if "success" in r:
+                closed += 1
+            else:
+                errors.append({"ticket": p.ticket, "error": r.get("error")})
+        return {"closed": closed, "errors": errors}
+
+    result = _mt5_call(fn, timeout=30)
+    if isinstance(result, dict) and "error" in result:
         return JSONResponse(result, status_code=400)
     return result
 

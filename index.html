@@ -432,6 +432,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               <span id="pos-live-dot" style="width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;display:none"></span>
               <span id="pos-last-update" style="font-size:10px;color:var(--text3)"></span>
               <button class="sbtn" onclick="loadPositions()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
+              <button class="sbtn" onclick="closeAllPositions()" style="font-size:10px;padding:4px 10px;background:rgba(239,68,68,0.15);border-color:var(--red);color:var(--red)">✕ CLOSE ALL</button>
             </div>
           </div>
           <table>
@@ -2764,7 +2765,24 @@ async function closePosition(ticket) {
   if (!confirm('Close position #' + ticket + '?')) return;
   const r = await apiFetch('/api/close/' + ticket, { method: 'POST' });
   if (r.error) { toastErr('Close failed: ' + r.error); return; }
-  toast('Position #' + ticket + ' closed');
+  toast('Position #' + ticket + ' closed ✓');
+  loadPositions();
+  loadAccount();
+}
+
+async function closeAllPositions() {
+  const tbody = document.getElementById('positions-tbody');
+  const count = tbody ? tbody.querySelectorAll('tr').length : 0;
+  if (!confirm(`Close ALL ${count} open position(s)? This cannot be undone.`)) return;
+  toast('Closing all positions...');
+  const r = await apiFetch('/api/close_all', { method: 'POST' });
+  if (r.error) { toastErr('Close All failed: ' + r.error); return; }
+  const errs = r.errors || [];
+  if (errs.length === 0) {
+    toast(`All ${r.closed} position(s) closed ✓`);
+  } else {
+    toast(`Closed ${r.closed}. Errors: ${errs.map(e=>e.error).join(', ')}`, true);
+  }
   loadPositions();
   loadAccount();
 }
