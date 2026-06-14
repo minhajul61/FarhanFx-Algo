@@ -304,7 +304,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         <div class="order-panel">
           <div class="panel-title">Quick Order</div>
           <div class="order-grid">
-            <div class="field"><label>Symbol</label><input id="o-symbol" class="sinput" style="width:100%" value="EURUSDc" placeholder="EURUSDc"/></div>
+            <div class="field"><label>Symbol</label><input id="o-symbol" class="sinput" list="jf-symbol-list" autocomplete="off" oninput="this.value=this.value.toUpperCase()" style="width:100%" value="EURUSDc" placeholder="Type or select symbol..."/></div>
             <div class="field"><label>Volume (lots)</label><input id="o-volume" class="sinput" style="width:100%" type="number" value="0.01" step="0.01" min="0.01"/></div>
             <div class="field"><label>Stop Loss</label><input id="o-sl" class="sinput" style="width:100%" type="number" value="0" step="0.00001" placeholder="0 = none"/></div>
             <div class="field"><label>Take Profit</label><input id="o-tp" class="sinput" style="width:100%" type="number" value="0" step="0.00001" placeholder="0 = none"/></div>
@@ -756,7 +756,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             </div>
             <div class="field" style="margin-bottom:0">
               <label>Symbol</label>
-              <input id="algo-symbol" class="sinput" style="width:100%" value="EURUSDc" placeholder="EURUSDc"/>
+              <input id="algo-symbol" class="sinput" list="jf-symbol-list" autocomplete="off" oninput="this.value=this.value.toUpperCase()" style="width:100%" value="EURUSDc" placeholder="Type or select symbol..."/>
               <div class="server-presets" style="margin-top:6px">
                 <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='EURUSDc'">EURUSDc</button>
                 <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='GBPUSDc'">GBPUSDc</button>
