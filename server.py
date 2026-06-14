@@ -329,7 +329,7 @@ _TODAY_FILE = "today_balance.json"
 
 def _load_today_start():
     try:
-        with open(_TODAY_FILE) as f:
+        with open(_TODAY_FILE, encoding="utf-8-sig") as f:  # utf-8-sig strips BOM
             return _json.load(f)
     except Exception:
         return {"date": None, "balance": None}
