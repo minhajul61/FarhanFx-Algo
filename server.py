@@ -1351,128 +1351,131 @@ def get_algo_history(days: int = 30):
 
 @app.get("/api/ai/analyze/{symbol}")
 def ai_analyze(symbol: str, tf: str = "H1"):
-    """Full multi-timeframe AI market analysis — returns signal + breakdown."""
-    def fn():
-        sym = _resolve_symbol(symbol)
+    """Full multi-timeframe AI market analysis.
+    Calls _get_rates directly (each call uses its own _mt5_call internally).
+    Never nests _mt5_call — that deadlocks the single worker thread.
+    """
+    # Step 1: fetch rates — each _get_rates uses _mt5_call internally, called sequentially
+    primary_rates, sym = _get_rates(symbol, tf, 200)
+    h4_rates,      _   = _get_rates(symbol, "H4", 100)
 
-        # Fetch primary + H4 timeframes
-        primary_rates, _ = _get_rates(sym, tf, 200)
-        h4_rates,      _ = _get_rates(sym, "H4", 100)
-        tick    = mt5.symbol_info_tick(sym)
-        sym_inf = mt5.symbol_info(sym)
+    if not primary_rates or len(primary_rates) < 30:
+        return {"error": f"Not enough data for {symbol}"}
 
-        if not primary_rates or len(primary_rates) < 30:
-            return {"error": f"Not enough data for {sym}"}
+    # Step 2: single _mt5_call for tick + symbol info only
+    def get_tick_info():
+        return mt5.symbol_info_tick(sym), mt5.symbol_info(sym)
+    ti = _mt5_call(get_tick_info)
+    tick, sym_inf = (ti if not isinstance(ti, dict) else (None, None))
 
-        closes = [r["close"] for r in primary_rates]
-        highs  = [r["high"]  for r in primary_rates]
-        lows   = [r["low"]   for r in primary_rates]
-        price  = closes[-1]
+    # Step 3: all calculations in pure Python — no more MT5 calls
+    closes = [r["close"] for r in primary_rates]
+    highs  = [r["high"]  for r in primary_rates]
+    lows   = [r["low"]   for r in primary_rates]
+    price  = closes[-1]
+    digits = sym_inf.digits if sym_inf else 5
 
-        # ── INDICATORS ──────────────────────────────────────────────────────────
-        ema20  = _ema(closes, 20)
-        ema50  = _ema(closes, 50)
-        ema200 = _ema(closes, min(200, len(closes)-1))
-        rsi14  = _rsi(closes, 14)
-        macd_l, sig_l = _macd(closes)
-        hist   = [m - s for m, s in zip(macd_l, sig_l)]
-        st_dir = _supertrend(highs, lows, closes, period=10, mult=3.0)
-        atr_v  = _atr(highs, lows, closes, 14)
-        bb_up, bb_mid, bb_lo = _bollinger(closes)
-        kv, dv = _stochastic(highs, lows, closes)
+    ema20  = _ema(closes, 20)
+    ema50  = _ema(closes, 50)
+    ema200 = _ema(closes, min(200, len(closes)-1))
+    rsi14  = _rsi(closes, 14)
+    macd_l, sig_l = _macd(closes)
+    hist   = [m - s for m, s in zip(macd_l, sig_l)]
+    st_dir = _supertrend(highs, lows, closes, period=10, mult=3.0)
+    atr_v  = _atr(highs, lows, closes, 14)
+    kv, dv = _stochastic(highs, lows, closes)
 
-        # H4 trend bias
-        h4_bias = "NEUTRAL"
-        if h4_rates and len(h4_rates) >= 50:
-            h4c  = [r["close"] for r in h4_rates]
-            h4e  = _ema(h4c, 50)
-            h4e200 = _ema(h4c, min(200, len(h4c)-1))
-            if h4c[-1] > h4e[-1] > h4e200[-1]: h4_bias = "BULLISH"
-            elif h4c[-1] < h4e[-1] < h4e200[-1]: h4_bias = "BEARISH"
+    # H4 trend bias (pure Python after rates fetched)
+    h4_bias = "NEUTRAL"
+    if h4_rates and len(h4_rates) >= 50:
+        h4c    = [r["close"] for r in h4_rates]
+        h4e50  = _ema(h4c, 50)
+        h4e200 = _ema(h4c, min(200, len(h4c)-1))
+        if h4c[-1] > h4e50[-1] > h4e200[-1]:   h4_bias = "BULLISH"
+        elif h4c[-1] < h4e50[-1] < h4e200[-1]: h4_bias = "BEARISH"
 
-        # ── SIGNAL SCORING (each component max weight shown) ─────────────────
-        components = []
+    # ── SIGNAL SCORING ──────────────────────────────────────────────────────────
+    components = []
 
-        # 1. H4 Trend (25 pts) — strongest weight, macro direction
-        if h4_bias == "BULLISH":
-            components.append({"name":"H4 Trend","dir":"BUY","score":25,"max":25,"detail":"H4 price > EMA50 > EMA200"})
-        elif h4_bias == "BEARISH":
-            components.append({"name":"H4 Trend","dir":"SELL","score":25,"max":25,"detail":"H4 price < EMA50 < EMA200"})
-        else:
-            components.append({"name":"H4 Trend","dir":"NEUTRAL","score":0,"max":25,"detail":"No clear H4 alignment"})
+    # 1. H4 Trend (25 pts)
+    if h4_bias == "BULLISH":
+        components.append({"name":"H4 Trend","dir":"BUY","score":25,"max":25,"detail":"H4 price > EMA50 > EMA200"})
+    elif h4_bias == "BEARISH":
+        components.append({"name":"H4 Trend","dir":"SELL","score":25,"max":25,"detail":"H4 price < EMA50 < EMA200"})
+    else:
+        components.append({"name":"H4 Trend","dir":"NEUTRAL","score":0,"max":25,"detail":"No clear H4 alignment"})
 
-        # 2. EMA Stack on primary TF (20 pts)
-        if price > ema20[-1] > ema50[-1]:
-            s = 20 if price > ema200[-1] else 12
-            components.append({"name":"EMA Stack","dir":"BUY","score":s,"max":20,"detail":f"Price>{ema20[-1]:.5f}>{ema50[-1]:.5f}"})
-        elif price < ema20[-1] < ema50[-1]:
-            s = 20 if price < ema200[-1] else 12
-            components.append({"name":"EMA Stack","dir":"SELL","score":s,"max":20,"detail":f"Price<{ema20[-1]:.5f}<{ema50[-1]:.5f}"})
-        else:
-            components.append({"name":"EMA Stack","dir":"NEUTRAL","score":0,"max":20,"detail":"EMAs not aligned"})
+    # 2. EMA Stack (20 pts)
+    if price > ema20[-1] > ema50[-1]:
+        sc = 20 if price > ema200[-1] else 12
+        components.append({"name":"EMA Stack","dir":"BUY","score":sc,"max":20,"detail":f"Price>{ema20[-1]:.{digits}f}>{ema50[-1]:.{digits}f}"})
+    elif price < ema20[-1] < ema50[-1]:
+        sc = 20 if price < ema200[-1] else 12
+        components.append({"name":"EMA Stack","dir":"SELL","score":sc,"max":20,"detail":f"Price<{ema20[-1]:.{digits}f}<{ema50[-1]:.{digits}f}"})
+    else:
+        components.append({"name":"EMA Stack","dir":"NEUTRAL","score":0,"max":20,"detail":"EMAs not aligned"})
 
-        # 3. Supertrend (20 pts)
-        if st_dir[-1] == 1:
-            components.append({"name":"Supertrend","dir":"BUY","score":20,"max":20,"detail":"Trend direction: BULLISH ▲"})
-        else:
-            components.append({"name":"Supertrend","dir":"SELL","score":20,"max":20,"detail":"Trend direction: BEARISH ▼"})
+    # 3. Supertrend (20 pts)
+    if st_dir[-1] == 1:
+        components.append({"name":"Supertrend","dir":"BUY","score":20,"max":20,"detail":"Direction: BULLISH ▲"})
+    else:
+        components.append({"name":"Supertrend","dir":"SELL","score":20,"max":20,"detail":"Direction: BEARISH ▼"})
 
-        # 4. MACD Histogram (15 pts)
-        if hist[-1] > 0 and hist[-1] >= hist[-2]:
-            components.append({"name":"MACD","dir":"BUY","score":15,"max":15,"detail":f"Histogram rising: {hist[-1]:+.5f}"})
-        elif hist[-1] < 0 and hist[-1] <= hist[-2]:
-            components.append({"name":"MACD","dir":"SELL","score":15,"max":15,"detail":f"Histogram falling: {hist[-1]:+.5f}"})
-        else:
-            components.append({"name":"MACD","dir":"NEUTRAL","score":0,"max":15,"detail":f"Histogram undecided: {hist[-1]:+.5f}"})
+    # 4. MACD Histogram (15 pts)
+    if hist[-1] > 0 and hist[-1] >= hist[-2]:
+        components.append({"name":"MACD","dir":"BUY","score":15,"max":15,"detail":f"Histogram rising: {hist[-1]:+.5f}"})
+    elif hist[-1] < 0 and hist[-1] <= hist[-2]:
+        components.append({"name":"MACD","dir":"SELL","score":15,"max":15,"detail":f"Histogram falling: {hist[-1]:+.5f}"})
+    else:
+        components.append({"name":"MACD","dir":"NEUTRAL","score":0,"max":15,"detail":f"Histogram flat: {hist[-1]:+.5f}"})
 
-        # 5. RSI Zone (10 pts)
-        if 50 <= rsi14 <= 68:
-            components.append({"name":"RSI","dir":"BUY","score":10,"max":10,"detail":f"RSI {rsi14} — bullish momentum zone"})
-        elif 32 <= rsi14 <= 50:
-            components.append({"name":"RSI","dir":"SELL","score":10,"max":10,"detail":f"RSI {rsi14} — bearish momentum zone"})
-        else:
-            components.append({"name":"RSI","dir":"NEUTRAL","score":0,"max":10,"detail":f"RSI {rsi14} — extreme / overbought/oversold"})
+    # 5. RSI Zone (10 pts)
+    if 50 <= rsi14 <= 68:
+        components.append({"name":"RSI","dir":"BUY","score":10,"max":10,"detail":f"RSI {rsi14} — bullish zone"})
+    elif 32 <= rsi14 <= 50:
+        components.append({"name":"RSI","dir":"SELL","score":10,"max":10,"detail":f"RSI {rsi14} — bearish zone"})
+    else:
+        components.append({"name":"RSI","dir":"NEUTRAL","score":0,"max":10,"detail":f"RSI {rsi14} — extreme"})
 
-        # 6. Stochastic cross (10 pts)
-        if kv[-2] < dv[-2] and kv[-1] > dv[-1] and kv[-1] < 60:
-            components.append({"name":"Stochastic","dir":"BUY","score":10,"max":10,"detail":f"%K {kv[-1]:.0f} crossed above %D {dv[-1]:.0f}"})
-        elif kv[-2] > dv[-2] and kv[-1] < dv[-1] and kv[-1] > 40:
-            components.append({"name":"Stochastic","dir":"SELL","score":10,"max":10,"detail":f"%K {kv[-1]:.0f} crossed below %D {dv[-1]:.0f}"})
-        else:
-            components.append({"name":"Stochastic","dir":"NEUTRAL","score":0,"max":10,"detail":f"%K:{kv[-1]:.0f}  %D:{dv[-1]:.0f}"})
+    # 6. Stochastic (10 pts)
+    if kv[-2] < dv[-2] and kv[-1] > dv[-1] and kv[-1] < 60:
+        components.append({"name":"Stochastic","dir":"BUY","score":10,"max":10,"detail":f"%K {kv[-1]:.0f} crossed above %D {dv[-1]:.0f}"})
+    elif kv[-2] > dv[-2] and kv[-1] < dv[-1] and kv[-1] > 40:
+        components.append({"name":"Stochastic","dir":"SELL","score":10,"max":10,"detail":f"%K {kv[-1]:.0f} crossed below %D {dv[-1]:.0f}"})
+    else:
+        components.append({"name":"Stochastic","dir":"NEUTRAL","score":0,"max":10,"detail":f"%K:{kv[-1]:.0f}  %D:{dv[-1]:.0f}"})
 
-        # ── FINAL SCORE ────────────────────────────────────────────────────────
-        buy_score  = sum(c["score"] for c in components if c["dir"] == "BUY")
-        sell_score = sum(c["score"] for c in components if c["dir"] == "SELL")
-        max_total  = sum(c["max"] for c in components)  # 100
+    # ── FINAL SCORE ─────────────────────────────────────────────────────────────
+    buy_score  = sum(c["score"] for c in components if c["dir"] == "BUY")
+    sell_score = sum(c["score"] for c in components if c["dir"] == "SELL")
+    max_total  = sum(c["max"]   for c in components)  # always 100
 
-        buy_pct  = round(buy_score  / max_total * 100)
-        sell_pct = round(sell_score / max_total * 100)
+    buy_pct  = round(buy_score  / max_total * 100)
+    sell_pct = round(sell_score / max_total * 100)
 
-        if buy_pct >= 60 and buy_pct > sell_pct:
-            final_signal = "BUY";  confidence = buy_pct
-        elif sell_pct >= 60 and sell_pct > buy_pct:
-            final_signal = "SELL"; confidence = sell_pct
-        else:
-            final_signal = "HOLD"; confidence = max(buy_pct, sell_pct)
+    if buy_pct >= 60 and buy_pct > sell_pct:
+        final_signal = "BUY";  confidence = buy_pct
+    elif sell_pct >= 60 and sell_pct > buy_pct:
+        final_signal = "SELL"; confidence = sell_pct
+    else:
+        final_signal = "HOLD"; confidence = max(buy_pct, sell_pct)
 
-        return {
-            "symbol":     sym,
-            "tf":         tf,
-            "price":      round(price, sym_inf.digits if sym_inf else 5),
-            "bid":        round(tick.bid, sym_inf.digits if sym_inf else 5) if tick else price,
-            "ask":        round(tick.ask, sym_inf.digits if sym_inf else 5) if tick else price,
-            "signal":     final_signal,
-            "confidence": confidence,
-            "buy_score":  buy_pct,
-            "sell_score": sell_pct,
-            "h4_bias":    h4_bias,
-            "rsi":        rsi14,
-            "atr":        round(atr_v, sym_inf.digits if sym_inf else 5) if sym_inf else atr_v,
-            "supertrend": "BULLISH" if st_dir[-1] == 1 else "BEARISH",
-            "components": components,
-        }
-    return _mt5_call(fn)
+    return {
+        "symbol":     sym,
+        "tf":         tf,
+        "price":      round(price, digits),
+        "bid":        round(tick.bid, digits) if tick else round(price, digits),
+        "ask":        round(tick.ask, digits) if tick else round(price, digits),
+        "signal":     final_signal,
+        "confidence": confidence,
+        "buy_score":  buy_pct,
+        "sell_score": sell_pct,
+        "h4_bias":    h4_bias,
+        "rsi":        rsi14,
+        "atr":        round(atr_v, digits),
+        "supertrend": "BULLISH" if st_dir[-1] == 1 else "BEARISH",
+        "components": components,
+    }
 
 
 @app.delete("/api/strategy/{sid}")
