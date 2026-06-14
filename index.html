@@ -821,6 +821,70 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       <div class="page" id="page-algo">
         <div class="page-title">Algo Strategies</div>
 
+        <!-- ═══════════════ AI MARKET ANALYSIS PANEL ═══════════════ -->
+        <div class="order-panel" style="border-color:var(--amber);margin-bottom:16px;background:linear-gradient(135deg,rgba(245,158,11,0.04),rgba(139,92,246,0.06))">
+          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <span style="background:linear-gradient(90deg,var(--amber),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:14px">🧠 AI Market Analysis — Live Signal</span>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input id="ai-symbol" class="sinput" list="jf-symbol-list" style="width:130px" value="EURUSDc" placeholder="Symbol" autocomplete="off"/>
+              <select id="ai-tf" class="sinput" style="width:80px">
+                <option>M15</option><option>M30</option><option value="H1" selected>H1</option><option>H4</option><option>D1</option>
+              </select>
+              <button onclick="runAiAnalysis()" id="ai-run-btn" style="padding:6px 16px;background:linear-gradient(135deg,var(--amber),#d97706);border:none;color:#000;font-weight:800;border-radius:6px;font-family:var(--font);font-size:11px;cursor:pointer;letter-spacing:0.5px">▶ ANALYZE</button>
+              <button onclick="toggleAiAuto()" id="ai-auto-btn" style="padding:6px 14px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:6px;font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer">AUTO: OFF</button>
+            </div>
+          </div>
+
+          <!-- SIGNAL OUTPUT -->
+          <div id="ai-output" style="display:grid;grid-template-columns:200px 1fr;gap:16px;margin-top:16px">
+            <!-- Left: Big signal badge -->
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0d0f1a;border-radius:12px;padding:20px;border:1px solid var(--border)">
+              <div id="ai-badge" style="font-size:36px;font-weight:900;letter-spacing:2px;color:var(--text3)">—</div>
+              <div id="ai-confidence" style="font-size:12px;color:var(--text3);margin-top:6px">Confidence: —</div>
+              <div style="width:100%;background:var(--border);border-radius:4px;height:6px;margin-top:10px;overflow:hidden">
+                <div id="ai-conf-bar" style="height:100%;width:0%;border-radius:4px;transition:width 0.6s,background 0.3s;background:var(--text3)"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;width:100%;margin-top:8px">
+                <div style="text-align:center">
+                  <div style="font-size:9px;color:var(--text3)">BUY</div>
+                  <div id="ai-buy-pct" style="font-size:13px;font-weight:700;color:var(--green)">—</div>
+                </div>
+                <div style="text-align:center">
+                  <div style="font-size:9px;color:var(--text3)">SELL</div>
+                  <div id="ai-sell-pct" style="font-size:13px;font-weight:700;color:var(--red)">—</div>
+                </div>
+                <div style="text-align:center">
+                  <div style="font-size:9px;color:var(--text3)">H4 BIAS</div>
+                  <div id="ai-h4-bias" style="font-size:11px;font-weight:700;color:var(--text2)">—</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Indicator breakdown -->
+            <div>
+              <table id="ai-components-table" style="width:100%">
+                <thead><tr><th>INDICATOR</th><th>DIRECTION</th><th>STRENGTH</th><th>DETAIL</th></tr></thead>
+                <tbody id="ai-components-body">
+                  <tr><td colspan="4" style="text-align:center;color:var(--text3);padding:16px">Click ANALYZE to scan the market</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Auto-trade settings (shown when auto mode is on) -->
+          <div id="ai-auto-panel" style="display:none;margin-top:14px;padding:14px;background:#0d0f1a;border-radius:8px;border:1px solid var(--amber)">
+            <div style="font-size:11px;color:var(--amber);font-weight:700;margin-bottom:10px;letter-spacing:1px">AUTO TRADE SETTINGS</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end">
+              <div class="field" style="margin-bottom:0"><label>Lot Size</label><input id="ai-vol" class="sinput" style="width:100%" type="number" value="0.01" step="0.01" min="0.01"/></div>
+              <div class="field" style="margin-bottom:0"><label>SL (pips)</label><input id="ai-sl" class="sinput" style="width:100%" type="number" value="20"/></div>
+              <div class="field" style="margin-bottom:0"><label>TP (pips)</label><input id="ai-tp" class="sinput" style="width:100%" type="number" value="40"/></div>
+              <div class="field" style="margin-bottom:0"><label>Min Confidence %</label><input id="ai-min-conf" class="sinput" style="width:100%" type="number" value="65" min="50" max="95"/></div>
+              <div id="ai-status-dot" style="width:10px;height:10px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;align-self:center"></div>
+            </div>
+            <div id="ai-last-action" style="font-size:11px;color:var(--text3);margin-top:8px">Waiting for signal...</div>
+          </div>
+        </div>
+
         <!-- NEW STRATEGY FORM -->
         <div class="order-panel" style="border-color:var(--cyan)">
           <div class="panel-title" style="color:var(--cyan);display:flex;justify-content:space-between;align-items:center">
@@ -845,6 +909,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 <optgroup label="── Advanced ──">
                   <option value="Ichimoku">Ichimoku Cloud</option>
                   <option value="AI Confluence">🤖 AI Confluence</option>
+                  <option value="AI Agent">🧠 AI Agent (Live Analysis)</option>
                 </optgroup>
               </select>
             </div>
@@ -924,6 +989,11 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <div style="font-size:10px;background:linear-gradient(90deg,var(--accent),var(--amber));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">🤖 AI CONFLUENCE</div>
             <div style="font-size:10px;color:var(--text3)">EMA+RSI+MACD+Stoch 4/4</div>
             <div style="font-size:9px;color:var(--green);margin-top:4px">WR ~70%</div>
+          </div>
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(245,158,11,0.1),rgba(16,185,129,0.06));transition:border-color 0.2s" onmouseover="this.style.borderColor='#f59e0b'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='AI Agent'">
+            <div style="font-size:10px;background:linear-gradient(90deg,#f59e0b,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">🧠 AI AGENT</div>
+            <div style="font-size:10px;color:var(--text3)">Live MTF analysis auto</div>
+            <div style="font-size:9px;color:var(--green);margin-top:4px">WR ~75%</div>
           </div>
         </div>
 
@@ -2816,6 +2886,139 @@ function setConnStatus(online) {
   if (!online) document.getElementById('live-equity').textContent = '';
 }
 
+// ── AI MARKET ANALYSIS ─────────────────────────────────────────────────────────
+let aiAutoTimer    = null;
+let aiAutoEnabled  = false;
+let aiLastSignal   = null;
+
+async function runAiAnalysis() {
+  const sym = document.getElementById('ai-symbol').value.trim();
+  const tf  = document.getElementById('ai-tf').value;
+  if (!sym) { toast('Enter a symbol', false); return; }
+
+  const badge = document.getElementById('ai-badge');
+  badge.textContent = '…';
+  badge.style.color = 'var(--text3)';
+
+  const data = await apiFetch(`/api/ai/analyze/${encodeURIComponent(sym)}?tf=${tf}`);
+  if (!data || data.error) {
+    toastErr('Analysis failed: ' + (data?.error || 'No response'));
+    return;
+  }
+  renderAiResult(data);
+  aiLastSignal = data;
+
+  // If auto mode ON and signal is clear, execute trade
+  if (aiAutoEnabled && (data.signal === 'BUY' || data.signal === 'SELL')) {
+    const minConf = parseInt(document.getElementById('ai-min-conf').value) || 65;
+    if (data.confidence >= minConf) {
+      await executeAiTrade(data);
+    }
+  }
+}
+
+function renderAiResult(data) {
+  const badge    = document.getElementById('ai-badge');
+  const confEl   = document.getElementById('ai-confidence');
+  const confBar  = document.getElementById('ai-conf-bar');
+  const buyPct   = document.getElementById('ai-buy-pct');
+  const sellPct  = document.getElementById('ai-sell-pct');
+  const h4Bias   = document.getElementById('ai-h4-bias');
+  const tbody    = document.getElementById('ai-components-body');
+
+  const sigColor = data.signal === 'BUY' ? 'var(--green)' : data.signal === 'SELL' ? 'var(--red)' : 'var(--text3)';
+  badge.textContent = data.signal;
+  badge.style.color = sigColor;
+  badge.style.textShadow = `0 0 20px ${sigColor}`;
+
+  confEl.textContent = `Confidence: ${data.confidence}%`;
+  confBar.style.width = data.confidence + '%';
+  confBar.style.background = sigColor;
+
+  buyPct.textContent  = data.buy_score  + '%';
+  sellPct.textContent = data.sell_score + '%';
+
+  const biasColor = data.h4_bias === 'BULLISH' ? 'var(--green)' : data.h4_bias === 'BEARISH' ? 'var(--red)' : 'var(--text3)';
+  h4Bias.textContent = data.h4_bias;
+  h4Bias.style.color = biasColor;
+
+  if (data.components && data.components.length) {
+    tbody.innerHTML = data.components.map(c => {
+      const dc = c.dir === 'BUY' ? 'var(--green)' : c.dir === 'SELL' ? 'var(--red)' : 'var(--text3)';
+      const arrow = c.dir === 'BUY' ? '▲ BUY' : c.dir === 'SELL' ? '▼ SELL' : '— NEUTRAL';
+      const barW = c.max > 0 ? Math.round(c.score / c.max * 100) : 0;
+      return `<tr>
+        <td style="font-weight:700;color:var(--text1)">${c.name}</td>
+        <td style="color:${dc};font-weight:700">${arrow}</td>
+        <td style="min-width:100px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="flex:1;background:var(--border);border-radius:3px;height:5px;overflow:hidden">
+              <div style="width:${barW}%;height:100%;background:${dc};border-radius:3px"></div>
+            </div>
+            <span style="font-size:10px;color:${dc}">${c.score}/${c.max}</span>
+          </div>
+        </td>
+        <td style="font-size:11px;color:var(--text3)">${c.detail}</td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+async function executeAiTrade(data) {
+  const vol    = parseFloat(document.getElementById('ai-vol').value) || 0.01;
+  const slPips = parseFloat(document.getElementById('ai-sl').value)  || 20;
+  const tpPips = parseFloat(document.getElementById('ai-tp').value)  || 40;
+  const lastEl = document.getElementById('ai-last-action');
+
+  const body = {
+    symbol:     data.symbol,
+    order_type: data.signal,
+    volume:     vol,
+    sl:         0,
+    tp:         0,
+    sl_pips:    slPips,
+    tp_pips:    tpPips,
+    comment:    `FarhanFX-AI-Agent`,
+  };
+
+  const r = await apiFetch('/api/order', { method: 'POST', body: JSON.stringify(body) });
+  const ts = new Date().toLocaleTimeString();
+  if (r.error) {
+    lastEl.innerHTML = `<span style="color:var(--red)">[${ts}] ❌ Trade failed: ${r.error}</span>`;
+    toastErr('AI trade failed: ' + r.error);
+  } else {
+    const entryPrice = data.signal === 'BUY' ? data.ask : data.bid;
+    lastEl.innerHTML = `<span style="color:var(--green)">[${ts}] ✅ ${data.signal} ${vol} lots @ ${entryPrice} — ${data.confidence}% confidence</span>`;
+    toast(`🧠 AI Agent: ${data.signal} executed at ${data.confidence}% confidence`);
+  }
+}
+
+function toggleAiAuto() {
+  aiAutoEnabled = !aiAutoEnabled;
+  const btn   = document.getElementById('ai-auto-btn');
+  const panel = document.getElementById('ai-auto-panel');
+  if (aiAutoEnabled) {
+    btn.textContent = 'AUTO: ON';
+    btn.style.background    = 'var(--green)';
+    btn.style.borderColor   = 'var(--green)';
+    btn.style.color         = '#000';
+    panel.style.display     = 'block';
+    // Start auto loop — analyze every 30s
+    aiAutoTimer = setInterval(runAiAnalysis, 30000);
+    runAiAnalysis();  // run immediately
+    toast('🧠 AI Auto-Trade ENABLED');
+  } else {
+    btn.textContent = 'AUTO: OFF';
+    btn.style.background  = 'transparent';
+    btn.style.borderColor = 'var(--border)';
+    btn.style.color       = 'var(--text3)';
+    panel.style.display   = 'none';
+    clearInterval(aiAutoTimer);
+    aiAutoTimer = null;
+    toast('AI Auto-Trade disabled');
+  }
+}
+
 // ── ALGO STRATEGIES ────────────────────────────────────────────────────────────
 let algoRefreshTimer = null;
 let algoQueue = [];
@@ -2917,6 +3120,7 @@ async function loadStrategies() {
     'Scalper':       'var(--accent)',
     'Ichimoku':      '#e879f9',
     'AI Confluence': 'var(--amber)',
+    'AI Agent':      '#f59e0b',
   };
   el.innerHTML = data.map(s => {
     const color = colorMap[s.strategy] || 'var(--cyan)';
@@ -3002,6 +3206,7 @@ function startAlgoRefresh() {
 
 function stopAlgoRefresh() {
   if (algoRefreshTimer) { clearInterval(algoRefreshTimer); algoRefreshTimer = null; }
+  if (aiAutoTimer && !aiAutoEnabled) { clearInterval(aiAutoTimer); aiAutoTimer = null; }
 }
 
 // ── BACKTEST ───────────────────────────────────────────────────────────────────

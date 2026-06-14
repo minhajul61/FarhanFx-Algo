@@ -1164,6 +1164,55 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 elif sell_score >= 4:
                     signal = "SELL"
 
+            elif strategy == "AI Agent":
+                # Full scoring via the same engine used in /api/ai/analyze
+                ema20  = _ema(closes, 20)
+                ema50  = _ema(closes, 50)
+                ema200 = _ema(closes, min(200, len(closes)-1))
+                rsi_v  = _rsi(closes, 14)
+                macd_l, sig_l = _macd(closes)
+                mhist  = [m - s for m, s in zip(macd_l, sig_l)]
+                st_dir = _supertrend(highs, lows, closes)
+                kv, dv = _stochastic(highs, lows, closes)
+
+                # H4 bias (fetch separately)
+                h4_rates, _ = _get_rates(symbol, "H4", 100)
+                h4_bull = h4_bear = False
+                if h4_rates and len(h4_rates) >= 50:
+                    h4c    = [r["close"] for r in h4_rates]
+                    h4e50  = _ema(h4c, 50)
+                    h4e200 = _ema(h4c, min(200, len(h4c)-1))
+                    h4_bull = h4c[-1] > h4e50[-1] > h4e200[-1]
+                    h4_bear = h4c[-1] < h4e50[-1] < h4e200[-1]
+
+                price = closes[-1]
+                buy_pts = sell_pts = 0
+
+                if h4_bull:              buy_pts  += 25
+                if h4_bear:              sell_pts += 25
+                if price > ema20[-1] > ema50[-1]:  buy_pts  += 20
+                if price < ema20[-1] < ema50[-1]:  sell_pts += 20
+                if st_dir[-1] == 1:      buy_pts  += 20
+                if st_dir[-1] == -1:     sell_pts += 20
+                if mhist[-1] > 0 and mhist[-1] >= mhist[-2]: buy_pts  += 15
+                if mhist[-1] < 0 and mhist[-1] <= mhist[-2]: sell_pts += 15
+                if 50 <= rsi_v <= 68:    buy_pts  += 10
+                if 32 <= rsi_v <= 50:    sell_pts += 10
+                if kv[-2] < dv[-2] and kv[-1] > dv[-1]: buy_pts  += 10
+                if kv[-2] > dv[-2] and kv[-1] < dv[-1]: sell_pts += 10
+
+                _strategies[sid]["indicator"] = (
+                    f"🤖 AI Agent → BUY:{buy_pts}% SELL:{sell_pts}% | "
+                    f"H4:{'▲' if h4_bull else '▼' if h4_bear else '—'} "
+                    f"ST:{'▲' if st_dir[-1]==1 else '▼'} "
+                    f"RSI:{rsi_v} MACD:{'↑' if mhist[-1]>mhist[-2] else '↓'}"
+                )
+
+                if buy_pts >= 65 and buy_pts > sell_pts:
+                    signal = "BUY"
+                elif sell_pts >= 65 and sell_pts > buy_pts:
+                    signal = "SELL"
+
             if signal:
                 is_buy    = signal == "BUY"
                 entry     = tick.ask if is_buy else tick.bid
@@ -1299,6 +1348,132 @@ def get_algo_history(days: int = 30):
         result.sort(key=lambda x: x["time"], reverse=True)
         return result[:200]
     return _mt5_call(fn)
+
+@app.get("/api/ai/analyze/{symbol}")
+def ai_analyze(symbol: str, tf: str = "H1"):
+    """Full multi-timeframe AI market analysis — returns signal + breakdown."""
+    def fn():
+        sym = _resolve_symbol(symbol)
+
+        # Fetch primary + H4 timeframes
+        primary_rates, _ = _get_rates(sym, tf, 200)
+        h4_rates,      _ = _get_rates(sym, "H4", 100)
+        tick    = mt5.symbol_info_tick(sym)
+        sym_inf = mt5.symbol_info(sym)
+
+        if not primary_rates or len(primary_rates) < 30:
+            return {"error": f"Not enough data for {sym}"}
+
+        closes = [r["close"] for r in primary_rates]
+        highs  = [r["high"]  for r in primary_rates]
+        lows   = [r["low"]   for r in primary_rates]
+        price  = closes[-1]
+
+        # ── INDICATORS ──────────────────────────────────────────────────────────
+        ema20  = _ema(closes, 20)
+        ema50  = _ema(closes, 50)
+        ema200 = _ema(closes, min(200, len(closes)-1))
+        rsi14  = _rsi(closes, 14)
+        macd_l, sig_l = _macd(closes)
+        hist   = [m - s for m, s in zip(macd_l, sig_l)]
+        st_dir = _supertrend(highs, lows, closes, period=10, mult=3.0)
+        atr_v  = _atr(highs, lows, closes, 14)
+        bb_up, bb_mid, bb_lo = _bollinger(closes)
+        kv, dv = _stochastic(highs, lows, closes)
+
+        # H4 trend bias
+        h4_bias = "NEUTRAL"
+        if h4_rates and len(h4_rates) >= 50:
+            h4c  = [r["close"] for r in h4_rates]
+            h4e  = _ema(h4c, 50)
+            h4e200 = _ema(h4c, min(200, len(h4c)-1))
+            if h4c[-1] > h4e[-1] > h4e200[-1]: h4_bias = "BULLISH"
+            elif h4c[-1] < h4e[-1] < h4e200[-1]: h4_bias = "BEARISH"
+
+        # ── SIGNAL SCORING (each component max weight shown) ─────────────────
+        components = []
+
+        # 1. H4 Trend (25 pts) — strongest weight, macro direction
+        if h4_bias == "BULLISH":
+            components.append({"name":"H4 Trend","dir":"BUY","score":25,"max":25,"detail":"H4 price > EMA50 > EMA200"})
+        elif h4_bias == "BEARISH":
+            components.append({"name":"H4 Trend","dir":"SELL","score":25,"max":25,"detail":"H4 price < EMA50 < EMA200"})
+        else:
+            components.append({"name":"H4 Trend","dir":"NEUTRAL","score":0,"max":25,"detail":"No clear H4 alignment"})
+
+        # 2. EMA Stack on primary TF (20 pts)
+        if price > ema20[-1] > ema50[-1]:
+            s = 20 if price > ema200[-1] else 12
+            components.append({"name":"EMA Stack","dir":"BUY","score":s,"max":20,"detail":f"Price>{ema20[-1]:.5f}>{ema50[-1]:.5f}"})
+        elif price < ema20[-1] < ema50[-1]:
+            s = 20 if price < ema200[-1] else 12
+            components.append({"name":"EMA Stack","dir":"SELL","score":s,"max":20,"detail":f"Price<{ema20[-1]:.5f}<{ema50[-1]:.5f}"})
+        else:
+            components.append({"name":"EMA Stack","dir":"NEUTRAL","score":0,"max":20,"detail":"EMAs not aligned"})
+
+        # 3. Supertrend (20 pts)
+        if st_dir[-1] == 1:
+            components.append({"name":"Supertrend","dir":"BUY","score":20,"max":20,"detail":"Trend direction: BULLISH ▲"})
+        else:
+            components.append({"name":"Supertrend","dir":"SELL","score":20,"max":20,"detail":"Trend direction: BEARISH ▼"})
+
+        # 4. MACD Histogram (15 pts)
+        if hist[-1] > 0 and hist[-1] >= hist[-2]:
+            components.append({"name":"MACD","dir":"BUY","score":15,"max":15,"detail":f"Histogram rising: {hist[-1]:+.5f}"})
+        elif hist[-1] < 0 and hist[-1] <= hist[-2]:
+            components.append({"name":"MACD","dir":"SELL","score":15,"max":15,"detail":f"Histogram falling: {hist[-1]:+.5f}"})
+        else:
+            components.append({"name":"MACD","dir":"NEUTRAL","score":0,"max":15,"detail":f"Histogram undecided: {hist[-1]:+.5f}"})
+
+        # 5. RSI Zone (10 pts)
+        if 50 <= rsi14 <= 68:
+            components.append({"name":"RSI","dir":"BUY","score":10,"max":10,"detail":f"RSI {rsi14} — bullish momentum zone"})
+        elif 32 <= rsi14 <= 50:
+            components.append({"name":"RSI","dir":"SELL","score":10,"max":10,"detail":f"RSI {rsi14} — bearish momentum zone"})
+        else:
+            components.append({"name":"RSI","dir":"NEUTRAL","score":0,"max":10,"detail":f"RSI {rsi14} — extreme / overbought/oversold"})
+
+        # 6. Stochastic cross (10 pts)
+        if kv[-2] < dv[-2] and kv[-1] > dv[-1] and kv[-1] < 60:
+            components.append({"name":"Stochastic","dir":"BUY","score":10,"max":10,"detail":f"%K {kv[-1]:.0f} crossed above %D {dv[-1]:.0f}"})
+        elif kv[-2] > dv[-2] and kv[-1] < dv[-1] and kv[-1] > 40:
+            components.append({"name":"Stochastic","dir":"SELL","score":10,"max":10,"detail":f"%K {kv[-1]:.0f} crossed below %D {dv[-1]:.0f}"})
+        else:
+            components.append({"name":"Stochastic","dir":"NEUTRAL","score":0,"max":10,"detail":f"%K:{kv[-1]:.0f}  %D:{dv[-1]:.0f}"})
+
+        # ── FINAL SCORE ────────────────────────────────────────────────────────
+        buy_score  = sum(c["score"] for c in components if c["dir"] == "BUY")
+        sell_score = sum(c["score"] for c in components if c["dir"] == "SELL")
+        max_total  = sum(c["max"] for c in components)  # 100
+
+        buy_pct  = round(buy_score  / max_total * 100)
+        sell_pct = round(sell_score / max_total * 100)
+
+        if buy_pct >= 60 and buy_pct > sell_pct:
+            final_signal = "BUY";  confidence = buy_pct
+        elif sell_pct >= 60 and sell_pct > buy_pct:
+            final_signal = "SELL"; confidence = sell_pct
+        else:
+            final_signal = "HOLD"; confidence = max(buy_pct, sell_pct)
+
+        return {
+            "symbol":     sym,
+            "tf":         tf,
+            "price":      round(price, sym_inf.digits if sym_inf else 5),
+            "bid":        round(tick.bid, sym_inf.digits if sym_inf else 5) if tick else price,
+            "ask":        round(tick.ask, sym_inf.digits if sym_inf else 5) if tick else price,
+            "signal":     final_signal,
+            "confidence": confidence,
+            "buy_score":  buy_pct,
+            "sell_score": sell_pct,
+            "h4_bias":    h4_bias,
+            "rsi":        rsi14,
+            "atr":        round(atr_v, sym_inf.digits if sym_inf else 5) if sym_inf else atr_v,
+            "supertrend": "BULLISH" if st_dir[-1] == 1 else "BEARISH",
+            "components": components,
+        }
+    return _mt5_call(fn)
+
 
 @app.delete("/api/strategy/{sid}")
 def delete_strategy(sid: str):
