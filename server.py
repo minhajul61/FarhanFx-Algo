@@ -414,14 +414,19 @@ TF_MAP = {
 }
 
 def _resolve_symbol(symbol: str) -> str:
-    """Find exact MT5 symbol name case-insensitively."""
-    if mt5.symbol_info(symbol):
+    """Find exact MT5 symbol name, case-insensitive, and ensure it's selected."""
+    # Try exact match first
+    info = mt5.symbol_info(symbol)
+    if info:
+        mt5.symbol_select(symbol, True)
         return symbol
+    # Try case-insensitive match across all broker symbols
     all_syms = mt5.symbols_get()
     if all_syms:
         low = symbol.lower()
         for s in all_syms:
             if s.name.lower() == low:
+                mt5.symbol_select(s.name, True)
                 return s.name
     return symbol
 

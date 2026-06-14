@@ -1290,12 +1290,12 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ── LOAD SYMBOLS FROM MT5 ──────────────────────────────────────────────────────
+// Fallback: only confirmed CXM Direct symbols (used when server is offline)
 const FALLBACK_SYMBOLS = [
   'EURUSDc','GBPUSDc','USDJPYc','USDCHFc','AUDUSDc','NZDUSDc','USDCADc',
-  'EURGBPc','EURJPYc','GBPJPYc','EURCADc','EURAUDc',
+  'EURGBPc','EURJPYc','GBPJPYc','EURCADc','EURAUDc','GBPCADc','GBPCHFc',
   'XAUUSDc','XAGUSDc',
-  'NAS100s','US30s','US500s','GER40s','UK100s',
-  'BTCUSDm','ETHUSDm','LTCUSDm','XRPUSDm'
+  'NAS100s','US30s','US500s','GER40s','UK100s','JPN225s','AUS200s'
 ];
 
 async function loadMT5Symbols() {
