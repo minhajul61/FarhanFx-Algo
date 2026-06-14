@@ -181,10 +181,10 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 .close-btn{background:transparent;border:1px solid var(--red);color:var(--red);font-family:var(--font);font-size:10px;padding:4px 10px;border-radius:6px;cursor:pointer;letter-spacing:1px;transition:all 0.2s;white-space:nowrap}
 .close-btn:hover{background:var(--red);color:#fff}
 .live-equity{font-size:11px;color:var(--text2);margin-left:8px}
-.toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;font-size:12px;font-weight:700;letter-spacing:1px;z-index:999;opacity:0;transform:translateY(10px);transition:all 0.3s;pointer-events:none}
+.toast{position:fixed;bottom:24px;right:24px;max-width:380px;padding:14px 20px;border-radius:10px;font-size:12px;font-weight:600;letter-spacing:0.3px;line-height:1.5;z-index:9999;opacity:0;transform:translateY(10px);transition:all 0.3s;pointer-events:none;word-break:break-word}
 .toast.show{opacity:1;transform:translateY(0)}
 .toast-ok{background:rgba(16,185,129,0.15);border:1px solid var(--green);color:var(--green)}
-.toast-err{background:rgba(239,68,68,0.15);border:1px solid var(--red);color:var(--red)}
+.toast-err{background:rgba(239,68,68,0.22);border:2px solid var(--red);color:#ff6b6b;font-size:13px;box-shadow:0 4px 24px rgba(239,68,68,0.25)}
 </style>
 </head>
 <body>
@@ -1333,8 +1333,10 @@ function toast(msg, ok = true) {
   t.textContent = msg;
   t.className = 'toast show ' + (ok ? 'toast-ok' : 'toast-err');
   clearTimeout(t._tid);
-  t._tid = setTimeout(() => { t.classList.remove('show'); }, 3000);
+  t._tid = setTimeout(() => { t.classList.remove('show'); }, ok ? 3000 : 6000);
 }
+
+function toastErr(msg) { toast('⚠ ' + msg, false); }
 
 // ── LOGIN / AUTH ───────────────────────────────────────────────────────────────
 function setServer(s) {
@@ -2078,7 +2080,7 @@ async function jSyncMT5() {
 
   if (r && r.error) {
     jSyncSetState('error');
-    toast('Sync failed: ' + r.error, false);
+    toastErr('Sync failed: ' + r.error);
     jSyncing = false; return;
   }
   const deals = Array.isArray(r) ? r : (r.deals || []);
@@ -2243,7 +2245,7 @@ async function loadPositions() {
 async function closePosition(ticket) {
   if (!confirm('Close position #' + ticket + '?')) return;
   const r = await apiFetch('/api/close/' + ticket, { method: 'POST' });
-  if (r.error) { toast('Close failed: ' + r.error, false); return; }
+  if (r.error) { toastErr('Close failed: ' + r.error); return; }
   toast('Position #' + ticket + ' closed');
   loadPositions();
   loadAccount();
@@ -2371,10 +2373,10 @@ async function placeOrder(side) {
   buyBtn.disabled = false; sellBtn.disabled = false;
   activeBtn.innerHTML = origHTML;
 
-  if (r.error) { toast(side + ' failed: ' + r.error, false); return; }
-  const slInfo = r.sl > 0 ? ` SL:${r.sl}` : ' (no SL)';
-  const tpInfo = r.tp > 0 ? ` TP:${r.tp}` : ' (no TP)';
-  toast(`${side} #${r.ticket} @ ${r.price}${slInfo}${tpInfo}`);
+  if (r.error) { toastErr(`${side} failed: ${r.error}`); return; }
+  const slInfo = r.sl > 0 ? `  SL: ${r.sl}` : '';
+  const tpInfo = r.tp > 0 ? `  TP: ${r.tp}` : '';
+  toast(`✓ ${side} #${r.ticket} opened @ ${r.price}${slInfo}${tpInfo}`);
   loadPositions();
   loadAccount();
 }
@@ -2428,14 +2430,14 @@ async function startStrategy() {
   };
   if (!body.symbol || !body.volume) { toast('Fill symbol and lot size', false); return; }
   const r = await apiFetch('/api/strategy/start', { method: 'POST', body: JSON.stringify(body) });
-  if (r.error) { toast('Failed: ' + r.error, false); return; }
+  if (r.error) { toastErr('Failed: ' + r.error); return; }
   toast(`Strategy started — ID: ${r.id}`);
   loadStrategies();
 }
 
 async function stopStrategy(sid) {
   const r = await apiFetch('/api/strategy/stop/' + sid, { method: 'POST' });
-  if (r.error) { toast('Stop failed: ' + r.error, false); return; }
+  if (r.error) { toastErr('Stop failed: ' + r.error); return; }
   toast('Strategy stopped');
   loadStrategies();
 }
