@@ -951,13 +951,19 @@ def _send_order(symbol, side, volume, sl, tp, magic, comment):
         "price":        tick.ask if is_buy else tick.bid,
         "sl":           sl,
         "tp":           tp,
-        "deviation":    20,
+        "deviation":    30,
         "magic":        magic,
         "comment":      comment,
         "type_time":    mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_IOC,
     }
-    return mt5.order_send(req)
+    for filling in [mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_RETURN]:
+        req["type_filling"] = filling
+        result = mt5.order_send(req)
+        if result.retcode == mt5.TRADE_RETCODE_DONE:
+            return result
+        if result.retcode != 10038:
+            return result
+    return result
 
 
 def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
@@ -994,11 +1000,12 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
         if result and isinstance(result, dict) and result.get("skip"):
             return
         if result and hasattr(result, "retcode") and result.retcode == mt5.TRADE_RETCODE_DONE:
-            add_log(f"✅ {side} #{result.order} @ {result.price:.5f}  SL:{sl_val:.5f}  TP:{tp_val:.5f}")
+            add_log(f"✅ {side} #{result.order} @ {result.price}  SL:{sl_val}  TP:{tp_val}")
             _strategies[sid]["trades"] += 1
         elif result:
-            err = result.comment if hasattr(result, "comment") else str(result)
-            add_log(f"❌ Order failed: {err}")
+            err = getattr(result, "comment", str(result))
+            code = getattr(result, "retcode", "?")
+            add_log(f"❌ Order failed: {err} (retcode {code})")
 
     while not stop_ev.is_set():
         try:
@@ -1023,8 +1030,9 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 _time.sleep(5)
                 continue
 
-            pip = sym_info.point * 10
-            signal = None
+            pip      = _pip_size(sym_info)
+            min_dist = max(sym_info.trade_stops_level * sym_info.point, pip)
+            signal   = None
 
             if strategy == "MA Cross":
                 fast = _ema(closes, 20)
@@ -1072,11 +1080,17 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                     signal = "SELL"
 
             if signal:
-                is_buy = signal == "BUY"
-                entry = tick.ask if is_buy else tick.bid
-                sl_val = entry - sl_pips * pip if is_buy else entry + sl_pips * pip
-                tp_val = entry + tp_pips * pip if is_buy else entry - tp_pips * pip
-                add_log(f"📊 Signal: {signal} @ {entry:.5f}")
+                is_buy    = signal == "BUY"
+                entry     = tick.ask if is_buy else tick.bid
+                # SL/TP reference from BID (buy closes at bid) or ASK (sell closes at ask)
+                sl_tp_ref = tick.bid if is_buy else tick.ask
+                sl_dist   = max(sl_pips * pip, min_dist + sym_info.point)
+                tp_dist   = max(tp_pips * pip, min_dist + sym_info.point)
+                sl_val    = round(sl_tp_ref - sl_dist, sym_info.digits) if is_buy \
+                            else round(sl_tp_ref + sl_dist, sym_info.digits)
+                tp_val    = round(sl_tp_ref + tp_dist, sym_info.digits) if is_buy \
+                            else round(sl_tp_ref - tp_dist, sym_info.digits)
+                add_log(f"📊 Signal: {signal} @ {entry}  SL:{sl_val}  TP:{tp_val}  (pip={pip})")
                 do_trade(signal, entry, sl_val, tp_val)
 
         except Exception as e:
