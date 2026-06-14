@@ -173,10 +173,31 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 .tx-date{font-size:11px;color:var(--text2)}
 
 /* MT5 CONNECTION */
-.conn-bar{display:flex;align-items:center;gap:8px;padding:6px 14px;background:var(--card);border:1px solid var(--border);border-radius:8px;font-size:10px;letter-spacing:1px}
+.conn-bar{display:flex;align-items:center;gap:8px;padding:5px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;font-size:10px;letter-spacing:1px;cursor:default;transition:all 0.2s}
+.conn-bar.disconnected{border-color:rgba(239,68,68,0.4);cursor:pointer}
+.conn-bar.disconnected:hover{background:rgba(239,68,68,0.08);border-color:var(--red)}
 .conn-dot{width:7px;height:7px;border-radius:50%;background:var(--red);flex-shrink:0;transition:background 0.3s}
 .conn-dot.live{background:var(--green);animation:pulse 2s infinite}
 .conn-label{color:var(--text2)}
+/* MT5 CONNECT MODAL */
+#mt5-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:50}
+#mt5-modal.open{display:flex}
+.mt5-overlay{position:absolute;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px)}
+.mt5-mcard{position:relative;background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:28px;width:100%;max-width:440px;box-shadow:0 16px 56px rgba(0,0,0,0.6);z-index:1;max-height:90vh;overflow-y:auto}
+.mt5-mcard::-webkit-scrollbar{width:4px}.mt5-mcard::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.mt5-mclose{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:4px 8px;border-radius:6px;line-height:1}
+.mt5-mclose:hover{background:var(--bg2);color:var(--text)}
+.mt5-mtitle{font-size:13px;font-weight:700;letter-spacing:2px;color:var(--text);margin-bottom:6px}
+.mt5-msub{font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:20px}
+.broker-tabs{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
+.broker-tab{padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:10px;font-weight:700;letter-spacing:1px;cursor:pointer;font-family:var(--font);transition:all 0.15s}
+.broker-tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.broker-tab:hover:not(.active){border-color:var(--accent);color:var(--accent)}
+.server-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.srv-btn{padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);color:var(--text2);font-size:10px;cursor:pointer;font-family:var(--font);transition:all 0.15s;white-space:nowrap}
+.srv-btn:hover{border-color:var(--accent);color:var(--accent);background:rgba(139,92,246,0.08)}
+.mt5-merr{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:9px 13px;font-size:12px;color:var(--red);margin-bottom:12px;display:none}
+.mt5-mstatus{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:14px;font-size:10px;color:var(--text3);letter-spacing:1px}
 
 /* ORDER PANEL */
 .order-panel{background:var(--card);border:1px solid var(--accent);border-radius:10px;padding:16px;margin-bottom:16px}
@@ -254,10 +275,14 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         <label>Broker Server</label>
         <input type="text" id="mt5-server" placeholder="e.g. MetaQuotes-Demo"/>
         <div class="server-presets">
-          <button class="preset-btn" onclick="setServer('MetaQuotes-Demo')">MetaQuotes-Demo</button>
-          <button class="preset-btn" onclick="setServer('Alpari-Demo')">Alpari-Demo</button>
-          <button class="preset-btn" onclick="setServer('ICMarkets-Demo02')">ICMarkets-Demo</button>
+          <button class="preset-btn" onclick="setServer('Exness-MT5Real')">Exness-Real</button>
           <button class="preset-btn" onclick="setServer('Exness-MT5Trial2')">Exness-Demo</button>
+          <button class="preset-btn" onclick="setServer('Vantage-Live')">Vantage-Live</button>
+          <button class="preset-btn" onclick="setServer('Vantage-Demo')">Vantage-Demo</button>
+          <button class="preset-btn" onclick="setServer('CXMDirect-Live')">CXM-Live</button>
+          <button class="preset-btn" onclick="setServer('CXMDirect-Demo')">CXM-Demo</button>
+          <button class="preset-btn" onclick="setServer('MetaQuotes-Demo')">MetaQuotes-Demo</button>
+          <button class="preset-btn" onclick="setServer('ICMarkets-Demo02')">ICMarkets-Demo</button>
         </div>
       </div>
 
@@ -285,7 +310,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
     </div>
     <div class="tb-right">
       <div class="user-badge" id="user-badge">● USER</div>
-      <div class="conn-bar"><div class="conn-dot" id="conn-dot"></div><span class="conn-label" id="conn-label">DISCONNECTED</span><span class="live-equity" id="live-equity"></span></div>
+      <div class="conn-bar disconnected" id="conn-bar" onclick="onConnBarClick()"><div class="conn-dot" id="conn-dot"></div><span class="conn-label" id="conn-label">CONNECT MT5</span><span class="live-equity" id="live-equity"></span></div>
       <button class="logout-btn" onclick="logout()">LOGOUT ×</button>
     </div>
   </div>
@@ -3727,8 +3752,137 @@ function _scheduleWsReconnect() {
 
 function setConnStatus(online) {
   document.getElementById('conn-dot').className = 'conn-dot' + (online ? ' live' : '');
-  document.getElementById('conn-label').textContent = online ? 'MT5 LIVE' : 'DISCONNECTED';
+  document.getElementById('conn-label').textContent = online ? 'MT5 LIVE' : 'CONNECT MT5';
+  const bar = document.getElementById('conn-bar');
+  if (bar) { bar.className = 'conn-bar' + (online ? '' : ' disconnected'); }
   if (!online) document.getElementById('live-equity').textContent = '';
+}
+
+function onConnBarClick() {
+  const label = document.getElementById('conn-label').textContent;
+  if (label !== 'MT5 LIVE') openMT5Modal();
+}
+
+// ── MT5 MODAL ──────────────────────────────────────────────────────────────────
+const _BROKER_SERVERS = {
+  exness: [
+    { label: 'Real 1',   value: 'Exness-MT5Real'   },
+    { label: 'Real 4',   value: 'Exness-MT5Real4'  },
+    { label: 'Real 7',   value: 'Exness-MT5Real7'  },
+    { label: 'Real 8',   value: 'Exness-MT5Real8'  },
+    { label: 'Demo',     value: 'Exness-MT5Trial2' },
+  ],
+  vantage: [
+    { label: 'Live',       value: 'Vantage-Live'      },
+    { label: 'Demo',       value: 'Vantage-Demo'      },
+    { label: 'FX Live',    value: 'VantageFX-Live'    },
+    { label: 'FX Demo',    value: 'VantageFX-Demo'    },
+    { label: 'MT5 Live',   value: 'VantageFX-MT5'     },
+  ],
+  cxm: [
+    { label: 'Live',   value: 'CXMDirect-Live'  },
+    { label: 'Demo',   value: 'CXMDirect-Demo'  },
+    { label: 'MT5',    value: 'CXMDirect-MT5'   },
+  ],
+  other: [
+    { label: 'MetaQuotes Demo', value: 'MetaQuotes-Demo'     },
+    { label: 'ICMarkets Demo',  value: 'ICMarkets-Demo02'    },
+    { label: 'Alpari Demo',     value: 'Alpari-Demo'         },
+    { label: 'Pepperstone',     value: 'Pepperstone-Demo02'  },
+    { label: 'XM Demo',        value: 'XM.COM-Demo 4'       },
+    { label: 'OANDA',           value: 'OANDA-v20 MT5 Live-1'},
+  ],
+};
+
+let _activeBroker = 'exness';
+
+function selectBroker(broker, el) {
+  _activeBroker = broker;
+  document.querySelectorAll('.broker-tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const servers = _BROKER_SERVERS[broker] || [];
+  document.getElementById('m-server-list').innerHTML = servers.map(s =>
+    `<button class="srv-btn" onclick="setModalServer('${s.value}')">${s.label}</button>`
+  ).join('');
+  // Auto-fill first server
+  if (servers.length > 0) document.getElementById('m-server').value = servers[0].value;
+}
+
+function setModalServer(val) {
+  document.getElementById('m-server').value = val;
+  document.getElementById('m-login').focus();
+}
+
+function openMT5Modal() {
+  document.getElementById('mt5-modal').classList.add('open');
+  document.getElementById('mt5-merr').style.display = 'none';
+  document.getElementById('mt5-mstatus').textContent = 'Make sure MetaTrader 5 is running';
+  selectBroker(_activeBroker, document.querySelector(`.broker-tab.active`));
+  setTimeout(() => document.getElementById('m-login').focus(), 100);
+}
+
+function closeMT5Modal() {
+  document.getElementById('mt5-modal').classList.remove('open');
+  const btn = document.getElementById('m-btn');
+  btn.disabled = false;
+  btn.textContent = 'CONNECT →';
+  btn.style.background = '';
+}
+
+async function doModalConnect() {
+  const login    = parseInt(document.getElementById('m-login').value.trim());
+  const password = document.getElementById('m-password').value.trim();
+  const server   = document.getElementById('m-server').value.trim();
+  const btn      = document.getElementById('m-btn');
+  const errEl    = document.getElementById('mt5-merr');
+  const statusEl = document.getElementById('mt5-mstatus');
+  errEl.style.display = 'none';
+  if (!login || !password || !server) {
+    errEl.textContent = 'Please fill Account Number, Password and Server.';
+    errEl.style.display = 'block'; return;
+  }
+  btn.disabled = true; btn.textContent = 'CONNECTING...'; btn.style.background = 'var(--cyan)';
+  statusEl.textContent = 'Authenticating with MT5...';
+  const r = await apiFetch('/api/connect', { method: 'POST', body: JSON.stringify({ login, password, server }) });
+  if (r.error) {
+    btn.disabled = false; btn.textContent = 'CONNECT →'; btn.style.background = '';
+    errEl.textContent = r.error; errEl.style.display = 'block';
+    statusEl.textContent = 'Connection failed — check credentials';
+    return;
+  }
+  btn.textContent = '✓ CONNECTED'; statusEl.textContent = 'MT5 login success!';
+  setTimeout(() => {
+    closeMT5Modal();
+    document.getElementById('login-screen').style.display = 'none';
+    showApp(r);
+    loadMT5Symbols();
+    setTimeout(loadAccount, 500);
+  }, 600);
+}
+
+async function doModalSession() {
+  const btn = document.getElementById('m-session-btn');
+  const statusEl = document.getElementById('mt5-mstatus');
+  const errEl    = document.getElementById('mt5-merr');
+  errEl.style.display = 'none';
+  btn.disabled = true; btn.textContent = '⚡ CONNECTING...';
+  statusEl.textContent = 'Reading MT5 session...';
+  const r = await apiFetch('/api/account');
+  if (r.error) {
+    btn.disabled = false; btn.textContent = '⚡ USE CURRENT MT5 SESSION';
+    errEl.textContent = r.error.includes('offline') ? 'Server offline — start server.py first' : 'No active MT5 session found';
+    errEl.style.display = 'block';
+    statusEl.textContent = 'Make sure MetaTrader 5 is running';
+    return;
+  }
+  btn.textContent = '✓ SESSION FOUND'; statusEl.textContent = 'Session connected!';
+  setTimeout(() => {
+    closeMT5Modal();
+    document.getElementById('login-screen').style.display = 'none';
+    showApp(r);
+    loadMT5Symbols();
+    setTimeout(loadAccount, 500);
+  }, 500);
 }
 
 // ── AI MARKET ANALYSIS ─────────────────────────────────────────────────────────
@@ -4593,5 +4747,52 @@ function initCharts() {
 </script>
 <!-- Symbol datalist at body level so browser can access from any input -->
 <datalist id="jf-symbol-list"></datalist>
+
+<!-- MT5 CONNECT MODAL -->
+<div id="mt5-modal">
+  <div class="mt5-overlay" onclick="closeMT5Modal()"></div>
+  <div class="mt5-mcard">
+    <button class="mt5-mclose" onclick="closeMT5Modal()">✕</button>
+    <div class="mt5-mtitle">CONNECT MT5 ACCOUNT</div>
+    <div class="mt5-msub">SELECT BROKER &amp; ENTER CREDENTIALS</div>
+
+    <!-- Broker Tabs -->
+    <div class="broker-tabs">
+      <button class="broker-tab active" onclick="selectBroker('exness',this)">EXNESS</button>
+      <button class="broker-tab" onclick="selectBroker('vantage',this)">VANTAGE</button>
+      <button class="broker-tab" onclick="selectBroker('cxm',this)">CXM DIRECT</button>
+      <button class="broker-tab" onclick="selectBroker('other',this)">OTHER</button>
+    </div>
+
+    <!-- Server presets (dynamic) -->
+    <div class="field">
+      <label>Broker Server</label>
+      <input type="text" id="m-server" placeholder="e.g. Exness-MT5Real"/>
+      <div class="server-list" id="m-server-list"></div>
+    </div>
+
+    <div class="mt5-merr" id="mt5-merr"></div>
+
+    <div class="field" style="margin-top:4px">
+      <label>Account Number</label>
+      <input type="number" id="m-login" placeholder="e.g. 12345678"
+             onkeydown="if(event.key==='Enter') document.getElementById('m-password').focus()"/>
+    </div>
+    <div class="field">
+      <label>MT5 Password</label>
+      <input type="password" id="m-password" placeholder="••••••••••••"
+             onkeydown="if(event.key==='Enter') doModalConnect()"/>
+    </div>
+
+    <button class="lbtn" id="m-btn" onclick="doModalConnect()" style="margin-top:4px">CONNECT →</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <span style="font-size:10px;color:var(--text3);letter-spacing:1px">OR</span>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+    <button class="lbtn" id="m-session-btn" onclick="doModalSession()" style="background:transparent;border:1px solid var(--accent);color:var(--accent);margin-top:10px">⚡ USE CURRENT MT5 SESSION</button>
+    <div class="mt5-mstatus" id="mt5-mstatus">Make sure MetaTrader 5 is running</div>
+  </div>
+</div>
 </body>
 </html>
