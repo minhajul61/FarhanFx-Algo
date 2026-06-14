@@ -303,7 +303,14 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         <!-- QUICK ORDER -->
         <div class="order-panel">
           <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-            Quick Order
+            <div style="display:flex;align-items:center;gap:10px">
+              Quick Order
+              <!-- MARKET / PENDING tabs -->
+              <div style="display:flex;background:var(--bg);border:1px solid var(--border);border-radius:6px;overflow:hidden">
+                <button id="o-tab-market" onclick="oSetTab('market')" style="padding:4px 14px;font-size:11px;font-weight:700;background:var(--accent);color:#fff;border:none;cursor:pointer;transition:all 0.2s">MARKET</button>
+                <button id="o-tab-pending" onclick="oSetTab('pending')" style="padding:4px 14px;font-size:11px;font-weight:700;background:transparent;color:var(--text2);border:none;cursor:pointer;transition:all 0.2s">PENDING</button>
+              </div>
+            </div>
             <div style="display:flex;align-items:center;gap:8px">
               <span style="font-size:10px;color:var(--text2);font-weight:500;letter-spacing:0.5px">SL/TP MODE</span>
               <div style="display:flex;background:var(--bg);border:1px solid var(--border);border-radius:6px;overflow:hidden">
@@ -312,6 +319,25 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               </div>
             </div>
           </div>
+
+          <!-- Pending order type selector (hidden in market mode) -->
+          <div id="o-pending-row" style="display:none;margin-bottom:12px;padding:10px 14px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-size:10px;color:var(--text2);font-weight:600;letter-spacing:0.5px;min-width:70px">ORDER TYPE</span>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button id="ptype-bl" onclick="oPendingType('BUY_LIMIT')"  class="ptype-btn ptype-active-buy" style="padding:5px 12px;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;border:1px solid var(--green);background:rgba(16,185,129,0.2);color:var(--green);transition:all 0.2s">▼ BUY LIMIT</button>
+                <button id="ptype-bs" onclick="oPendingType('BUY_STOP')"   class="ptype-btn" style="padding:5px 12px;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);transition:all 0.2s">▲ BUY STOP</button>
+                <button id="ptype-sl" onclick="oPendingType('SELL_LIMIT')" class="ptype-btn" style="padding:5px 12px;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);transition:all 0.2s">▲ SELL LIMIT</button>
+                <button id="ptype-ss" onclick="oPendingType('SELL_STOP')"  class="ptype-btn" style="padding:5px 12px;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);transition:all 0.2s">▼ SELL STOP</button>
+              </div>
+              <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+                <span style="font-size:10px;color:var(--text2)">AT PRICE</span>
+                <input id="o-pending-price" type="number" class="sinput" style="width:130px" step="0.00001" placeholder="trigger price"/>
+              </div>
+            </div>
+            <div id="o-pending-hint" style="font-size:10px;color:var(--text3);margin-top:6px"></div>
+          </div>
+
           <div class="order-grid">
             <div class="field">
               <label>Symbol</label>
@@ -340,15 +366,33 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               <input id="o-comment" class="sinput" style="width:100%" value="FarhanFX Algo"/>
               <div style="height:14px"></div>
             </div>
-            <div style="display:flex;flex-direction:column;justify-content:flex-start">
+            <!-- MARKET mode buttons -->
+            <div id="o-market-btns" style="display:flex;flex-direction:column;justify-content:flex-start">
               <button class="obtn obtn-buy" id="o-buy-btn" onclick="placeOrder('BUY')">▲ BUY</button>
               <div style="height:14px"></div>
             </div>
-            <div style="display:flex;flex-direction:column;justify-content:flex-start">
+            <div id="o-market-btns2" style="display:flex;flex-direction:column;justify-content:flex-start">
               <button class="obtn obtn-sell" id="o-sell-btn" onclick="placeOrder('SELL')">▼ SELL</button>
               <div style="height:14px"></div>
             </div>
+            <!-- PENDING mode button (spans both columns) -->
+            <div id="o-pending-btn-wrap" style="display:none;grid-column:span 2;align-self:start">
+              <button id="o-pending-btn" onclick="placePendingOrder()" class="obtn" style="width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff">⧖ PLACE PENDING</button>
+              <div style="height:14px"></div>
+            </div>
           </div>
+        </div>
+
+        <!-- PENDING ORDERS -->
+        <div class="panel" id="pending-panel" style="display:none">
+          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
+            Pending Orders
+            <button class="sbtn" onclick="loadPendingOrders()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
+          </div>
+          <table>
+            <thead><tr><th>TICKET</th><th>SYMBOL</th><th>TYPE</th><th>LOTS</th><th>PRICE</th><th>SL</th><th>TP</th><th>PLACED</th><th>ACTION</th></tr></thead>
+            <tbody id="pending-tbody"><tr><td colspan="9" style="text-align:center;color:var(--text3);padding:16px">No pending orders</td></tr></tbody>
+          </table>
         </div>
 
         <!-- OPEN POSITIONS -->
@@ -2467,7 +2511,55 @@ async function loadDeals() {
 
 // ── QUICK ORDER HELPERS ─────────────────────────────────────────────────────────
 let oMode = 'pips';
+let oTab = 'market';
+let oPType = 'BUY_LIMIT';
 let oCurrentTick = null;
+
+function oSetTab(tab) {
+  oTab = tab;
+  const mBtn = document.getElementById('o-tab-market');
+  const pBtn = document.getElementById('o-tab-pending');
+  mBtn.style.background = tab === 'market' ? 'var(--accent)' : 'transparent';
+  mBtn.style.color      = tab === 'market' ? '#fff' : 'var(--text2)';
+  pBtn.style.background = tab === 'pending' ? 'var(--accent)' : 'transparent';
+  pBtn.style.color      = tab === 'pending' ? '#fff' : 'var(--text2)';
+
+  document.getElementById('o-pending-row').style.display     = tab === 'pending' ? 'block' : 'none';
+  document.getElementById('o-market-btns').style.display     = tab === 'market'  ? 'flex'  : 'none';
+  document.getElementById('o-market-btns2').style.display    = tab === 'market'  ? 'flex'  : 'none';
+  document.getElementById('o-pending-btn-wrap').style.display= tab === 'pending' ? 'block' : 'none';
+  document.getElementById('pending-panel').style.display     = tab === 'pending' ? 'block' : 'none';
+  if (tab === 'pending') loadPendingOrders();
+}
+
+const PTYPE_MAP = {
+  BUY_LIMIT:  { label:'▼ BUY LIMIT',  hint:'Executes when price drops TO this level',  btnId:'ptype-bl', color:'var(--green)' },
+  BUY_STOP:   { label:'▲ BUY STOP',   hint:'Executes when price rises TO this level',  btnId:'ptype-bs', color:'var(--green)' },
+  SELL_LIMIT: { label:'▲ SELL LIMIT', hint:'Executes when price rises TO this level',  btnId:'ptype-sl', color:'var(--red)'   },
+  SELL_STOP:  { label:'▼ SELL STOP',  hint:'Executes when price drops TO this level',  btnId:'ptype-ss', color:'var(--red)'   },
+};
+
+function oPendingType(type) {
+  oPType = type;
+  const ids = ['ptype-bl','ptype-bs','ptype-sl','ptype-ss'];
+  ids.forEach(id => {
+    const b = document.getElementById(id);
+    b.style.background = 'transparent';
+    b.style.color      = 'var(--text2)';
+    b.style.borderColor= 'var(--border)';
+  });
+  const cfg = PTYPE_MAP[type];
+  const active = document.getElementById(cfg.btnId);
+  active.style.background  = cfg.color === 'var(--green)' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)';
+  active.style.color       = cfg.color;
+  active.style.borderColor = cfg.color;
+  document.getElementById('o-pending-hint').textContent = cfg.hint;
+  document.getElementById('o-pending-btn').textContent  = '⧖ ' + cfg.label;
+  document.getElementById('o-pending-btn').style.background =
+    cfg.color === 'var(--green)'
+      ? 'linear-gradient(135deg,#059669,#10b981)'
+      : 'linear-gradient(135deg,#dc2626,#ef4444)';
+}
 
 function getPipSize(symbol) {
   const s = symbol.toUpperCase().replace(/[CS]$/, '');
@@ -2533,6 +2625,71 @@ function oUpdatePreviews() {
   document.getElementById('o-tp-preview').innerHTML = tp > 0
     ? `<span style="color:var(--green)">BUY≈${fmt(ask + tp*pip)}</span>&nbsp;&nbsp;<span style="color:var(--red)">SELL≈${fmt(bid - tp*pip)}</span>`
     : '<span style="color:var(--text3)">0 = no TP</span>';
+}
+
+// ── PENDING ORDERS ─────────────────────────────────────────────────────────────
+async function placePendingOrder() {
+  const symbol  = document.getElementById('o-symbol').value.trim();
+  const volume  = parseFloat(document.getElementById('o-volume').value);
+  const price   = parseFloat(document.getElementById('o-pending-price').value);
+  const slVal   = parseFloat(document.getElementById('o-sl').value) || 0;
+  const tpVal   = parseFloat(document.getElementById('o-tp').value) || 0;
+  const comment = document.getElementById('o-comment').value;
+
+  if (!symbol || !volume)  { toastErr('Fill symbol and volume'); return; }
+  if (!price || price <= 0){ toastErr('Enter a valid trigger price'); return; }
+
+  const btn = document.getElementById('o-pending-btn');
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = '⏳ ...';
+
+  const body = {
+    symbol, order_type: oPType, volume, price,
+    sl: oMode === 'price' ? slVal : 0,
+    tp: oMode === 'price' ? tpVal : 0,
+    sl_pips: oMode === 'pips' ? slVal : 0,
+    tp_pips: oMode === 'pips' ? tpVal : 0,
+    comment
+  };
+  const r = await apiFetch('/api/pending', { method: 'POST', body: JSON.stringify(body) });
+
+  btn.disabled = false; btn.textContent = orig;
+  if (r.error) { toastErr('Pending failed: ' + r.error); return; }
+  toast(`✓ Pending #${r.ticket} placed @ ${price}`);
+  loadPendingOrders();
+}
+
+async function loadPendingOrders() {
+  const data = await apiFetch('/api/pending_orders');
+  const tbody = document.getElementById('pending-tbody');
+  if (!tbody) return;
+  if (!Array.isArray(data) || data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:16px">No pending orders</td></tr>';
+    return;
+  }
+  const typeColors = {
+    'BUY LIMIT':'var(--green)','BUY STOP':'var(--green)',
+    'SELL LIMIT':'var(--red)','SELL STOP':'var(--red)'
+  };
+  tbody.innerHTML = data.map(o => `
+    <tr>
+      <td>#${o.ticket}</td>
+      <td>${o.symbol}</td>
+      <td><span class="badge" style="color:${typeColors[o.type]||'var(--text2)'};border-color:${typeColors[o.type]||'var(--border)'};background:transparent">${o.type}</span></td>
+      <td>${o.volume}</td>
+      <td style="color:var(--cyan);font-weight:600">${o.price}</td>
+      <td>${o.sl || '—'}</td>
+      <td>${o.tp || '—'}</td>
+      <td style="color:var(--text3);font-size:11px">${o.time}</td>
+      <td><button class="close-btn" onclick="cancelPendingOrder(${o.ticket})">CANCEL ×</button></td>
+    </tr>`).join('');
+}
+
+async function cancelPendingOrder(ticket) {
+  if (!confirm('Cancel pending order #' + ticket + '?')) return;
+  const r = await apiFetch('/api/cancel/' + ticket, { method: 'POST' });
+  if (r.error) { toastErr('Cancel failed: ' + r.error); return; }
+  toast('Pending #' + ticket + ' cancelled');
+  loadPendingOrders();
 }
 
 // ── PLACE ORDER ────────────────────────────────────────────────────────────────

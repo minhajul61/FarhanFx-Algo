@@ -408,6 +408,130 @@ def modify_position(ticket: int, req: ModifyRequest):
     return result
 
 
+# ── PENDING ORDERS ──────────────────────────────────────────────────────────────
+
+PENDING_TYPE_MAP = {
+    "BUY_LIMIT":   mt5.ORDER_TYPE_BUY_LIMIT,
+    "BUY_STOP":    mt5.ORDER_TYPE_BUY_STOP,
+    "SELL_LIMIT":  mt5.ORDER_TYPE_SELL_LIMIT,
+    "SELL_STOP":   mt5.ORDER_TYPE_SELL_STOP,
+}
+
+class PendingRequest(BaseModel):
+    symbol:     str
+    order_type: str
+    volume:     float
+    price:      float
+    sl:         Optional[float] = 0.0
+    tp:         Optional[float] = 0.0
+    sl_pips:    Optional[float] = 0.0
+    tp_pips:    Optional[float] = 0.0
+    comment:    str = "FarhanFX Algo"
+
+@app.post("/api/pending")
+def place_pending(req: PendingRequest):
+    import time as _t
+    def fn():
+        otype = PENDING_TYPE_MAP.get(req.order_type.upper())
+        if otype is None:
+            return {"error": f"Unknown order type '{req.order_type}'"}
+
+        real = _resolve_symbol(req.symbol)
+        sym  = mt5.symbol_info(real)
+        if sym is None:
+            return {"error": f"Symbol '{req.symbol}' not found"}
+        mt5.symbol_select(real, True)
+
+        sl, tp = req.sl or 0.0, req.tp or 0.0
+
+        if (req.sl_pips and req.sl_pips > 0) or (req.tp_pips and req.tp_pips > 0):
+            pip      = _pip_size(sym)
+            min_dist = max(sym.trade_stops_level * sym.point, pip)
+            is_buy   = req.order_type.upper().startswith("BUY")
+            ref      = req.price   # SL/TP relative to the pending price
+
+            if req.sl_pips and req.sl_pips > 0:
+                sl_dist = max(req.sl_pips * pip, min_dist + sym.point)
+                sl = round(ref - sl_dist, sym.digits) if is_buy \
+                     else round(ref + sl_dist, sym.digits)
+            if req.tp_pips and req.tp_pips > 0:
+                tp_dist = max(req.tp_pips * pip, min_dist + sym.point)
+                tp = round(ref + tp_dist, sym.digits) if is_buy \
+                     else round(ref - tp_dist, sym.digits)
+
+        request = {
+            "action":    mt5.TRADE_ACTION_PENDING,
+            "symbol":    real,
+            "volume":    req.volume,
+            "type":      otype,
+            "price":     req.price,
+            "sl":        sl,
+            "tp":        tp,
+            "deviation": 30,
+            "magic":     234000,
+            "comment":   req.comment,
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_RETURN,
+        }
+        result = mt5.order_send(request)
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
+            return {"error": f"{result.comment} (retcode {result.retcode})"}
+        return {"success": True, "ticket": result.order}
+
+    result = _mt5_call(fn, timeout=15)
+    if "error" in result:
+        return JSONResponse(result, status_code=400)
+    return result
+
+
+@app.get("/api/pending_orders")
+def get_pending_orders():
+    def fn():
+        orders = mt5.orders_get()
+        if not orders:
+            return []
+        type_names = {
+            mt5.ORDER_TYPE_BUY_LIMIT:  "BUY LIMIT",
+            mt5.ORDER_TYPE_BUY_STOP:   "BUY STOP",
+            mt5.ORDER_TYPE_SELL_LIMIT: "SELL LIMIT",
+            mt5.ORDER_TYPE_SELL_STOP:  "SELL STOP",
+        }
+        return [
+            {
+                "ticket":  o.ticket,
+                "symbol":  o.symbol,
+                "type":    type_names.get(o.type, str(o.type)),
+                "volume":  o.volume_initial,
+                "price":   o.price_open,
+                "sl":      o.sl or 0,
+                "tp":      o.tp or 0,
+                "time":    datetime.fromtimestamp(o.time_setup).strftime("%Y-%m-%d %H:%M"),
+                "comment": o.comment,
+            }
+            for o in orders if o.type in type_names
+        ]
+    return _mt5_call(fn)
+
+
+@app.post("/api/cancel/{ticket}")
+def cancel_pending(ticket: int):
+    def fn():
+        orders = mt5.orders_get(ticket=ticket)
+        if not orders:
+            return {"error": f"Pending order #{ticket} not found"}
+        result = mt5.order_send({
+            "action": mt5.TRADE_ACTION_REMOVE,
+            "order":  ticket,
+        })
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
+            return {"error": f"{result.comment} (retcode {result.retcode})"}
+        return {"success": True}
+    result = _mt5_call(fn, timeout=10)
+    if "error" in result:
+        return JSONResponse(result, status_code=400)
+    return result
+
+
 # ── CLOSE POSITION ──────────────────────────────────────────────────────────────
 
 @app.post("/api/close/{ticket}")
