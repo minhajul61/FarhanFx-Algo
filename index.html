@@ -150,6 +150,8 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 /* JOURNAL specific */
 .j-heatmap-cell{width:28px;height:28px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;cursor:pointer;transition:transform 0.1s}
 .j-heatmap-cell:hover{transform:scale(1.2)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.j-spin{animation:spin 0.8s linear infinite;display:inline-block}
 .j-star{color:var(--text3);cursor:pointer;font-size:14px;transition:color 0.15s}
 .j-star.active{color:var(--amber)}
 .j-emotion-btn{background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:14px;transition:all 0.15s}
@@ -816,11 +818,25 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       <!-- JOURNAL PAGE -->
       <div class="page" id="page-journal">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-          <div class="page-title" style="margin-bottom:0">Trading Journal</div>
+          <div>
+            <div class="page-title" style="margin-bottom:4px">Trading Journal</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div id="j-sync-dot" style="width:7px;height:7px;border-radius:50%;background:var(--text3)"></div>
+              <span id="j-sync-status" style="font-size:10px;color:var(--text3);letter-spacing:1px">Not synced</span>
+              <!-- Auto-sync toggle -->
+              <div style="display:flex;align-items:center;gap:6px;margin-left:8px;padding:3px 10px;background:var(--card2);border:1px solid var(--border);border-radius:20px;cursor:pointer" onclick="jToggleAutoSync()">
+                <div id="j-autosync-dot" style="width:6px;height:6px;border-radius:50%;background:var(--text3);transition:background 0.3s"></div>
+                <span id="j-autosync-label" style="font-size:9px;color:var(--text3);letter-spacing:1px;transition:color 0.3s">AUTO-SYNC OFF</span>
+              </div>
+            </div>
+          </div>
           <div style="display:flex;gap:8px">
-            <button class="sbtn" onclick="jImportMT5()" style="font-size:11px;padding:8px 14px"><i class="ti ti-download"></i> Import MT5</button>
+            <button id="j-sync-btn" onclick="jSyncMT5()" style="display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:8px;color:#fff;font-family:var(--font);font-size:11px;font-weight:700;padding:8px 16px;cursor:pointer;letter-spacing:1px;box-shadow:0 0 16px var(--accent-glow);transition:all 0.2s">
+              <i id="j-sync-icon" class="ti ti-refresh" style="font-size:14px"></i>
+              <span id="j-sync-text">SYNC MT5</span>
+            </button>
             <button class="sbtn" onclick="jExportCSV()" style="font-size:11px;padding:8px 14px;border-color:var(--cyan);color:var(--cyan)"><i class="ti ti-file-export"></i> Export CSV</button>
-            <button onclick="jOpenAddModal()" style="background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:8px;color:#fff;font-family:var(--font);font-size:11px;font-weight:700;padding:8px 16px;cursor:pointer;letter-spacing:1px;box-shadow:0 0 16px var(--accent-glow)">+ ADD TRADE</button>
+            <button onclick="jOpenAddModal()" style="background:var(--card2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font);font-size:11px;font-weight:700;padding:8px 16px;cursor:pointer;letter-spacing:1px;transition:all 0.2s">+ ADD TRADE</button>
           </div>
         </div>
 
@@ -1933,59 +1949,123 @@ function jDeleteTrade(idx) {
   toast('Trade deleted');
 }
 
-// ── IMPORT FROM MT5 ──
-async function jImportMT5() {
-  toast('Importing from MT5...', true);
+// ── MT5 SYNC ──────────────────────────────────────────────────────────────────
+let jAutoSyncOn  = false;
+let jAutoSyncTid = null;
+let jSyncing     = false;
+
+function jSyncSetState(state) {
+  // state: 'syncing' | 'ok' | 'error' | 'idle'
+  const dot  = document.getElementById('j-sync-dot');
+  const stat = document.getElementById('j-sync-status');
+  const icon = document.getElementById('j-sync-icon');
+  const btn  = document.getElementById('j-sync-btn');
+  if (!dot) return;
+  if (state === 'syncing') {
+    dot.style.background  = 'var(--amber)';
+    icon.className        = 'ti ti-refresh j-spin';
+    btn.style.opacity     = '0.7';
+    btn.disabled          = true;
+    stat.textContent      = 'Syncing...';
+    stat.style.color      = 'var(--amber)';
+  } else if (state === 'ok') {
+    const now = new Date().toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    dot.style.background  = 'var(--green)';
+    icon.className        = 'ti ti-refresh';
+    btn.style.opacity     = '1';
+    btn.disabled          = false;
+    stat.textContent      = 'Last sync: ' + now;
+    stat.style.color      = 'var(--green)';
+  } else if (state === 'error') {
+    dot.style.background  = 'var(--red)';
+    icon.className        = 'ti ti-refresh';
+    btn.style.opacity     = '1';
+    btn.disabled          = false;
+    stat.textContent      = 'Sync failed';
+    stat.style.color      = 'var(--red)';
+  } else {
+    dot.style.background  = 'var(--text3)';
+    icon.className        = 'ti ti-refresh';
+    btn.style.opacity     = '1';
+    btn.disabled          = false;
+  }
+}
+
+async function jSyncMT5() {
+  if (jSyncing) return;
+  jSyncing = true;
+  jSyncSetState('syncing');
+
   const r = await apiFetch('/api/deals');
 
-  // API returns array directly OR {error:...}
-  if (r && r.error) { toast('Import failed: ' + r.error, false); return; }
+  if (r && r.error) {
+    jSyncSetState('error');
+    toast('Sync failed: ' + r.error, false);
+    jSyncing = false; return;
+  }
   const deals = Array.isArray(r) ? r : (r.deals || []);
-  if (!deals.length) { toast('No deals found in MT5', false); return; }
+  if (!deals.length) {
+    jSyncSetState('ok');
+    toast('MT5 sync complete — no new trades', true);
+    jSyncing = false; return;
+  }
 
   let added = 0;
   deals.forEach(d => {
-    if (!d.symbol) return;                                      // skip if no symbol
-    const existing = journalTrades.find(t => t.id === d.ticket);
-    if (existing) return;                                       // skip duplicates
+    if (!d.symbol) return;
+    if (journalTrades.find(t => t.id === d.ticket)) return;   // skip duplicates
 
-    // d.type is string "BUY"/"SELL" from API
-    const dir = (d.type || '').toString().toUpperCase().includes('BUY') ? 'BUY' : 'SELL';
-    const pnl = parseFloat(d.profit) || 0;
-
-    // d.time is already "YYYY-MM-DD HH:MM" string
-    let dateStr = '';
-    if (d.time) {
-      dateStr = d.time.replace(' ', 'T');   // "2026-06-13T00:01"
-    } else {
-      dateStr = new Date().toISOString().slice(0, 16);
-    }
-
-    // Detect session from hour
-    const hour = dateStr.length >= 16 ? parseInt(dateStr.slice(11, 13)) : 0;
-    const session = hour >= 7 && hour < 16 ? 'London' : hour >= 13 && hour < 21 ? 'NewYork' : hour >= 0 && hour < 9 ? 'Asian' : 'Unknown';
+    const dir     = (d.type || '').toString().toUpperCase().includes('BUY') ? 'BUY' : 'SELL';
+    const pnl     = parseFloat(d.profit) || 0;
+    const dateStr = d.time ? d.time.replace(' ', 'T') : new Date().toISOString().slice(0, 16);
+    const hour    = dateStr.length >= 16 ? parseInt(dateStr.slice(11, 13)) : 0;
+    const session = hour >= 7 && hour < 16 ? 'London'
+                  : hour >= 13 && hour < 21 ? 'NewYork'
+                  : hour >= 0 && hour < 9   ? 'Asian' : 'Other';
 
     journalTrades.unshift({
-      id: d.ticket,
-      date: dateStr,
-      symbol: d.symbol,
-      direction: dir,
-      lots: d.volume || 0,
-      entry: d.price || 0,
-      exit: 0,
+      id: d.ticket, date: dateStr,
+      symbol: d.symbol, direction: dir,
+      lots: d.volume || 0, entry: d.price || 0, exit: 0,
       pips: 0, pnl, rr: null, sl: 0, tp: 0,
-      strategy: 'MT5 Import',
-      session,
-      duration: '',
+      strategy: 'MT5 Import', session, duration: '',
       notes: 'Imported from MT5' + (d.comment ? ' | ' + d.comment : ''),
-      emotion: '😊',
-      rating: 3,
+      emotion: '😊', rating: 3,
       result: pnl > 0.5 ? 'WIN' : pnl < -0.5 ? 'LOSS' : 'BE'
     });
     added++;
   });
-  jSave(); jInit();
-  toast(`Imported ${added} new trades from MT5`);
+
+  jSave();
+  jInit();                            // instant full refresh
+  jSyncSetState('ok');
+  jSyncing = false;
+
+  if (added > 0) toast(`✓ Synced ${added} new trade${added>1?'s':''} from MT5`);
+  else           toast('MT5 sync complete — up to date', true);
+}
+
+function jToggleAutoSync() {
+  jAutoSyncOn = !jAutoSyncOn;
+  const dot   = document.getElementById('j-autosync-dot');
+  const label = document.getElementById('j-autosync-label');
+  if (jAutoSyncOn) {
+    dot.style.background   = 'var(--green)';
+    dot.style.animation    = 'pulse 2s infinite';
+    label.style.color      = 'var(--green)';
+    label.textContent      = 'AUTO-SYNC ON';
+    toast('Auto-sync ON — every 30s', true);
+    jSyncMT5();                        // sync immediately
+    jAutoSyncTid = setInterval(jSyncMT5, 30000);
+  } else {
+    dot.style.background   = 'var(--text3)';
+    dot.style.animation    = 'none';
+    label.style.color      = 'var(--text3)';
+    label.textContent      = 'AUTO-SYNC OFF';
+    clearInterval(jAutoSyncTid);
+    jAutoSyncTid = null;
+    toast('Auto-sync OFF', true);
+  }
 }
 
 // ── EXPORT CSV ──
