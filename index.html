@@ -396,12 +396,32 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         </div>
 
         <!-- LIVE P&L SUMMARY STRIP -->
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px" id="trades-summary">
-          <div class="kpi"><div class="kpi-label">OPEN POSITIONS</div><div id="trd-pos-count" class="kpi-value" style="color:var(--cyan)">—</div></div>
-          <div class="kpi"><div class="kpi-label">FLOATING P&amp;L</div><div id="trd-float-pnl" class="kpi-value">—</div><div id="trd-float-pnl-dot" class="kpi-delta"></div></div>
-          <div class="kpi"><div class="kpi-label">TODAY CLOSED</div><div id="trd-today-pnl" class="kpi-value">—</div></div>
-          <div class="kpi"><div class="kpi-label">WIN RATE (30D)</div><div id="trd-win-rate" class="kpi-value" style="color:var(--green)">—</div></div>
-          <div class="kpi"><div class="kpi-label">NET P&amp;L (30D)</div><div id="trd-net-pnl" class="kpi-value">—</div></div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px">
+          <div class="kpi" style="border-color:var(--border2)">
+            <div class="kpi-label">OPEN POSITIONS</div>
+            <div id="trd-pos-count" class="kpi-value" style="color:var(--cyan)">—</div>
+            <div id="trd-pos-lots" class="kpi-delta" style="color:var(--text3)">lots: —</div>
+          </div>
+          <div class="kpi" style="border-color:var(--border2)">
+            <div class="kpi-label">FLOATING P&amp;L <span style="font-size:8px;color:var(--text3)">(OPEN)</span></div>
+            <div id="trd-float-pnl" class="kpi-value" style="font-size:20px">—</div>
+            <div id="trd-float-sub" class="kpi-delta" style="color:var(--text3);font-size:10px">unrealized</div>
+          </div>
+          <div class="kpi" style="border-color:var(--border2)">
+            <div class="kpi-label">TODAY REALIZED <span style="font-size:8px;color:var(--text3)">(CLOSED)</span></div>
+            <div id="trd-today-pnl" class="kpi-value">—</div>
+            <div id="trd-today-sub" class="kpi-delta" style="color:var(--text3);font-size:10px">—</div>
+          </div>
+          <div class="kpi" style="border-color:var(--border2)">
+            <div class="kpi-label">WIN RATE (30D)</div>
+            <div id="trd-win-rate" class="kpi-value" style="color:var(--green)">—</div>
+            <div id="trd-wl-count" class="kpi-delta" style="color:var(--text3)">— W / — L</div>
+          </div>
+          <div class="kpi" style="border-color:var(--border2)">
+            <div class="kpi-label">NET P&amp;L (30D)</div>
+            <div id="trd-net-pnl" class="kpi-value">—</div>
+            <div id="trd-net-sub" class="kpi-delta" style="color:var(--text3)">realized</div>
+          </div>
         </div>
 
         <!-- OPEN POSITIONS -->
@@ -2552,21 +2572,27 @@ async function loadPositions() {
     const kpi = document.getElementById('kpi-positions');
     if (kpi) kpi.textContent = '0 open positions';
     document.getElementById('trd-pos-count').textContent = '0';
-    document.getElementById('trd-float-pnl').textContent = '$0.00';
-    document.getElementById('trd-float-pnl').style.color = 'var(--text2)';
+    document.getElementById('trd-pos-lots').textContent  = 'lots: 0.00';
+    const fpEl = document.getElementById('trd-float-pnl');
+    fpEl.textContent = '$0.00'; fpEl.style.color = 'var(--text2)';
+    document.getElementById('trd-float-sub').textContent = 'no open positions';
     return;
   }
 
-  const totalProfit = data.reduce((s, p) => s + p.profit + (p.swap || 0), 0);
+  const totalProfit = data.reduce((s, p) => s + p.profit, 0);
+  const totalSwap   = data.reduce((s, p) => s + (p.swap || 0), 0);
+  const grandTotal  = totalProfit + totalSwap;
   const totalLots   = data.reduce((s, p) => s + p.volume, 0);
 
   // Update summary strip
   document.getElementById('trd-pos-count').textContent = data.length;
+  document.getElementById('trd-pos-lots').textContent  = 'lots: ' + totalLots.toFixed(2);
   const fpEl = document.getElementById('trd-float-pnl');
-  fpEl.textContent = (totalProfit >= 0 ? '+$' : '-$') + Math.abs(totalProfit).toFixed(2);
-  fpEl.style.color = totalProfit >= 0 ? 'var(--green)' : 'var(--red)';
+  fpEl.textContent = (grandTotal >= 0 ? '+$' : '-$') + Math.abs(grandTotal).toFixed(2);
+  fpEl.style.color = grandTotal >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('trd-float-sub').textContent = `${data.length} pos · swap $${totalSwap.toFixed(2)}`;
   const kpi = document.getElementById('kpi-positions');
-  if (kpi) kpi.textContent = data.length + ' open · Lots: ' + totalLots.toFixed(2);
+  if (kpi) kpi.textContent = data.length + ' open · $' + (grandTotal >= 0 ? '+' : '') + grandTotal.toFixed(2);
 
   tbody.innerHTML = data.map(p => {
     const pips_color = p.pips >= 0 ? 'var(--green)' : 'var(--red)';
@@ -2692,17 +2718,36 @@ async function loadDeals() {
   const netPnl  = data.reduce((s, d) => s + d.net_profit, 0);
   const winRate = data.length ? Math.round(wins.length / data.length * 100) : 0;
 
-  // Today's P&L
-  const today = new Date().toISOString().slice(0,10);
-  const todayPnl = data.filter(d => d.exit_time.startsWith(today)).reduce((s,d) => s + d.net_profit, 0);
+  // Today using LOCAL date (server also uses local time)
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const todayTrades = data.filter(d => d.exit_time.startsWith(today));
+  const todayPnl    = todayTrades.reduce((s, d) => s + d.net_profit, 0);
 
   // Update summary strip
   const wrEl = document.getElementById('trd-win-rate');
   if (wrEl) { wrEl.textContent = winRate + '%'; wrEl.style.color = winRate >= 50 ? 'var(--green)' : 'var(--red)'; }
+  const wlEl = document.getElementById('trd-wl-count');
+  if (wlEl) wlEl.textContent = `${wins.length}W / ${losses.length}L`;
+
   const netEl = document.getElementById('trd-net-pnl');
   if (netEl) { netEl.textContent = (netPnl >= 0 ? '+$' : '-$') + Math.abs(netPnl).toFixed(2); netEl.style.color = netPnl >= 0 ? 'var(--green)' : 'var(--red)'; }
-  const todEl = document.getElementById('trd-today-pnl');
-  if (todEl) { todEl.textContent = (todayPnl >= 0 ? '+$' : '-$') + Math.abs(todayPnl).toFixed(2); todEl.style.color = todayPnl >= 0 ? 'var(--green)' : 'var(--red)'; }
+  document.getElementById('trd-net-sub').textContent = `${data.length} closed trades`;
+
+  const todEl  = document.getElementById('trd-today-pnl');
+  const todSub = document.getElementById('trd-today-sub');
+  if (todayTrades.length === 0) {
+    todEl.textContent  = '—';
+    todEl.style.color  = 'var(--text3)';
+    todSub.textContent = 'no closed trades today';
+    todSub.style.color = 'var(--text3)';
+  } else {
+    todEl.textContent  = (todayPnl >= 0 ? '+$' : '-$') + Math.abs(todayPnl).toFixed(2);
+    todEl.style.color  = todayPnl >= 0 ? 'var(--green)' : 'var(--red)';
+    todSub.textContent = `${todayTrades.length} trade${todayTrades.length>1?'s':''} closed`;
+    todSub.style.color = 'var(--text3)';
+  }
+
   const statsEl = document.getElementById('deals-stats');
   if (statsEl) statsEl.textContent = `${data.length} trades · ${wins.length}W / ${losses.length}L · ${winRate}% WR`;
 
