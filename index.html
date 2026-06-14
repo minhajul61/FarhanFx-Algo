@@ -1007,7 +1007,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 <input id="jf-symbol" list="jf-symbol-list" placeholder="Type or select..." autocomplete="off"
                   oninput="this.value=this.value.toUpperCase()"
                   style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%;transition:border-color 0.2s">
-                <datalist id="jf-symbol-list"><!-- populated from MT5 by loadMT5Symbols() --></datalist>
+                <!-- datalist is at body level for cross-browser compatibility -->
               </div>
               <div class="field"><label>Direction</label>
                 <div style="display:flex;gap:8px;margin-top:2px">
@@ -1290,15 +1290,29 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ── LOAD SYMBOLS FROM MT5 ──────────────────────────────────────────────────────
+const FALLBACK_SYMBOLS = [
+  'EURUSDc','GBPUSDc','USDJPYc','USDCHFc','AUDUSDc','NZDUSDc','USDCADc',
+  'EURGBPc','EURJPYc','GBPJPYc','EURCADc','EURAUDc',
+  'XAUUSDc','XAGUSDc',
+  'NAS100s','US30s','US500s','GER40s','UK100s',
+  'BTCUSDm','ETHUSDm','LTCUSDm','XRPUSDm'
+];
+
 async function loadMT5Symbols() {
-  const syms = await apiFetch('/api/symbols');
-  if (!Array.isArray(syms) || syms.length === 0) return;
   const dl = document.getElementById('jf-symbol-list');
   if (!dl) return;
-  dl.innerHTML = syms.map(s => {
-    const label = s.description ? `${s.name} — ${s.description}` : s.name;
-    return `<option value="${s.name}">${label}</option>`;
-  }).join('');
+
+  const syms = await apiFetch('/api/symbols');
+
+  if (Array.isArray(syms) && syms.length > 0) {
+    dl.innerHTML = syms.map(s => {
+      const label = s.description ? `${s.name} — ${s.description}` : s.name;
+      return `<option value="${s.name}">${label}</option>`;
+    }).join('');
+  } else {
+    // Fallback: use CXM Direct common symbols if server is offline
+    dl.innerHTML = FALLBACK_SYMBOLS.map(s => `<option value="${s}">${s}</option>`).join('');
+  }
 }
 
 // ── STATE ──────────────────────────────────────────────────────────────────────
@@ -2962,5 +2976,7 @@ function initCharts() {
   });
 }
 </script>
+<!-- Symbol datalist at body level so browser can access from any input -->
+<datalist id="jf-symbol-list"></datalist>
 </body>
 </html>
