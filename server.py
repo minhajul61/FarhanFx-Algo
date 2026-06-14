@@ -1058,9 +1058,9 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 _time.sleep(30)
                 continue
 
-            closes = [r["close"] for r in rates]
-            highs  = [r["high"]  for r in rates]
-            lows   = [r["low"]   for r in rates]
+            closes = [float(r["close"]) for r in rates]
+            highs  = [float(r["high"])  for r in rates]
+            lows   = [float(r["low"])   for r in rates]
 
             def get_tick_pip():
                 t = mt5.symbol_info_tick(symbol)
@@ -1178,8 +1178,8 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 # H4 bias (fetch separately)
                 h4_rates, _ = _get_rates(symbol, "H4", 100)
                 h4_bull = h4_bear = False
-                if h4_rates and len(h4_rates) >= 50:
-                    h4c    = [r["close"] for r in h4_rates]
+                if h4_rates is not None and len(h4_rates) >= 50:
+                    h4c    = [float(r["close"]) for r in h4_rates]
                     h4e50  = _ema(h4c, 50)
                     h4e200 = _ema(h4c, min(200, len(h4c)-1))
                     h4_bull = h4c[-1] > h4e50[-1] > h4e200[-1]
@@ -1359,7 +1359,7 @@ def ai_analyze(symbol: str, tf: str = "H1"):
     primary_rates, sym = _get_rates(symbol, tf, 200)
     h4_rates,      _   = _get_rates(symbol, "H4", 100)
 
-    if not primary_rates or len(primary_rates) < 30:
+    if primary_rates is None or len(primary_rates) < 30:
         return {"error": f"Not enough data for {symbol}"}
 
     # Step 2: single _mt5_call for tick + symbol info only
@@ -1369,9 +1369,9 @@ def ai_analyze(symbol: str, tf: str = "H1"):
     tick, sym_inf = (ti if not isinstance(ti, dict) else (None, None))
 
     # Step 3: all calculations in pure Python — no more MT5 calls
-    closes = [r["close"] for r in primary_rates]
-    highs  = [r["high"]  for r in primary_rates]
-    lows   = [r["low"]   for r in primary_rates]
+    closes = [float(r["close"]) for r in primary_rates]
+    highs  = [float(r["high"])  for r in primary_rates]
+    lows   = [float(r["low"])   for r in primary_rates]
     price  = closes[-1]
     digits = sym_inf.digits if sym_inf else 5
 
@@ -1387,8 +1387,8 @@ def ai_analyze(symbol: str, tf: str = "H1"):
 
     # H4 trend bias (pure Python after rates fetched)
     h4_bias = "NEUTRAL"
-    if h4_rates and len(h4_rates) >= 50:
-        h4c    = [r["close"] for r in h4_rates]
+    if h4_rates is not None and len(h4_rates) >= 50:
+        h4c    = [float(r["close"]) for r in h4_rates]
         h4e50  = _ema(h4c, 50)
         h4e200 = _ema(h4c, min(200, len(h4c)-1))
         if h4c[-1] > h4e50[-1] > h4e200[-1]:   h4_bias = "BULLISH"

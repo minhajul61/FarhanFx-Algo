@@ -2460,7 +2460,17 @@ function saveSettings() {
 async function apiFetch(path, opts = {}) {
   try {
     const r = await fetch(API + path, { headers: { 'Content-Type': 'application/json' }, ...opts });
-    return await r.json();
+    const text = await r.text();
+    try {
+      const json = JSON.parse(text);
+      // FastAPI wraps exceptions as {detail: "..."}
+      if (!r.ok && json.detail) return { error: json.detail };
+      return json;
+    } catch {
+      // Server returned non-JSON (traceback HTML etc)
+      if (!r.ok) return { error: `Server error ${r.status} — check server.py console` };
+      return { error: text };
+    }
   } catch (e) {
     return { error: 'Server offline — start server.py first' };
   }
