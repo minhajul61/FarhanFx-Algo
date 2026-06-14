@@ -3170,32 +3170,51 @@ async function placeOrder(side) {
 }
 
 // ── WEBSOCKET — live equity in topbar ──────────────────────────────────────────
-function connectWS() {
-  if (ws) ws.close();
-  ws = new WebSocket(WS);
+let _wsReconnectTimer = null;
 
-  ws.onopen = () => setConnStatus(true);
+function connectWS() {
+  // Detach old WS cleanly without triggering onclose reconnect loop
+  if (ws) {
+    ws.onclose = null;
+    ws.onerror = null;
+    ws.close();
+    ws = null;
+  }
+  if (_wsReconnectTimer) { clearTimeout(_wsReconnectTimer); _wsReconnectTimer = null; }
+
+  try { ws = new WebSocket(WS); } catch { _scheduleWsReconnect(); return; }
+
+  ws.onopen = () => {
+    setConnStatus(true);
+    loadAccount(); // refresh dashboard data on reconnect
+  };
   ws.onclose = () => {
     setConnStatus(false);
-    setTimeout(connectWS, 5000);
+    _scheduleWsReconnect();
   };
   ws.onerror = () => setConnStatus(false);
 
   ws.onmessage = (e) => {
-    const d = JSON.parse(e.data);
-    if (d.account) {
-      const p = d.account.profit;
-      document.getElementById('live-equity').textContent =
-        'Eq: ' + fmt(d.account.equity) + '  P&L: ' + (p >= 0 ? '+' : '') + fmt(p);
-      document.getElementById('live-equity').style.color = p >= 0 ? 'var(--green)' : 'var(--red)';
-      // refresh dashboard profit KPI live
-      const el = document.getElementById('kpi-profit');
-      if (el) {
-        el.textContent = (p >= 0 ? '+' : '') + p.toFixed(2);
-        el.className = 'kpi-value ' + (p >= 0 ? 'green' : 'red');
+    try {
+      const d = JSON.parse(e.data);
+      if (d.account) {
+        const p = d.account.profit;
+        document.getElementById('live-equity').textContent =
+          'Eq: ' + fmt(d.account.equity) + '  P&L: ' + (p >= 0 ? '+' : '') + fmt(p);
+        document.getElementById('live-equity').style.color = p >= 0 ? 'var(--green)' : 'var(--red)';
+        const el = document.getElementById('kpi-profit');
+        if (el) {
+          el.textContent = (p >= 0 ? '+' : '') + p.toFixed(2);
+          el.className = 'kpi-value ' + (p >= 0 ? 'green' : 'red');
+        }
       }
-    }
+    } catch {}
   };
+}
+
+function _scheduleWsReconnect() {
+  if (_wsReconnectTimer) return;
+  _wsReconnectTimer = setTimeout(() => { _wsReconnectTimer = null; connectWS(); }, 4000);
 }
 
 function setConnStatus(online) {
