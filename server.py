@@ -342,6 +342,70 @@ def place_order(req: OrderRequest):
     return result
 
 
+# ── MODIFY POSITION SL/TP ───────────────────────────────────────────────────────
+
+class ModifyRequest(BaseModel):
+    sl:      Optional[float] = 0.0
+    tp:      Optional[float] = 0.0
+    sl_pips: Optional[float] = 0.0
+    tp_pips: Optional[float] = 0.0
+    mode:    str = "pips"   # "pips" or "price"
+
+@app.post("/api/modify/{ticket}")
+def modify_position(ticket: int, req: ModifyRequest):
+    import time as _t
+    def fn():
+        pos = mt5.positions_get(ticket=ticket)
+        if not pos:
+            return {"error": f"Position #{ticket} not found"}
+        p = pos[0]
+        sym = mt5.symbol_info(p.symbol)
+        if sym is None:
+            return {"error": f"Symbol info not found"}
+
+        sl, tp = req.sl or 0.0, req.tp or 0.0
+
+        if req.mode == "pips" and (req.sl_pips > 0 or req.tp_pips > 0):
+            tick = None
+            for _ in range(5):
+                tick = mt5.symbol_info_tick(p.symbol)
+                if tick and tick.bid > 0:
+                    break
+                _t.sleep(0.1)
+            if not tick:
+                return {"error": "Cannot get price"}
+
+            is_buy = p.type == mt5.ORDER_TYPE_BUY
+            pip = _pip_size(sym)
+            min_dist = max(sym.trade_stops_level * sym.point, pip)
+            sl_tp_ref = tick.bid if is_buy else tick.ask
+
+            if req.sl_pips > 0:
+                sl_dist = max(req.sl_pips * pip, min_dist + sym.point)
+                sl = round(sl_tp_ref - sl_dist, sym.digits) if is_buy \
+                     else round(sl_tp_ref + sl_dist, sym.digits)
+            if req.tp_pips > 0:
+                tp_dist = max(req.tp_pips * pip, min_dist + sym.point)
+                tp = round(sl_tp_ref + tp_dist, sym.digits) if is_buy \
+                     else round(sl_tp_ref - tp_dist, sym.digits)
+
+        result = mt5.order_send({
+            "action":   mt5.TRADE_ACTION_SLTP,
+            "position": ticket,
+            "symbol":   p.symbol,
+            "sl":       sl,
+            "tp":       tp,
+        })
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
+            return {"error": f"{result.comment} (retcode {result.retcode})"}
+        return {"success": True, "sl": sl, "tp": tp}
+
+    result = _mt5_call(fn, timeout=10)
+    if "error" in result:
+        return JSONResponse(result, status_code=400)
+    return result
+
+
 # ── CLOSE POSITION ──────────────────────────────────────────────────────────────
 
 @app.post("/api/close/{ticket}")

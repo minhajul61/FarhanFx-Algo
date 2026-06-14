@@ -1274,6 +1274,44 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
 <div class="toast" id="toast"></div>
 
+<!-- MODIFY SL/TP MODAL -->
+<div id="modify-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--accent);border-radius:16px;padding:28px;min-width:360px;max-width:420px;box-shadow:0 8px 40px rgba(0,0,0,0.6)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div>
+        <div style="color:var(--accent);font-weight:700;font-size:14px;letter-spacing:1px">MODIFY POSITION</div>
+        <div id="mod-info" style="color:var(--text2);font-size:12px;margin-top:3px"></div>
+      </div>
+      <button onclick="closeModifyModal()" style="background:transparent;border:none;color:var(--text2);font-size:20px;cursor:pointer;line-height:1">×</button>
+    </div>
+
+    <!-- PIPS / PRICE toggle -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+      <span style="font-size:11px;color:var(--text2)">MODE</span>
+      <div style="display:flex;background:var(--bg);border:1px solid var(--border);border-radius:6px;overflow:hidden">
+        <button id="mod-mode-pips" onclick="modSetMode('pips')" style="padding:4px 14px;font-size:11px;font-weight:700;background:var(--accent);color:#fff;border:none;cursor:pointer;transition:all 0.2s">PIPS</button>
+        <button id="mod-mode-price" onclick="modSetMode('price')" style="padding:4px 14px;font-size:11px;font-weight:700;background:transparent;color:var(--text2);border:none;cursor:pointer;transition:all 0.2s">PRICE</button>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+      <div>
+        <label id="mod-sl-label" style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px">STOP LOSS (PIPS)</label>
+        <input id="mod-sl" type="number" class="sinput" style="width:100%" value="0" min="0" placeholder="0 = remove SL"/>
+      </div>
+      <div>
+        <label id="mod-tp-label" style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px">TAKE PROFIT (PIPS)</label>
+        <input id="mod-tp" type="number" class="sinput" style="width:100%" value="0" min="0" placeholder="0 = remove TP"/>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button onclick="submitModify()" style="flex:1;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:8px;padding:12px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;letter-spacing:0.5px">✓ APPLY</button>
+      <button onclick="closeModifyModal()" style="flex:1;background:transparent;color:var(--text2);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer">CANCEL</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 // ── CONFIG ─────────────────────────────────────────────────────────────────────
@@ -2238,8 +2276,82 @@ async function loadPositions() {
       <td>${p.tp || '—'}</td>
       <td class="${p.profit >= 0 ? 'green' : 'red'}" style="font-weight:700">${p.profit >= 0 ? '+' : ''}${p.profit}</td>
       <td style="color:#7d8590;font-size:11px">${p.open_time}</td>
-      <td><button class="close-btn" onclick="closePosition(${p.ticket})">CLOSE ×</button></td>
+      <td style="display:flex;gap:6px">
+        <button class="close-btn" style="color:var(--accent);border-color:var(--accent)" onclick="openModifyModal(${p.ticket},'${p.symbol}',${p.type==='BUY'?1:0},${p.sl||0},${p.tp||0})">✎ MODIFY</button>
+        <button class="close-btn" onclick="closePosition(${p.ticket})">CLOSE ×</button>
+      </td>
     </tr>`).join('');
+}
+
+// ── MODIFY POSITION ────────────────────────────────────────────────────────────
+let modTicket = null, modMode = 'pips';
+
+function openModifyModal(ticket, symbol, isBuy, currentSl, currentTp) {
+  modTicket = ticket;
+  modMode = 'pips';
+  document.getElementById('mod-info').textContent = `#${ticket}  ${symbol}  ${isBuy ? 'BUY' : 'SELL'}  |  Current SL: ${currentSl||'—'}  TP: ${currentTp||'—'}`;
+  document.getElementById('mod-sl').value = 0;
+  document.getElementById('mod-tp').value = 0;
+  document.getElementById('mod-sl').step = '1';
+  document.getElementById('mod-tp').step = '1';
+  document.getElementById('mod-sl-label').textContent = 'STOP LOSS (PIPS)';
+  document.getElementById('mod-tp-label').textContent = 'TAKE PROFIT (PIPS)';
+  document.getElementById('mod-mode-pips').style.background = 'var(--accent)';
+  document.getElementById('mod-mode-pips').style.color = '#fff';
+  document.getElementById('mod-mode-price').style.background = 'transparent';
+  document.getElementById('mod-mode-price').style.color = 'var(--text2)';
+  const m = document.getElementById('modify-modal');
+  m.style.display = 'flex';
+}
+
+function closeModifyModal() {
+  document.getElementById('modify-modal').style.display = 'none';
+  modTicket = null;
+}
+
+function modSetMode(mode) {
+  modMode = mode;
+  const pipBtn   = document.getElementById('mod-mode-pips');
+  const priceBtn = document.getElementById('mod-mode-price');
+  pipBtn.style.background   = mode === 'pips'  ? 'var(--accent)' : 'transparent';
+  pipBtn.style.color        = mode === 'pips'  ? '#fff' : 'var(--text2)';
+  priceBtn.style.background = mode === 'price' ? 'var(--accent)' : 'transparent';
+  priceBtn.style.color      = mode === 'price' ? '#fff' : 'var(--text2)';
+  const slInput = document.getElementById('mod-sl');
+  const tpInput = document.getElementById('mod-tp');
+  if (mode === 'pips') {
+    slInput.step = '1'; slInput.placeholder = '0 = remove SL';
+    tpInput.step = '1'; tpInput.placeholder = '0 = remove TP';
+    document.getElementById('mod-sl-label').textContent = 'STOP LOSS (PIPS)';
+    document.getElementById('mod-tp-label').textContent = 'TAKE PROFIT (PIPS)';
+  } else {
+    slInput.step = '0.00001'; slInput.placeholder = 'absolute price (0 = remove)';
+    tpInput.step = '0.00001'; tpInput.placeholder = 'absolute price (0 = remove)';
+    document.getElementById('mod-sl-label').textContent = 'STOP LOSS (PRICE)';
+    document.getElementById('mod-tp-label').textContent = 'TAKE PROFIT (PRICE)';
+  }
+}
+
+async function submitModify() {
+  if (!modTicket) return;
+  const sl = parseFloat(document.getElementById('mod-sl').value) || 0;
+  const tp = parseFloat(document.getElementById('mod-tp').value) || 0;
+
+  const applyBtn = document.querySelector('#modify-modal button');
+  applyBtn.textContent = '⏳ Applying...'; applyBtn.disabled = true;
+
+  const body = modMode === 'pips'
+    ? { sl: 0, tp: 0, sl_pips: sl, tp_pips: tp, mode: 'pips' }
+    : { sl, tp, sl_pips: 0, tp_pips: 0, mode: 'price' };
+
+  const r = await apiFetch('/api/modify/' + modTicket, { method: 'POST', body: JSON.stringify(body) });
+
+  applyBtn.textContent = '✓ APPLY'; applyBtn.disabled = false;
+
+  if (r.error) { toastErr('Modify failed: ' + r.error); return; }
+  toast(`✓ #${modTicket} SL: ${r.sl||'—'}  TP: ${r.tp||'—'}`);
+  closeModifyModal();
+  loadPositions();
 }
 
 async function closePosition(ticket) {
