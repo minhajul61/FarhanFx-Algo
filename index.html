@@ -847,15 +847,24 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
           <!-- Calendar Heatmap -->
           <div class="panel">
-            <div class="panel-title" style="justify-content:space-between">
-              <span>P&amp;L Calendar</span>
-              <div style="display:flex;gap:6px;align-items:center;font-size:10px;color:var(--text2)">
-                <button onclick="jCalPrev()" style="background:transparent;border:1px solid var(--border);color:var(--text2);cursor:pointer;border-radius:4px;width:22px;height:22px;font-size:12px">‹</button>
-                <span id="j-cal-label">JUN 2026</span>
-                <button onclick="jCalNext()" style="background:transparent;border:1px solid var(--border);color:var(--text2);cursor:pointer;border-radius:4px;width:22px;height:22px;font-size:12px">›</button>
+            <!-- Title + View Toggle + Nav -->
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div class="panel-title" style="margin-bottom:0">P&amp;L Calendar</div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <!-- View Toggle -->
+                <div style="display:flex;gap:2px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:3px">
+                  <button id="jv-yearly"  onclick="jSetCalView('yearly')"  style="padding:4px 10px;border-radius:6px;border:none;cursor:pointer;font-family:var(--font);font-size:10px;letter-spacing:1px;transition:all 0.2s;background:transparent;color:var(--text2)">YEARLY</button>
+                  <button id="jv-monthly" onclick="jSetCalView('monthly')" style="padding:4px 10px;border-radius:6px;border:none;cursor:pointer;font-family:var(--font);font-size:10px;letter-spacing:1px;transition:all 0.2s;background:var(--accent);color:#fff">MONTHLY</button>
+                  <button id="jv-daily"   onclick="jSetCalView('daily')"   style="padding:4px 10px;border-radius:6px;border:none;cursor:pointer;font-family:var(--font);font-size:10px;letter-spacing:1px;transition:all 0.2s;background:transparent;color:var(--text2)">DAILY</button>
+                </div>
+                <!-- Prev / Label / Next -->
+                <button onclick="jCalPrev()" style="background:transparent;border:1px solid var(--border);color:var(--text2);cursor:pointer;border-radius:6px;width:24px;height:24px;font-size:13px;display:flex;align-items:center;justify-content:center">‹</button>
+                <span id="j-cal-label" style="font-size:11px;color:var(--text);letter-spacing:1px;min-width:90px;text-align:center">JUN 2026</span>
+                <button onclick="jCalNext()" style="background:transparent;border:1px solid var(--border);color:var(--text2);cursor:pointer;border-radius:6px;width:24px;height:24px;font-size:13px;display:flex;align-items:center;justify-content:center">›</button>
               </div>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center" id="j-cal-header">
+            <!-- Day-of-week header (monthly only) -->
+            <div id="j-cal-header" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center">
               <div style="font-size:9px;color:var(--text3);padding:4px">Su</div>
               <div style="font-size:9px;color:var(--text3);padding:4px">Mo</div>
               <div style="font-size:9px;color:var(--text3);padding:4px">Tu</div>
@@ -864,8 +873,10 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               <div style="font-size:9px;color:var(--text3);padding:4px">Fr</div>
               <div style="font-size:9px;color:var(--text3);padding:4px">Sa</div>
             </div>
+            <!-- Calendar grid area -->
             <div id="j-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:2px"></div>
-            <div style="display:flex;gap:10px;margin-top:10px;font-size:10px;color:var(--text2);align-items:center">
+            <!-- Legend -->
+            <div id="j-cal-legend" style="display:flex;gap:10px;margin-top:10px;font-size:10px;color:var(--text2);align-items:center">
               <div style="width:12px;height:12px;background:rgba(16,185,129,0.7);border-radius:2px"></div>Profit
               <div style="width:12px;height:12px;background:rgba(239,68,68,0.7);border-radius:2px"></div>Loss
               <div style="width:12px;height:12px;background:var(--border);border-radius:2px"></div>No trade
@@ -1515,15 +1526,113 @@ function jRenderKPIs() {
 }
 
 // ── CALENDAR ──
-const _MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-function jCalPrev() { jCalMonth--; if(jCalMonth < 0){jCalMonth=11;jCalYear--;} jRenderCalendar(); }
-function jCalNext() { jCalMonth++; if(jCalMonth > 11){jCalMonth=0;jCalYear++;} jRenderCalendar(); }
+const _MONTHS     = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+const _MONTHS_FULL= ['January','February','March','April','May','June','July','August','September','October','November','December'];
+let jCalView = 'monthly';
+let jCalDay  = new Date().getDate();
+
+function jSetCalView(v) {
+  jCalView = v;
+  // reset day to today when switching to daily
+  if (v === 'daily') {
+    const n = new Date(); jCalYear = n.getFullYear(); jCalMonth = n.getMonth(); jCalDay = n.getDate();
+  }
+  // update toggle button styles
+  ['yearly','monthly','daily'].forEach(name => {
+    const btn = document.getElementById('jv-' + name);
+    if (!btn) return;
+    if (name === v) { btn.style.background = 'var(--accent)'; btn.style.color = '#fff'; }
+    else            { btn.style.background = 'transparent';   btn.style.color = 'var(--text2)'; }
+  });
+  jRenderCalendar();
+}
+
+function jCalPrev() {
+  if (jCalView === 'yearly')       { jCalYear--; }
+  else if (jCalView === 'monthly') { jCalMonth--; if(jCalMonth < 0){jCalMonth=11;jCalYear--;} }
+  else { // daily
+    const d = new Date(jCalYear, jCalMonth, jCalDay - 1);
+    jCalYear = d.getFullYear(); jCalMonth = d.getMonth(); jCalDay = d.getDate();
+  }
+  jRenderCalendar();
+}
+function jCalNext() {
+  if (jCalView === 'yearly')       { jCalYear++; }
+  else if (jCalView === 'monthly') { jCalMonth++; if(jCalMonth > 11){jCalMonth=0;jCalYear++;} }
+  else { // daily
+    const d = new Date(jCalYear, jCalMonth, jCalDay + 1);
+    jCalYear = d.getFullYear(); jCalMonth = d.getMonth(); jCalDay = d.getDate();
+  }
+  jRenderCalendar();
+}
+
+function _pnlColor(p, maxAbs) {
+  if (p === undefined || p === null) return { bg: 'var(--border)', color: 'var(--text3)' };
+  if (p === 0)                       return { bg: 'rgba(139,92,246,0.25)', color: '#fff' };
+  const intensity = Math.min(Math.abs(p) / (maxAbs || 200), 1);
+  if (p > 0) return { bg: `rgba(16,185,129,${0.25 + intensity * 0.65})`,  color: '#fff' };
+  return           { bg: `rgba(239,68,68,${0.25 + intensity * 0.65})`,    color: '#fff' };
+}
 
 function jRenderCalendar() {
-  document.getElementById('j-cal-label').textContent = _MONTHS[jCalMonth] + ' ' + jCalYear;
+  if      (jCalView === 'yearly')  _jRenderYearly();
+  else if (jCalView === 'monthly') _jRenderMonthly();
+  else                             _jRenderDaily();
+}
+
+// ── YEARLY VIEW ──
+function _jRenderYearly() {
+  document.getElementById('j-cal-label').textContent = jCalYear;
+  document.getElementById('j-cal-header').style.display = 'none';
+
+  const pnlByMonth = {};
+  journalTrades.forEach(t => {
+    if (!t.date) return;
+    const d = new Date(t.date);
+    if (d.getFullYear() === jCalYear) {
+      const m = d.getMonth();
+      pnlByMonth[m] = (pnlByMonth[m] || 0) + (t.pnl || 0);
+    }
+  });
+  const maxAbs = Math.max(...Object.values(pnlByMonth).map(Math.abs), 1);
+
   const grid = document.getElementById('j-cal-grid');
-  const firstDay = new Date(jCalYear, jCalMonth, 1).getDay();
-  const daysInMonth = new Date(jCalYear, jCalMonth + 1, 0).getDate();
+  grid.style.gridTemplateColumns = 'repeat(4,1fr)';
+  grid.style.gap = '6px';
+
+  let html = '';
+  for (let m = 0; m < 12; m++) {
+    const p = pnlByMonth[m];
+    const {bg, color} = _pnlColor(p, maxAbs);
+    const pnlStr = p !== undefined ? ((p >= 0 ? '+$' : '-$') + Math.abs(p).toFixed(0)) : 'No trade';
+    const trades = journalTrades.filter(t => t.date && new Date(t.date).getFullYear()===jCalYear && new Date(t.date).getMonth()===m);
+    html += `<div onclick="jCalMonthClick(${m})" style="background:${bg};color:${color};border-radius:8px;padding:12px 8px;text-align:center;cursor:pointer;transition:transform 0.1s;border:1px solid transparent" onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
+      <div style="font-size:10px;letter-spacing:1px;opacity:0.85">${_MONTHS[m]}</div>
+      <div style="font-size:14px;font-weight:700;margin-top:4px">${pnlStr}</div>
+      <div style="font-size:9px;opacity:0.7;margin-top:2px">${trades.length} trade${trades.length!==1?'s':''}</div>
+    </div>`;
+  }
+
+  // Year total
+  const yearTotal = Object.values(pnlByMonth).reduce((a,b)=>a+b, 0);
+  const totalColor = yearTotal >= 0 ? 'var(--green)' : 'var(--red)';
+  grid.innerHTML = html;
+  document.getElementById('j-cal-legend').innerHTML = `<span style="color:var(--text2);font-size:11px">Year Total:</span> <span style="color:${totalColor};font-weight:700;font-size:13px">${yearTotal>=0?'+$':'-$'}${Math.abs(yearTotal).toFixed(2)}</span><span style="color:var(--text2);font-size:11px;margin-left:10px">Click a month to view details</span>`;
+}
+
+function jCalMonthClick(m) {
+  jCalMonth = m;
+  jSetCalView('monthly');
+}
+
+// ── MONTHLY VIEW ──
+function _jRenderMonthly() {
+  document.getElementById('j-cal-label').textContent = _MONTHS[jCalMonth] + ' ' + jCalYear;
+  document.getElementById('j-cal-header').style.display = 'grid';
+
+  const grid = document.getElementById('j-cal-grid');
+  grid.style.gridTemplateColumns = 'repeat(7,1fr)';
+  grid.style.gap = '3px';
 
   const pnlByDay = {};
   journalTrades.forEach(t => {
@@ -1534,23 +1643,86 @@ function jRenderCalendar() {
       pnlByDay[day] = (pnlByDay[day] || 0) + (t.pnl || 0);
     }
   });
+  const maxAbs = Math.max(...Object.values(pnlByDay).map(Math.abs), 1);
 
+  const firstDay   = new Date(jCalYear, jCalMonth, 1).getDay();
+  const daysInMonth= new Date(jCalYear, jCalMonth + 1, 0).getDate();
+  const today      = new Date();
   let html = '';
   for (let i = 0; i < firstDay; i++) html += '<div></div>';
-  const today = new Date();
   for (let d = 1; d <= daysInMonth; d++) {
     const p = pnlByDay[d];
+    const {bg, color} = _pnlColor(p, maxAbs);
     const isToday = today.getFullYear()===jCalYear && today.getMonth()===jCalMonth && today.getDate()===d;
-    let bg, color;
-    if (p === undefined) { bg = 'var(--border)'; color = 'var(--text3)'; }
-    else if (p > 0)  { const intensity = Math.min(p/200, 1); bg = `rgba(16,185,129,${0.3 + intensity*0.6})`; color = '#fff'; }
-    else if (p < 0)  { const intensity = Math.min(Math.abs(p)/200, 1); bg = `rgba(239,68,68,${0.3 + intensity*0.6})`; color = '#fff'; }
-    else             { bg = 'rgba(139,92,246,0.3)'; color = '#fff'; }
-    const border = isToday ? '1px solid var(--accent)' : '1px solid transparent';
-    const title = p !== undefined ? (p >= 0 ? '+$' : '-$') + Math.abs(p).toFixed(2) : 'No trade';
-    html += `<div class="j-heatmap-cell" style="background:${bg};color:${color};border:${border}" title="${title}">${d}</div>`;
+    const border  = isToday ? '1px solid var(--accent)' : '1px solid transparent';
+    const title   = p !== undefined ? ((p>=0?'+$':'-$')+Math.abs(p).toFixed(2)) : 'No trade';
+    const pSmall  = p !== undefined ? `<div style="font-size:7px;opacity:0.8">${p>=0?'+':''}${p.toFixed(0)}</div>` : '';
+    html += `<div class="j-heatmap-cell" onclick="jCalDayClick(${d})" style="background:${bg};color:${color};border:${border};flex-direction:column;height:34px" title="${title}"><span>${d}</span>${pSmall}</div>`;
   }
   grid.innerHTML = html;
+
+  const monthTotal = Object.values(pnlByDay).reduce((a,b)=>a+b,0);
+  const tc = monthTotal >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('j-cal-legend').innerHTML = `
+    <div style="width:12px;height:12px;background:rgba(16,185,129,0.7);border-radius:2px"></div>Profit
+    <div style="width:12px;height:12px;background:rgba(239,68,68,0.7);border-radius:2px;margin-left:4px"></div>Loss
+    <div style="width:12px;height:12px;background:var(--border);border-radius:2px;margin-left:4px"></div>No trade
+    <span style="margin-left:auto;color:var(--text2)">Month:</span>
+    <span style="color:${tc};font-weight:700">${monthTotal>=0?'+$':'-$'}${Math.abs(monthTotal).toFixed(2)}</span>`;
+}
+
+function jCalDayClick(d) {
+  jCalDay = d;
+  jSetCalView('daily');
+}
+
+// ── DAILY VIEW ──
+function _jRenderDaily() {
+  const dateStr = `${String(jCalDay).padStart(2,'0')} ${_MONTHS[jCalMonth]} ${jCalYear}`;
+  document.getElementById('j-cal-label').textContent = dateStr;
+  document.getElementById('j-cal-header').style.display = 'none';
+
+  const dayTrades = journalTrades.filter(t => {
+    if (!t.date) return false;
+    const d = new Date(t.date);
+    return d.getFullYear()===jCalYear && d.getMonth()===jCalMonth && d.getDate()===jCalDay;
+  }).sort((a,b) => new Date(a.date) - new Date(b.date));
+
+  const grid = document.getElementById('j-cal-grid');
+  grid.style.gridTemplateColumns = '1fr';
+  grid.style.gap = '6px';
+
+  if (!dayTrades.length) {
+    grid.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text2);font-size:12px">No trades on this day</div>`;
+    document.getElementById('j-cal-legend').innerHTML = '';
+    return;
+  }
+
+  const dayTotal = dayTrades.reduce((s,t) => s+(t.pnl||0), 0);
+  let html = '';
+  dayTrades.forEach((t, i) => {
+    const pnlColor = (t.pnl||0) >= 0 ? 'var(--green)' : 'var(--red)';
+    const pnlStr   = (t.pnl||0) >= 0 ? '+$' + (t.pnl||0).toFixed(2) : '-$' + Math.abs(t.pnl||0).toFixed(2);
+    const dirBg    = t.direction==='BUY' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)';
+    const dirClr   = t.direction==='BUY' ? 'var(--green)' : 'var(--red)';
+    const timeStr  = t.date ? new Date(t.date).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : '—';
+    const stars    = '★'.repeat(t.rating||0) + '☆'.repeat(5-(t.rating||0));
+    html += `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:12px">
+      <div style="font-size:12px;color:var(--text3);min-width:40px">${timeStr}</div>
+      <div style="background:${dirBg};color:${dirClr};font-weight:700;font-size:11px;padding:4px 10px;border-radius:6px;min-width:56px;text-align:center">${t.direction==='BUY'?'▲ BUY':'▼ SELL'}</div>
+      <div style="font-weight:700;min-width:60px">${t.symbol||'—'}</div>
+      <div style="color:var(--text2);font-size:11px;flex:1">${t.strategy||'—'} · ${t.session||'—'}</div>
+      <div style="color:var(--text2);font-size:10px;letter-spacing:1px">${stars}</div>
+      <div style="font-weight:700;color:${pnlColor};min-width:60px;text-align:right">${pnlStr}</div>
+    </div>`;
+  });
+  grid.innerHTML = html;
+
+  const tc = dayTotal >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('j-cal-legend').innerHTML = `
+    <span style="color:var(--text2)">${dayTrades.length} trade${dayTrades.length!==1?'s':''} today</span>
+    <span style="margin-left:auto;color:var(--text2)">Day Total:</span>
+    <span style="color:${tc};font-weight:700">${dayTotal>=0?'+$':'-$'}${Math.abs(dayTotal).toFixed(2)}</span>`;
 }
 
 // ── BREAKDOWNS ──
