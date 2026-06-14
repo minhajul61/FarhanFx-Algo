@@ -302,15 +302,53 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
         <!-- QUICK ORDER -->
         <div class="order-panel">
-          <div class="panel-title">Quick Order</div>
+          <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            Quick Order
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:10px;color:var(--text2);font-weight:500;letter-spacing:0.5px">SL/TP MODE</span>
+              <div style="display:flex;background:var(--bg);border:1px solid var(--border);border-radius:6px;overflow:hidden">
+                <button id="o-mode-pips" onclick="oSetMode('pips')" style="padding:4px 14px;font-size:11px;font-weight:700;background:var(--accent);color:#fff;border:none;cursor:pointer;letter-spacing:0.5px;transition:all 0.2s">PIPS</button>
+                <button id="o-mode-price" onclick="oSetMode('price')" style="padding:4px 14px;font-size:11px;font-weight:700;background:transparent;color:var(--text2);border:none;cursor:pointer;letter-spacing:0.5px;transition:all 0.2s">PRICE</button>
+              </div>
+            </div>
+          </div>
           <div class="order-grid">
-            <div class="field"><label>Symbol</label><input id="o-symbol" class="sinput" list="jf-symbol-list" autocomplete="off" oninput="this.value=this.value.toUpperCase()" style="width:100%" value="EURUSDc" placeholder="Type or select symbol..."/></div>
-            <div class="field"><label>Volume (lots)</label><input id="o-volume" class="sinput" style="width:100%" type="number" value="0.01" step="0.01" min="0.01"/></div>
-            <div class="field"><label>Stop Loss</label><input id="o-sl" class="sinput" style="width:100%" type="number" value="0" step="0.00001" placeholder="0 = none"/></div>
-            <div class="field"><label>Take Profit</label><input id="o-tp" class="sinput" style="width:100%" type="number" value="0" step="0.00001" placeholder="0 = none"/></div>
-            <div class="field"><label>Comment</label><input id="o-comment" class="sinput" style="width:100%" value="FarhanFX Algo"/></div>
-            <div><button class="obtn obtn-buy" onclick="placeOrder('BUY')">▲ BUY</button></div>
-            <div><button class="obtn obtn-sell" onclick="placeOrder('SELL')">▼ SELL</button></div>
+            <div class="field">
+              <label>Symbol</label>
+              <input id="o-symbol" class="sinput" list="jf-symbol-list" autocomplete="off"
+                oninput="this.value=this.value.toUpperCase()"
+                onblur="oFetchPrice()"
+                style="width:100%" value="EURUSDc" placeholder="Type or select..."/>
+              <div id="o-price-preview" style="font-size:10px;color:var(--cyan);margin-top:3px;height:14px;white-space:nowrap;overflow:hidden"></div>
+            </div>
+            <div class="field">
+              <label>Volume (lots)</label>
+              <input id="o-volume" class="sinput" style="width:100%" type="number" value="0.01" step="0.01" min="0.01"/>
+              <div style="height:14px"></div>
+            </div>
+            <div class="field">
+              <label id="o-sl-label">Stop Loss (pips)</label>
+              <input id="o-sl" class="sinput" style="width:100%" type="number" value="20" step="1" min="0" placeholder="0 = none" oninput="oUpdatePreviews()"/>
+              <div id="o-sl-preview" style="font-size:10px;margin-top:3px;height:14px;white-space:nowrap;overflow:hidden"></div>
+            </div>
+            <div class="field">
+              <label id="o-tp-label">Take Profit (pips)</label>
+              <input id="o-tp" class="sinput" style="width:100%" type="number" value="40" step="1" min="0" placeholder="0 = none" oninput="oUpdatePreviews()"/>
+              <div id="o-tp-preview" style="font-size:10px;margin-top:3px;height:14px;white-space:nowrap;overflow:hidden"></div>
+            </div>
+            <div class="field">
+              <label>Comment</label>
+              <input id="o-comment" class="sinput" style="width:100%" value="FarhanFX Algo"/>
+              <div style="height:14px"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;justify-content:flex-start">
+              <button class="obtn obtn-buy" id="o-buy-btn" onclick="placeOrder('BUY')">▲ BUY</button>
+              <div style="height:14px"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;justify-content:flex-start">
+              <button class="obtn obtn-sell" id="o-sell-btn" onclick="placeOrder('SELL')">▼ SELL</button>
+              <div style="height:14px"></div>
+            </div>
           </div>
         </div>
 
@@ -2300,20 +2338,120 @@ async function loadDeals() {
     </tr>`).join('');
 }
 
+// ── QUICK ORDER HELPERS ─────────────────────────────────────────────────────────
+let oMode = 'pips';
+let oCurrentTick = null;
+
+function getPipSize(symbol) {
+  const s = symbol.toUpperCase().replace(/[CS]$/, '');
+  if (s.includes('JPY')) return 0.01;
+  if (s.includes('XAU') || s.includes('GOLD')) return 0.1;
+  if (s.includes('XAG') || s.includes('SILVER')) return 0.01;
+  if (/NAS100|US30|SPX500|UK100|GER40|JP225|AUS200|DAX|CAC40/.test(s)) return 1.0;
+  if (/BTC|ETH|LTC|XRP|ADA|SOL|BNB|DOT/.test(s)) return 1.0;
+  if (/OIL|WTI|BRENT|NGAS/.test(s)) return 0.01;
+  return 0.0001;
+}
+
+function oSetMode(mode) {
+  oMode = mode;
+  const pipBtn   = document.getElementById('o-mode-pips');
+  const priceBtn = document.getElementById('o-mode-price');
+  pipBtn.style.background   = mode === 'pips'  ? 'var(--accent)' : 'transparent';
+  pipBtn.style.color        = mode === 'pips'  ? '#fff' : 'var(--text2)';
+  priceBtn.style.background = mode === 'price' ? 'var(--accent)' : 'transparent';
+  priceBtn.style.color      = mode === 'price' ? '#fff' : 'var(--text2)';
+
+  const slInput = document.getElementById('o-sl');
+  const tpInput = document.getElementById('o-tp');
+  document.getElementById('o-sl-label').textContent = mode === 'pips' ? 'Stop Loss (pips)'  : 'Stop Loss (price)';
+  document.getElementById('o-tp-label').textContent = mode === 'pips' ? 'Take Profit (pips)' : 'Take Profit (price)';
+
+  if (mode === 'pips') {
+    slInput.step = '1'; slInput.value = 20; slInput.placeholder = 'pips';
+    tpInput.step = '1'; tpInput.value = 40; tpInput.placeholder = 'pips';
+  } else {
+    slInput.step = '0.00001'; slInput.value = 0; slInput.placeholder = 'absolute price';
+    tpInput.step = '0.00001'; tpInput.value = 0; tpInput.placeholder = 'absolute price';
+    document.getElementById('o-sl-preview').textContent = '';
+    document.getElementById('o-tp-preview').textContent = '';
+  }
+  oUpdatePreviews();
+}
+
+async function oFetchPrice() {
+  const symbol = document.getElementById('o-symbol').value.trim();
+  if (!symbol) return;
+  const tick = await apiFetch('/api/price/' + symbol);
+  if (!tick || tick.error) return;
+  oCurrentTick = tick;
+  document.getElementById('o-price-preview').textContent = `Bid: ${tick.bid}  |  Ask: ${tick.ask}`;
+  oUpdatePreviews();
+}
+
+function oUpdatePreviews() {
+  if (oMode !== 'pips' || !oCurrentTick) return;
+  const sl  = parseFloat(document.getElementById('o-sl').value) || 0;
+  const tp  = parseFloat(document.getElementById('o-tp').value) || 0;
+  const sym = document.getElementById('o-symbol').value.trim();
+  const pip = getPipSize(sym);
+  const { bid, ask } = oCurrentTick;
+
+  const dp = pip < 0.001 ? 5 : pip < 0.1 ? 3 : 2;
+  const fmt = v => v.toFixed(dp);
+
+  document.getElementById('o-sl-preview').innerHTML = sl > 0
+    ? `<span style="color:var(--green)">BUY≈${fmt(ask - sl*pip)}</span>&nbsp;&nbsp;<span style="color:var(--red)">SELL≈${fmt(bid + sl*pip)}</span>`
+    : '<span style="color:var(--text3)">0 = no SL</span>';
+  document.getElementById('o-tp-preview').innerHTML = tp > 0
+    ? `<span style="color:var(--green)">BUY≈${fmt(ask + tp*pip)}</span>&nbsp;&nbsp;<span style="color:var(--red)">SELL≈${fmt(bid - tp*pip)}</span>`
+    : '<span style="color:var(--text3)">0 = no TP</span>';
+}
+
 // ── PLACE ORDER ────────────────────────────────────────────────────────────────
 async function placeOrder(side) {
   const symbol  = document.getElementById('o-symbol').value.trim().toUpperCase();
   const volume  = parseFloat(document.getElementById('o-volume').value);
-  const sl      = parseFloat(document.getElementById('o-sl').value) || 0;
-  const tp      = parseFloat(document.getElementById('o-tp').value) || 0;
+  let sl        = parseFloat(document.getElementById('o-sl').value) || 0;
+  let tp        = parseFloat(document.getElementById('o-tp').value) || 0;
   const comment = document.getElementById('o-comment').value;
 
   if (!symbol || !volume) { toast('Fill symbol and volume', false); return; }
+
+  const buyBtn  = document.getElementById('o-buy-btn');
+  const sellBtn = document.getElementById('o-sell-btn');
+  buyBtn.disabled = true; sellBtn.disabled = true;
+  const activeBtn = side === 'BUY' ? buyBtn : sellBtn;
+  const origHTML  = activeBtn.innerHTML;
+  activeBtn.innerHTML = '⏳ ...';
+
+  // Convert pips → absolute price levels
+  if (oMode === 'pips' && (sl > 0 || tp > 0)) {
+    let tick = oCurrentTick;
+    if (!tick) {
+      tick = await apiFetch('/api/price/' + symbol);
+      if (!tick || tick.error) {
+        toast('Cannot get price for ' + symbol, false);
+        buyBtn.disabled = false; sellBtn.disabled = false;
+        activeBtn.innerHTML = origHTML; return;
+      }
+      oCurrentTick = tick;
+    }
+    const pip   = getPipSize(symbol);
+    const isBuy = side === 'BUY';
+    const ref   = isBuy ? tick.ask : tick.bid;
+    if (sl > 0) sl = parseFloat((isBuy ? ref - sl*pip : ref + sl*pip).toFixed(5));
+    if (tp > 0) tp = parseFloat((isBuy ? ref + tp*pip : ref - tp*pip).toFixed(5));
+  }
 
   const r = await apiFetch('/api/order', {
     method: 'POST',
     body: JSON.stringify({ symbol, order_type: side, volume, sl, tp, comment })
   });
+
+  buyBtn.disabled = false; sellBtn.disabled = false;
+  activeBtn.innerHTML = origHTML;
+
   if (r.error) { toast(side + ' failed: ' + r.error, false); return; }
   toast(`${side} #${r.ticket} opened @ ${r.price}`);
   loadPositions();

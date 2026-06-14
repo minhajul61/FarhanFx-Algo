@@ -261,7 +261,15 @@ def place_order(req: OrderRequest):
             "type_time":    mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_IOC,
         }
-        result = mt5.order_send(request)
+        # Try all filling modes — CXM Direct requirements vary by instrument
+        result = None
+        for filling in [mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_FOK, mt5.ORDER_FILLING_RETURN]:
+            request["type_filling"] = filling
+            result = mt5.order_send(request)
+            if result.retcode == mt5.TRADE_RETCODE_DONE:
+                break
+            if result.retcode != 10038:  # 10038 = invalid filling — try next
+                break
         if result.retcode != mt5.TRADE_RETCODE_DONE:
             return {"error": f"{result.comment} (retcode {result.retcode})"}
         return {"success": True, "ticket": result.order, "price": result.price}
