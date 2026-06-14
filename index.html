@@ -1290,12 +1290,19 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ── LOAD SYMBOLS FROM MT5 ──────────────────────────────────────────────────────
-// Fallback: only confirmed CXM Direct symbols (used when server is offline)
+// Fallback: CXM Direct symbols (used when server is offline)
 const FALLBACK_SYMBOLS = [
+  // Forex
   'EURUSDc','GBPUSDc','USDJPYc','USDCHFc','AUDUSDc','NZDUSDc','USDCADc',
   'EURGBPc','EURJPYc','GBPJPYc','EURCADc','EURAUDc','GBPCADc','GBPCHFc',
+  // Metals
   'XAUUSDc','XAGUSDc',
-  'NAS100s','US30s','US500s','GER40s','UK100s','JPN225s','AUS200s'
+  // Indices
+  'NAS100s','US30s','US500s','GER40s','UK100s','JPN225s','AUS200s',
+  // Crypto (CXM Direct c-suffix variants)
+  'BTCUSDc','ETHUSDc','LTCUSDc','XRPUSDc','BCHUSDc','ADAUSDc','SOLUSDc',
+  // Crypto m-suffix variants (some brokers use m)
+  'BTCUSDm','ETHUSDm','LTCUSDm','XRPUSDm'
 ];
 
 async function loadMT5Symbols() {
