@@ -197,22 +197,24 @@ def get_deals(days: int = 30):
         date_from = datetime(now.year, now.month, now.day) - timedelta(days=days - 1)
         # Fetch wider window to catch opening deals for positions opened before the range
         date_from_wide = date_from - timedelta(days=180)
-        deals_all = mt5.history_deals_get(date_from_wide, now)
+        # Add 60s buffer so very recently closed trades are never missed
+        date_to = now + timedelta(seconds=60)
+        deals_all = mt5.history_deals_get(date_from_wide, date_to)
         if deals_all is None:
             return []
 
         cutoff_ts = date_from.timestamp()
 
         # Split into IN and OUT maps by position_id
-        in_map: dict  = {}   # position_id -> IN deal
+        in_map: dict  = {}   # position_id -> IN deal (last IN wins for partial opens)
         out_list       = []  # list of OUT deals within requested range
 
         for d in deals_all:
             if d.type not in (0, 1):  # only BUY/SELL deals
                 continue
-            if d.entry == 0:          # IN = opening deal
+            if d.entry == 0:          # DEAL_ENTRY_IN — opening deal
                 in_map[d.position_id] = d
-            elif d.entry == 1:        # OUT = closing deal
+            elif d.entry in (1, 2, 3):  # OUT / INOUT / OUT_BY — all closing types
                 # Only include closings within the requested range (from midnight)
                 if d.time >= cutoff_ts:
                     out_list.append(d)
@@ -268,6 +270,30 @@ def get_deals(days: int = 30):
 
         result.sort(key=lambda x: x["exit_time"], reverse=True)
         return result
+    return _mt5_call(fn)
+
+
+@app.get("/api/deals/today")
+def get_deals_today():
+    """Raw today's deals for debugging TODAY REALIZED discrepancies."""
+    def fn():
+        now   = datetime.now()
+        today = datetime(now.year, now.month, now.day)
+        raw   = mt5.history_deals_get(today, now + timedelta(seconds=60))
+        if raw is None:
+            return {"error": mt5.last_error(), "deals": []}
+        out = []
+        for d in raw:
+            out.append({
+                "ticket": d.ticket, "order": d.order,
+                "position_id": d.position_id,
+                "type": d.type, "entry": d.entry,
+                "time": datetime.fromtimestamp(d.time).strftime("%Y-%m-%d %H:%M:%S"),
+                "symbol": d.symbol, "volume": d.volume,
+                "price": d.price, "profit": d.profit,
+                "commission": d.commission, "comment": d.comment,
+            })
+        return {"count": len(out), "net_profit": round(sum(d["profit"]+d["commission"] for d in out if d["entry"] in (1,2,3) and d["type"] in (0,1)), 2), "deals": out}
     return _mt5_call(fn)
 
 

@@ -2783,8 +2783,8 @@ async function closePosition(ticket) {
   if (r.error) { toastErr('Close failed: ' + r.error); return; }
   toast('Position #' + ticket + ' closed ✓');
   loadPositions();
-  loadDeals();
   loadAccount();
+  setTimeout(loadDeals, 1500); // wait 1.5s for MT5 to flush deal to history
 }
 
 async function closeAllPositions() {
@@ -2801,8 +2801,8 @@ async function closeAllPositions() {
     toast(`Closed ${r.closed}. Errors: ${errs.map(e=>e.error).join(', ')}`, true);
   }
   loadPositions();
-  loadDeals();
   loadAccount();
+  setTimeout(loadDeals, 1500);
 }
 
 // ── REPORTS ────────────────────────────────────────────────────────────────────
