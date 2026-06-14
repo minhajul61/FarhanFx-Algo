@@ -1705,7 +1705,7 @@ function showApp(accountInfo) {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   document.getElementById('user-badge').textContent = '● ' + accountInfo.login;
-  document.getElementById('s-username').value = accountInfo.name || accountInfo.login;
+  const _unEl = document.getElementById('s-username'); if (_unEl) _unEl.value = accountInfo.name || accountInfo.login;
   document.getElementById('main-btn').style.background = 'linear-gradient(135deg,var(--accent),var(--accent2))';
   document.getElementById('main-btn').textContent = 'CONNECT TO MT5 →';
   document.getElementById('main-btn').disabled = false;
