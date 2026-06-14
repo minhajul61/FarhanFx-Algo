@@ -1093,6 +1093,23 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 add_log(f"📊 Signal: {signal} @ {entry}  SL:{sl_val}  TP:{tp_val}  (pip={pip})")
                 do_trade(signal, entry, sl_val, tp_val)
 
+            # Update running P&L from deal history
+            def _update_pnl():
+                from datetime import timedelta as _td
+                df = datetime.now() - _td(days=30)
+                deals = mt5.history_deals_get(df, datetime.now())
+                if not deals:
+                    return 0.0
+                total = 0.0
+                for d in deals:
+                    if d.entry == 1 and (d.comment or "").startswith(f"FarhanFX-{strategy}") and d.symbol == symbol:
+                        total += d.profit + d.commission + d.swap
+                return round(total, 2)
+            try:
+                _strategies[sid]["pnl"] = _mt5_call(_update_pnl)
+            except Exception:
+                pass
+
         except Exception as e:
             add_log(f"⚠️ Error: {e}")
 
@@ -1121,6 +1138,7 @@ def start_strategy(req: StrategyRequest):
         "config":    cfg,
         "status":    "running",
         "trades":    0,
+        "pnl":       0.0,
         "indicator": "",
         "log":       log,
         "started":   datetime.now().strftime("%H:%M:%S"),
@@ -1148,13 +1166,54 @@ def list_strategies():
             "symbol":    s["config"]["symbol"],
             "timeframe": s["config"]["timeframe"],
             "volume":    s["config"]["volume"],
+            "sl":        s["config"].get("sl", 0),
+            "tp":        s["config"].get("tp", 0),
             "status":    s["status"],
             "trades":    s["trades"],
+            "pnl":       round(s.get("pnl", 0.0), 2),
             "indicator": s.get("indicator", ""),
             "started":   s["started"],
-            "log":       s["log"][-5:],
+            "log":       s["log"][-20:],
         })
     return result
+
+
+@app.get("/api/algo/history")
+def get_algo_history(days: int = 30):
+    def fn():
+        date_from = datetime.now() - timedelta(days=days)
+        deals = mt5.history_deals_get(date_from, datetime.now())
+        if deals is None:
+            return []
+        # Build position_id -> open deal map for entry prices
+        open_map: dict = {}
+        closed = []
+        for d in deals:
+            if d.type not in (0, 1):
+                continue
+            if not (d.comment or "").startswith("FarhanFX"):
+                continue
+            if d.entry == 0:   # IN (opening)
+                open_map[d.position_id] = d
+            elif d.entry == 1: # OUT (closing)
+                closed.append(d)
+        result = []
+        for d in closed:
+            open_d = open_map.get(d.position_id)
+            result.append({
+                "ticket":      d.position_id,
+                "symbol":      d.symbol,
+                "type":        "BUY" if (open_d.type if open_d else d.type) == 0 else "SELL",
+                "volume":      d.volume,
+                "entry_price": open_d.price if open_d else None,
+                "exit_price":  d.price,
+                "profit":      round(d.profit + d.commission + d.swap, 2),
+                "comment":     d.comment,
+                "time":        datetime.fromtimestamp(d.time).strftime("%Y-%m-%d %H:%M"),
+            })
+        result.sort(key=lambda x: x["time"], reverse=True)
+        return result[:200]
+    return _mt5_call(fn)
 
 @app.delete("/api/strategy/{sid}")
 def delete_strategy(sid: str):

@@ -823,76 +823,109 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
         <!-- NEW STRATEGY FORM -->
         <div class="order-panel" style="border-color:var(--cyan)">
-          <div class="panel-title" style="color:var(--cyan)">New Strategy</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+          <div class="panel-title" style="color:var(--cyan);display:flex;justify-content:space-between;align-items:center">
+            Configure Strategy
+            <div style="display:flex;gap:8px">
+              <button onclick="algoAddToQueue()" style="padding:6px 14px;background:transparent;border:1px solid var(--cyan);color:var(--cyan);border-radius:6px;font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.5px">+ ADD TO QUEUE</button>
+              <button onclick="startStrategy()" style="padding:6px 16px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff;border-radius:6px;font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.5px">▶ START NOW</button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1.5fr 1.5fr 1fr 0.8fr 0.8fr 0.8fr;gap:10px;margin-top:12px;align-items:end">
             <div class="field" style="margin-bottom:0">
               <label>Strategy</label>
-              <select id="algo-strategy" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:10px 12px;color:#e6edf3;font-family:var(--font);font-size:13px;outline:none">
-                <option>MA Cross</option>
-                <option>RSI</option>
-                <option>Bollinger Bands</option>
-                <option>EMA Trend</option>
-                <option>Scalper</option>
+              <select id="algo-strategy" class="sinput" style="width:100%">
+                <option>MA Cross</option><option>RSI</option><option>Bollinger Bands</option>
+                <option>EMA Trend</option><option>Scalper</option>
               </select>
             </div>
             <div class="field" style="margin-bottom:0">
               <label>Symbol</label>
-              <input id="algo-symbol" class="sinput" list="jf-symbol-list" autocomplete="off" style="width:100%" value="EURUSDc" placeholder="Type or select symbol..."/>
-              <div class="server-presets" style="margin-top:6px">
-                <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='EURUSDc'">EURUSDc</button>
-                <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='GBPUSDc'">GBPUSDc</button>
-                <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='XAUUSDc'">XAUUSDc</button>
-                <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='GBPJPYc'">GBPJPYc</button>
-                <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='NAS100s'">NAS100s</button>
-                <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='BTCUSDc'">BTCUSDc</button>
-              </div>
+              <input id="algo-symbol" class="sinput" list="jf-symbol-list" autocomplete="off" style="width:100%" value="EURUSDc" placeholder="Symbol..."/>
             </div>
             <div class="field" style="margin-bottom:0">
               <label>Timeframe</label>
-              <select id="algo-tf" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:10px 12px;color:#e6edf3;font-family:var(--font);font-size:13px;outline:none">
-                <option>M5</option><option>M15</option><option selected>H1</option><option>H4</option><option>D1</option>
+              <select id="algo-tf" class="sinput" style="width:100%">
+                <option>M1</option><option>M5</option><option>M15</option><option>M30</option><option selected>H1</option><option>H4</option><option>D1</option>
               </select>
             </div>
+            <div class="field" style="margin-bottom:0"><label>Lots</label><input id="algo-vol" class="sinput" style="width:100%" type="number" value="0.01" step="0.01" min="0.01"/></div>
+            <div class="field" style="margin-bottom:0"><label>SL (pips)</label><input id="algo-sl" class="sinput" style="width:100%" type="number" value="20" min="0"/></div>
+            <div class="field" style="margin-bottom:0"><label>TP (pips)</label><input id="algo-tp" class="sinput" style="width:100%" type="number" value="40" min="0"/></div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end">
-            <div class="field" style="margin-bottom:0"><label>Lot Size</label><input id="algo-vol" class="sinput" style="width:100%" type="number" value="0.01" step="0.01" min="0.01"/></div>
-            <div class="field" style="margin-bottom:0"><label>Stop Loss (pips)</label><input id="algo-sl" class="sinput" style="width:100%" type="number" value="20"/></div>
-            <div class="field" style="margin-bottom:0"><label>Take Profit (pips)</label><input id="algo-tp" class="sinput" style="width:100%" type="number" value="40"/></div>
-            <button class="obtn obtn-buy" style="background:linear-gradient(135deg,var(--accent),var(--accent2));white-space:nowrap" onclick="startStrategy()">▶ START</button>
+          <!-- Quick symbol presets -->
+          <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+            <span style="font-size:10px;color:var(--text3);align-self:center">Quick:</span>
+            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='EURUSDc'">EURUSDc</button>
+            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='GBPUSDc'">GBPUSDc</button>
+            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='XAUUSDc'">XAUUSDc</button>
+            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='GBPJPYc'">GBPJPYc</button>
+            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='NAS100s'">NAS100s</button>
+            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='BTCUSDc'">BTCUSDc</button>
+            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='USDJPYc'">USDJPYc</button>
+            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='US30s'">US30s</button>
           </div>
         </div>
 
-        <!-- STRATEGY DESCRIPTIONS -->
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px">
-          <div class="panel" style="padding:12px;cursor:pointer" onclick="document.getElementById('algo-strategy').value='MA Cross'">
-            <div style="font-size:10px;color:#58a6ff;letter-spacing:1px;margin-bottom:6px">MA CROSS</div>
-            <div style="font-size:11px;color:#7d8590">EMA 20/50 crossover signal</div>
+        <!-- STRATEGY QUEUE -->
+        <div id="algo-queue-panel" style="display:none;margin-bottom:12px">
+          <div class="panel">
+            <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;color:var(--cyan)">
+              Strategy Queue (<span id="algo-queue-count">0</span>)
+              <div style="display:flex;gap:8px">
+                <button onclick="algoClearQueue()" style="padding:4px 12px;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">CLEAR</button>
+                <button onclick="algoStartAll()" style="padding:4px 16px;background:linear-gradient(135deg,var(--green),#059669);border:none;color:#fff;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.5px">▶▶ START ALL</button>
+              </div>
+            </div>
+            <table style="margin-top:8px">
+              <thead><tr><th>STRATEGY</th><th>SYMBOL</th><th>TF</th><th>LOTS</th><th>SL</th><th>TP</th><th></th></tr></thead>
+              <tbody id="algo-queue-tbody"></tbody>
+            </table>
           </div>
-          <div class="panel" style="padding:12px;cursor:pointer" onclick="document.getElementById('algo-strategy').value='RSI'">
-            <div style="font-size:10px;color:#e3b341;letter-spacing:1px;margin-bottom:6px">RSI</div>
-            <div style="font-size:11px;color:#7d8590">RSI(14) below 30 or above 70</div>
+        </div>
+
+        <!-- STRATEGY INFO CARDS -->
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px">
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--cyan)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='MA Cross'">
+            <div style="font-size:10px;color:var(--cyan);letter-spacing:1px;margin-bottom:4px">MA CROSS</div>
+            <div style="font-size:10px;color:var(--text3)">EMA 20/50 crossover</div>
           </div>
-          <div class="panel" style="padding:12px;cursor:pointer" onclick="document.getElementById('algo-strategy').value='Bollinger Bands'">
-            <div style="font-size:10px;color:#00d26a;letter-spacing:1px;margin-bottom:6px">BOLLINGER</div>
-            <div style="font-size:11px;color:#7d8590">Price outside BB bands</div>
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--amber)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='RSI'">
+            <div style="font-size:10px;color:var(--amber);letter-spacing:1px;margin-bottom:4px">RSI</div>
+            <div style="font-size:10px;color:var(--text3)">RSI(14) OB/OS signal</div>
           </div>
-          <div class="panel" style="padding:12px;cursor:pointer" onclick="document.getElementById('algo-strategy').value='EMA Trend'">
-            <div style="font-size:10px;color:#f85149;letter-spacing:1px;margin-bottom:6px">EMA TREND</div>
-            <div style="font-size:11px;color:#7d8590">EMA20/100 trend follow</div>
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--green)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Bollinger Bands'">
+            <div style="font-size:10px;color:var(--green);letter-spacing:1px;margin-bottom:4px">BOLLINGER</div>
+            <div style="font-size:10px;color:var(--text3)">Price outside BB bands</div>
           </div>
-          <div class="panel" style="padding:12px;cursor:pointer" onclick="document.getElementById('algo-strategy').value='Scalper'">
-            <div style="font-size:10px;color:#e3b341;letter-spacing:1px;margin-bottom:6px">SCALPER</div>
-            <div style="font-size:11px;color:#7d8590">EMA5/13 + RSI7 fast entry</div>
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='EMA Trend'">
+            <div style="font-size:10px;color:var(--red);letter-spacing:1px;margin-bottom:4px">EMA TREND</div>
+            <div style="font-size:10px;color:var(--text3)">EMA 20/100 trend follow</div>
+          </div>
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Scalper'">
+            <div style="font-size:10px;color:var(--accent);letter-spacing:1px;margin-bottom:4px">SCALPER</div>
+            <div style="font-size:10px;color:var(--text3)">EMA 5/13 + RSI7 fast</div>
           </div>
         </div>
 
         <!-- RUNNING STRATEGIES -->
-        <div class="panel">
+        <div class="panel" style="margin-bottom:14px">
           <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
             Running Strategies
             <button class="sbtn" onclick="loadStrategies()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
           </div>
-          <div id="algo-list"><div style="text-align:center;color:#3d444d;padding:30px;font-size:12px">No strategies running. Start one above.</div></div>
+          <div id="algo-list"><div style="text-align:center;color:var(--text3);padding:30px;font-size:12px">No strategies running. Start one above.</div></div>
+        </div>
+
+        <!-- ALGO TRADE HISTORY -->
+        <div class="panel">
+          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
+            Algo Trade History
+            <button class="sbtn" onclick="loadAlgoHistory()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
+          </div>
+          <table>
+            <thead><tr><th>TICKET</th><th>STRATEGY</th><th>SYMBOL</th><th>TYPE</th><th>LOTS</th><th>ENTRY</th><th>EXIT</th><th>P&amp;L</th><th>TIME</th></tr></thead>
+            <tbody id="algo-history-tbody"><tr><td colspan="9" style="text-align:center;color:var(--text3);padding:20px">Loading...</td></tr></tbody>
+          </table>
         </div>
       </div>
 
@@ -2765,21 +2798,77 @@ function setConnStatus(online) {
 
 // ── ALGO STRATEGIES ────────────────────────────────────────────────────────────
 let algoRefreshTimer = null;
+let algoQueue = [];
+
+function algoGetConfig() {
+  return {
+    strategy:  document.getElementById('algo-strategy').value,
+    symbol:    document.getElementById('algo-symbol').value.trim(), // no toUpperCase — broker symbols are case-sensitive
+    timeframe: document.getElementById('algo-tf').value,
+    volume:    parseFloat(document.getElementById('algo-vol').value) || 0.01,
+    sl:        parseFloat(document.getElementById('algo-sl').value) || 20,
+    tp:        parseFloat(document.getElementById('algo-tp').value) || 40,
+  };
+}
 
 async function startStrategy() {
-  const body = {
-    strategy:  document.getElementById('algo-strategy').value,
-    symbol:    document.getElementById('algo-symbol').value.trim().toUpperCase(),
-    timeframe: document.getElementById('algo-tf').value,
-    volume:    parseFloat(document.getElementById('algo-vol').value),
-    sl:        parseFloat(document.getElementById('algo-sl').value),
-    tp:        parseFloat(document.getElementById('algo-tp').value),
-  };
-  if (!body.symbol || !body.volume) { toast('Fill symbol and lot size', false); return; }
+  const body = algoGetConfig();
+  if (!body.symbol) { toast('Enter a symbol', false); return; }
   const r = await apiFetch('/api/strategy/start', { method: 'POST', body: JSON.stringify(body) });
   if (r.error) { toastErr('Failed: ' + r.error); return; }
-  toast(`Strategy started — ID: ${r.id}`);
+  toast(`▶ ${body.strategy} started on ${body.symbol}`);
   loadStrategies();
+}
+
+function algoAddToQueue() {
+  const cfg = algoGetConfig();
+  if (!cfg.symbol) { toast('Enter a symbol', false); return; }
+  algoQueue.push(cfg);
+  renderQueue();
+  toast(`${cfg.strategy} / ${cfg.symbol} added to queue`);
+}
+
+function algoRemoveFromQueue(idx) {
+  algoQueue.splice(idx, 1);
+  renderQueue();
+}
+
+function algoClearQueue() {
+  algoQueue = [];
+  renderQueue();
+}
+
+async function algoStartAll() {
+  if (!algoQueue.length) { toast('Queue is empty', false); return; }
+  let started = 0, failed = 0;
+  for (const cfg of algoQueue) {
+    const r = await apiFetch('/api/strategy/start', { method: 'POST', body: JSON.stringify(cfg) });
+    if (r.error) { toastErr(`${cfg.strategy}/${cfg.symbol}: ${r.error}`); failed++; }
+    else started++;
+  }
+  algoQueue = [];
+  renderQueue();
+  toast(`▶▶ Started ${started} strategies${failed ? `, ${failed} failed` : ''}`);
+  loadStrategies();
+}
+
+function renderQueue() {
+  const panel = document.getElementById('algo-queue-panel');
+  const tbody = document.getElementById('algo-queue-tbody');
+  const cnt   = document.getElementById('algo-queue-count');
+  if (!algoQueue.length) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  cnt.textContent = algoQueue.length;
+  tbody.innerHTML = algoQueue.map((q, i) => `
+    <tr>
+      <td><span style="color:var(--cyan);font-weight:700">${q.strategy}</span></td>
+      <td>${q.symbol}</td>
+      <td>${q.timeframe}</td>
+      <td>${q.volume}</td>
+      <td>${q.sl}</td>
+      <td>${q.tp}</td>
+      <td><button onclick="algoRemoveFromQueue(${i})" style="padding:2px 8px;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:4px;font-size:10px;cursor:pointer">✕</button></td>
+    </tr>`).join('');
 }
 
 async function stopStrategy(sid) {
@@ -2798,41 +2887,90 @@ async function loadStrategies() {
   const data = await apiFetch('/api/strategy/list');
   const el = document.getElementById('algo-list');
   if (!Array.isArray(data) || data.length === 0) {
-    el.innerHTML = '<div style="text-align:center;color:#3d444d;padding:30px;font-size:12px">No strategies running. Start one above.</div>';
+    el.innerHTML = '<div style="text-align:center;color:var(--text3);padding:30px;font-size:12px">No strategies running. Start one above.</div>';
     return;
   }
-  const colorMap = { 'MA Cross': '#58a6ff', 'RSI': '#e3b341', 'Bollinger Bands': '#00d26a', 'EMA Trend': '#f85149', 'Scalper': '#e3b341' };
+  const colorMap = { 'MA Cross':'var(--cyan)', 'RSI':'var(--amber)', 'Bollinger Bands':'var(--green)', 'EMA Trend':'var(--red)', 'Scalper':'var(--accent)' };
   el.innerHTML = data.map(s => {
-    const color = colorMap[s.strategy] || '#58a6ff';
+    const color = colorMap[s.strategy] || 'var(--cyan)';
     const isRunning = s.status === 'running';
-    const logHtml = s.log.length ? s.log.map(l => `<div style="font-size:10px;color:#7d8590;padding:2px 0;border-bottom:1px solid #0d1117">${l}</div>`).join('') : '<div style="font-size:10px;color:#3d444d">No signals yet...</div>';
+    const pnlColor = (s.pnl || 0) >= 0 ? 'var(--green)' : 'var(--red)';
+    // Render log entries with color coding
+    const logHtml = s.log.length
+      ? s.log.slice().reverse().map(l => {
+          const isBuy  = l.includes('BUY');
+          const isSell = l.includes('SELL');
+          const isErr  = l.includes('failed') || l.includes('❌');
+          const lColor = isErr ? 'var(--red)' : (isBuy ? 'var(--green)' : (isSell ? 'var(--red)' : 'var(--text2)'));
+          return `<div style="font-size:10px;color:${lColor};padding:3px 0;border-bottom:1px solid #0d1117;font-family:monospace">${l}</div>`;
+        }).join('')
+      : '<div style="font-size:10px;color:var(--text3)">Scanning market...</div>';
     return `
-    <div style="background:#0d1117;border:1px solid ${isRunning ? color : '#21262d'};border-radius:8px;padding:14px;margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:8px;height:8px;border-radius:50%;background:${isRunning ? color : '#3d444d'};${isRunning ? 'animation:pulse 2s infinite' : ''}"></div>
-          <span style="font-size:13px;font-weight:700;color:${color}">${s.strategy}</span>
+    <div style="background:#0a0c13;border:1px solid ${isRunning ? color : 'var(--border)'};border-radius:10px;padding:16px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div style="width:9px;height:9px;border-radius:50%;background:${isRunning ? color : 'var(--border)'};${isRunning ? 'animation:pulse 2s infinite' : ''}"></div>
+          <span style="font-size:14px;font-weight:700;color:${color}">${s.strategy}</span>
           <span class="badge badge-cyan">${s.symbol}</span>
-          <span style="font-size:10px;color:#7d8590">${s.timeframe} | ${s.volume} lots</span>
-          <span style="font-size:10px;color:#3d444d">ID: ${s.id}</span>
+          <span style="font-size:11px;color:var(--text3)">${s.timeframe} · ${s.volume} lots · SL ${s.sl}p · TP ${s.tp}p</span>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <span style="font-size:11px;color:#7d8590">Trades: <span style="color:#e6edf3;font-weight:700">${s.trades}</span></span>
-          <span style="font-size:11px;color:#7d8590">Started: ${s.started}</span>
-          ${isRunning ? `<button class="close-btn" onclick="stopStrategy('${s.id}')">■ STOP</button>` : `<button class="close-btn" onclick="deleteStrategy('${s.id}')" style="border-color:#21262d;color:#7d8590">✕ REMOVE</button>`}
+        <div style="display:flex;gap:10px;align-items:center">
+          <div style="text-align:right">
+            <div style="font-size:10px;color:var(--text3)">TRADES</div>
+            <div style="font-size:16px;font-weight:800;color:var(--text1)">${s.trades}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:10px;color:var(--text3)">P&L</div>
+            <div style="font-size:16px;font-weight:800;color:${pnlColor}">${s.pnl != null ? (s.pnl >= 0 ? '+' : '') + s.pnl.toFixed(2) : '—'}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:10px;color:var(--text3)">SINCE</div>
+            <div style="font-size:11px;color:var(--text2)">${s.started}</div>
+          </div>
+          ${isRunning
+            ? `<button class="close-btn" onclick="stopStrategy('${s.id}')">■ STOP</button>`
+            : `<button class="close-btn" onclick="deleteStrategy('${s.id}')" style="border-color:var(--border);color:var(--text3)">✕ REMOVE</button>`}
         </div>
       </div>
-      ${s.indicator ? `<div style="font-size:11px;color:${color};margin-bottom:8px;font-family:var(--font)">${s.indicator}</div>` : ''}
-      <div style="background:#161b22;border-radius:4px;padding:8px;max-height:90px;overflow-y:auto">${logHtml}</div>
+      ${s.indicator ? `<div style="font-size:11px;color:${color};margin-bottom:10px;padding:6px 10px;background:#0d1117;border-radius:6px;border-left:3px solid ${color}">${s.indicator}</div>` : ''}
+      <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">Activity Log</div>
+      <div style="background:#0d1117;border-radius:6px;padding:8px 10px;max-height:140px;overflow-y:auto">${logHtml}</div>
     </div>`;
   }).join('');
 }
 
-// Auto-refresh strategies every 5s when ALGO page is active
+async function loadAlgoHistory() {
+  const tbody = document.getElementById('algo-history-tbody');
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:16px">Loading...</td></tr>';
+  const data = await apiFetch('/api/algo/history');
+  if (!data || data.error || !data.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:20px">No algo trades found in history.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(d => {
+    const pnlColor = d.profit >= 0 ? 'var(--green)' : 'var(--red)';
+    const typeColor = d.type === 'BUY' ? 'var(--green)' : 'var(--red)';
+    const stratLabel = d.comment ? d.comment.replace('FarhanFX-','') : '—';
+    return `<tr>
+      <td style="font-family:monospace;color:var(--text3)">#${d.ticket}</td>
+      <td><span style="color:var(--cyan);font-size:11px">${stratLabel}</span></td>
+      <td>${d.symbol}</td>
+      <td style="color:${typeColor};font-weight:700">${d.type}</td>
+      <td>${d.volume}</td>
+      <td style="font-family:monospace">${d.entry_price}</td>
+      <td style="font-family:monospace">${d.exit_price != null ? d.exit_price : '—'}</td>
+      <td style="color:${pnlColor};font-weight:700">${d.profit >= 0 ? '+' : ''}${d.profit.toFixed(2)}</td>
+      <td style="font-size:11px;color:var(--text3)">${d.time}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Auto-refresh strategies + history every 5s when ALGO page is active
 function startAlgoRefresh() {
   stopAlgoRefresh();
   loadStrategies();
-  algoRefreshTimer = setInterval(loadStrategies, 5000);
+  loadAlgoHistory();
+  algoRefreshTimer = setInterval(() => { loadStrategies(); loadAlgoHistory(); }, 5000);
 }
 
 function stopAlgoRefresh() {
