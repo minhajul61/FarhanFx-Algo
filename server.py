@@ -299,39 +299,86 @@ def get_deals_today():
     return _mt5_call(fn)
 
 
+@app.get("/api/debug/raw")
+def debug_raw():
+    """Debug: raw MT5 positions + account + today deals."""
+    def fn():
+        info = mt5.account_info()
+        positions = mt5.positions_get()
+        now = datetime.now()
+        today_midnight = datetime(now.year, now.month, now.day)
+        deals = mt5.history_deals_get(today_midnight, now + timedelta(seconds=60)) or []
+        return {
+            "account": {"balance": info.balance if info else 0, "equity": info.equity if info else 0,
+                        "profit": info.profit if info else 0, "margin": info.margin if info else 0},
+            "open_positions_count": len(positions) if positions else 0,
+            "open_positions": [{"ticket": p.ticket, "symbol": p.symbol, "type": p.type,
+                                "volume": p.volume, "profit": p.profit} for p in (positions or [])],
+            "today_deals_count": len(deals),
+            "today_deals_with_profit": [{"ticket": d.ticket, "pos_id": d.position_id,
+                                         "type": d.type, "entry": d.entry,
+                                         "time": datetime.fromtimestamp(d.time).strftime("%H:%M:%S"),
+                                         "profit": d.profit, "commission": d.commission}
+                                        for d in deals if d.profit != 0.0],
+        }
+    return _mt5_call(fn)
+
+
+import json as _json
+_TODAY_FILE = "today_balance.json"
+
+def _load_today_start():
+    try:
+        with open(_TODAY_FILE) as f:
+            return _json.load(f)
+    except Exception:
+        return {"date": None, "balance": None}
+
+def _save_today_start(date_str, balance):
+    try:
+        with open(_TODAY_FILE, "w") as f:
+            _json.dump({"date": date_str, "balance": balance}, f)
+    except Exception:
+        pass
+
+
 @app.get("/api/today_realized")
 def get_today_realized():
-    """Direct sum of today's closed trade P&L — no matching needed."""
+    """Balance-based TODAY REALIZED — accurate even when broker deal history is incomplete."""
     def fn():
+        info = mt5.account_info()
+        if not info:
+            return {"realized": 0.0, "trades": 0, "wins": 0, "losses": 0}
+
+        today_str  = datetime.now().strftime("%Y-%m-%d")
+        stored     = _load_today_start()
+
+        if stored["date"] != today_str or stored["balance"] is None:
+            _save_today_start(today_str, info.balance)
+            start_balance = info.balance
+        else:
+            start_balance = stored["balance"]
+
+        # realized = balance now - balance at start of day (deposits excluded in most cases)
+        realized = round(info.balance - start_balance, 2)
+
+        # Best-effort trade count from deal history
         now            = datetime.now()
         today_midnight = datetime(now.year, now.month, now.day)
-        deals = mt5.history_deals_get(today_midnight, now + timedelta(seconds=60))
-        if deals is None:
-            return {"realized": 0.0, "trades": 0, "wins": 0, "losses": 0}
-        total  = 0.0
-        trades = 0
-        wins   = 0
-        losses = 0
+        deals  = mt5.history_deals_get(today_midnight, now + timedelta(seconds=60)) or []
+        wins   = losses = trades = 0
         for d in deals:
-            if d.type not in (0, 1):   # skip balance, credit, bonus, commission etc.
+            if d.type not in (0, 1):
                 continue
-            net = round(d.profit + d.commission + d.swap, 2)
-            # Opening deals always have profit=0; closing deals always have profit!=0
-            # This is more reliable than checking d.entry which varies by broker/mode
             if d.profit == 0.0 and d.commission == 0.0 and d.swap == 0.0:
                 continue
-            total += net
+            net = d.profit + d.commission + d.swap
             trades += 1
-            if net > 0:
-                wins += 1
-            else:
-                losses += 1
-        return {
-            "realized": round(total, 2),
-            "trades":   trades,
-            "wins":     wins,
-            "losses":   losses,
-        }
+            if net > 0: wins += 1
+            else:       losses += 1
+
+        return {"realized": realized, "trades": trades, "wins": wins, "losses": losses,
+                "start_balance": start_balance}
     return _mt5_call(fn)
 
 
