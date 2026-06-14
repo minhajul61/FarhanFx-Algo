@@ -1906,7 +1906,6 @@ async function handleAction() {
 function showApp(accountInfo) {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
-  document.getElementById('user-badge').textContent = '● ' + accountInfo.login;
   const _unEl = document.getElementById('s-username'); if (_unEl) _unEl.value = accountInfo.name || accountInfo.login;
   document.getElementById('main-btn').style.background = 'linear-gradient(135deg,var(--accent),var(--accent2))';
   document.getElementById('main-btn').textContent = 'CONNECT TO MT5 →';
@@ -3322,17 +3321,7 @@ function _updateDealsKPIs(data) {
   const netSubEl = document.getElementById('trd-net-sub');
   if (netSubEl) netSubEl.textContent = `${data.length} closed trades`;
 
-  // Dashboard main KPI cards (top of page)
-  const kwEl = document.getElementById('kpi-winrate');
-  if (kwEl) { kwEl.textContent = winRate + '%'; kwEl.style.color = winRate >= 50 ? 'var(--green)' : 'var(--red)'; }
-  const kwSub = document.getElementById('kpi-wl');
-  if (kwSub) kwSub.textContent = `${wins.length}W / ${losses.length}L`;
-  const knEl = document.getElementById('kpi-netpnl');
-  if (knEl) { knEl.textContent = (netPnl >= 0 ? '+$' : '-$') + Math.abs(netPnl).toFixed(2); knEl.style.color = netPnl >= 0 ? 'var(--green)' : 'var(--red)'; }
-  const knSub = document.getElementById('kpi-netpnl-sub');
-  if (knSub) knSub.textContent = `${data.length} closed trades`;
-
-  // TODAY REALIZED
+  // TODAY REALIZED (Trades page)
   const todEl  = document.getElementById('trd-today-pnl');
   const todSub = document.getElementById('trd-today-sub');
   if (todEl) {
@@ -3344,18 +3333,6 @@ function _updateDealsKPIs(data) {
       todEl.style.color = todayPnl >= 0 ? 'var(--green)' : 'var(--red)';
       if (todSub) { todSub.textContent = `${todayTrades.length} trade${todayTrades.length>1?'s':''} closed`; todSub.style.color = 'var(--text3)'; }
     }
-  }
-  // Also update dashboard today realized KPI card
-  const dTodEl  = document.getElementById('kpi-today');
-  const dTodSub = document.getElementById('kpi-today-sub');
-  if (dTodEl) {
-    if (todayTrades.length === 0) {
-      dTodEl.textContent = '—'; dTodEl.style.color = 'var(--text3)';
-    } else {
-      dTodEl.textContent = (todayPnl >= 0 ? '+$' : '-$') + Math.abs(todayPnl).toFixed(2);
-      dTodEl.style.color = todayPnl >= 0 ? 'var(--green)' : 'var(--red)';
-    }
-    if (dTodSub) dTodSub.textContent = `${todayTrades.length} trades closed`;
   }
 }
 
@@ -4766,17 +4743,7 @@ function initCharts() {
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: tc, font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { display: false } }, y: { ticks: { color: tc, font: { size: 9 }, callback: v => v + '%' }, grid: { color: 'rgba(33,38,45,0.6)' }, max: 0 } } }
   });
 
-  new Chart(document.getElementById('pairChart'), {
-    type: 'bar',
-    data: { labels: ['EUR/USD','GBP/JPY','XAU/USD','NAS100','USD/CAD','GBP/USD'], datasets: [{ data: [72,68,65,75,63,70], backgroundColor: 'rgba(0,210,106,0.6)', borderColor: '#00d26a', borderWidth: 1, borderRadius: 2 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#21262d', titleColor: '#e6edf3', bodyColor: '#7d8590', borderColor: '#30363d', borderWidth: 1, callbacks: { label: v => v.raw + '%' } } }, scales: { x: { ticks: { color: tc, font: { size: 10 } }, grid: { display: false } }, y: { ticks: { color: tc, font: { size: 10 }, callback: v => v + '%' }, grid: { color: 'rgba(33,38,45,0.6)' }, min: 50, max: 80 } } }
-  });
-
-  new Chart(document.getElementById('distChart'), {
-    type: 'doughnut',
-    data: { labels: ['Wins','Losses'], datasets: [{ data: [210,102], backgroundColor: ['rgba(0,210,106,0.7)','rgba(248,81,73,0.7)'], borderColor: ['#00d26a','#f85149'], borderWidth: 2 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '65%' }
-  });
+  // pairChart / distChart removed — canvas elements no longer in HTML
 }
 </script>
 <!-- Symbol datalist at body level so browser can access from any input -->

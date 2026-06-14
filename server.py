@@ -5,7 +5,7 @@ import queue
 import secrets
 import threading
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import MetaTrader5 as mt5
@@ -570,7 +570,7 @@ def get_reports(months: int = 12):
             in_d = in_map.get(out.position_id)
             net  = round(out.profit + out.commission + out.swap, 2)
             dt   = datetime.fromtimestamp(out.time)
-            utc_dt = datetime.utcfromtimestamp(out.time)
+            utc_dt = datetime.fromtimestamp(out.time, tz=timezone.utc)
 
             all_nets.append(net)
             running_balance += net
