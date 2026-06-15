@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import os
 import queue
 import secrets
 import threading
@@ -68,6 +69,8 @@ async def lifespan(app: FastAPI):
     await asyncio.sleep(1)
     # Restore saved crypto exchange connections in background
     threading.Thread(target=_restore_exchanges, daemon=True).start()
+    # Restore algo strategies that were running before shutdown
+    threading.Thread(target=_restore_strategies_state, daemon=True).start()
     print("FarhanFX Algo API — http://127.0.0.1:8000")
     yield
     _cmd_queue.put((None, None, None))
@@ -256,6 +259,10 @@ def connect_mt5(req: ConnectRequest):
 
 @app.post("/api/disconnect")
 def disconnect_mt5():
+    # Never shut down MT5 while algo strategies are actively running
+    running = [s for s in _strategies.values() if s.get("status") == "running"]
+    if running:
+        return {"success": True, "skipped": True, "reason": f"{len(running)} strategies still running — MT5 kept alive"}
     def fn():
         mt5.shutdown()
         mt5.initialize()
@@ -1150,6 +1157,53 @@ async def websocket_endpoint(websocket: WebSocket):
 
 import time as _time
 
+_STRAT_STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "strategies_state.json")
+
+def _save_strategies_state():
+    """Persist running strategy configs to disk so they survive server restarts."""
+    try:
+        state = [
+            {"id": sid, "config": s["config"]}
+            for sid, s in _strategies.items()
+            if s.get("status") == "running"
+        ]
+        with open(_STRAT_STATE_FILE, "w") as f:
+            json.dump(state, f)
+    except Exception:
+        pass
+
+def _restore_strategies_state():
+    """On startup, reload and restart any strategies that were running before restart."""
+    if not os.path.exists(_STRAT_STATE_FILE):
+        return
+    try:
+        with open(_STRAT_STATE_FILE) as f:
+            state = json.load(f)
+        if not state:
+            return
+        import time as _t; _t.sleep(3)  # let MT5 fully initialize first
+        for entry in state:
+            sid    = entry["id"]
+            cfg    = entry["config"]
+            stop_ev = threading.Event()
+            log     = []
+            _strategies[sid] = {
+                "id":        sid,
+                "config":    cfg,
+                "status":    "running",
+                "trades":    0,
+                "pnl":       0.0,
+                "indicator": "↺ Restored after restart",
+                "log":       log,
+                "started":   datetime.now().strftime("%H:%M:%S"),
+            }
+            t = threading.Thread(target=_strategy_runner, args=(sid, cfg, stop_ev, log), daemon=True)
+            _strategies[sid]["_stop"] = stop_ev
+            t.start()
+        print(f"[ALGO] Restored {len(state)} strategies from disk")
+    except Exception as e:
+        print(f"[ALGO] Failed to restore strategies: {e}")
+
 # Active strategies: id -> {config, thread, stop_event, log}
 _strategies: dict = {}
 
@@ -1520,6 +1574,339 @@ def _compute_smc_liquidity_signals(opens, closes, highs, lows, n, swing_lb=5):
 
     return signals
 
+# ── ForexFactory News Calendar ──────────────────────────────────────────────────
+
+_NEWS_CACHE: dict = {"data": [], "ts": 0.0}
+
+def _fetch_ff_calendar() -> list:
+    now = __import__('time').time()
+    if now - _NEWS_CACHE["ts"] < 600 and _NEWS_CACHE["data"]:
+        return _NEWS_CACHE["data"]
+    try:
+        import urllib.request as _ur
+        req = _ur.Request(
+            "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+            headers={"User-Agent": "Mozilla/5.0 (FarhanFX/1.0)"}
+        )
+        with _ur.urlopen(req, timeout=8) as r:
+            raw = json.loads(r.read().decode("utf-8"))
+        _NEWS_CACHE["data"] = raw
+        _NEWS_CACHE["ts"]   = now
+        return raw
+    except Exception:
+        return _NEWS_CACHE.get("data", [])
+
+def _symbol_currencies(symbol: str) -> list:
+    s = symbol.upper().replace("C","").replace("M","")
+    if any(x in s for x in ("XAU","GOLD")): return ["USD"]
+    if "XAG" in s: return ["USD"]
+    if any(x in s for x in ("OIL","WTI","BRENT")): return ["USD"]
+    if any(x in s for x in ("US30","US500","SPX","NAS","DOW")): return ["USD"]
+    if len(s) >= 6:
+        return list({s[:3], s[3:6]})
+    return ["USD"]
+
+def _parse_news_dt(date_str: str):
+    try:
+        if date_str.endswith("Z"):
+            return datetime.fromisoformat(date_str.rstrip("Z")).replace(tzinfo=timezone.utc)
+        return datetime.fromisoformat(date_str)
+    except Exception:
+        return None
+
+def _get_upcoming_news(symbol: str, minutes_ahead: int = 240, minutes_past: int = 30) -> list:
+    currencies = _symbol_currencies(symbol)
+    now = datetime.now(timezone.utc)
+    events = []
+    for item in _fetch_ff_calendar():
+        if item.get("impact") not in ("High", "Medium"):
+            continue
+        if item.get("country", "").upper() not in currencies:
+            continue
+        ev_dt = _parse_news_dt(item.get("date", ""))
+        if ev_dt is None:
+            continue
+        if ev_dt.tzinfo is None:
+            ev_dt = ev_dt.replace(tzinfo=timezone.utc)
+        diff_min = (ev_dt - now).total_seconds() / 60
+        if -minutes_past <= diff_min <= minutes_ahead:
+            actual   = item.get("actual",   "") or ""
+            forecast = item.get("forecast", "") or ""
+            direction = "NEUTRAL"
+            try:
+                def _pv(v):
+                    v = str(v).replace("%","").replace("K","000").replace("M","000000").replace("B","000000000").strip()
+                    return float(v)
+                av = _pv(actual) if actual else None
+                fv = _pv(forecast) if forecast else None
+                if av is not None and fv is not None:
+                    if av > fv * 1.02:   direction = "BULLISH"
+                    elif av < fv * 0.98: direction = "BEARISH"
+            except Exception:
+                pass
+            events.append({
+                "title":        item.get("title", ""),
+                "country":      item.get("country", "").upper(),
+                "impact":       item.get("impact", ""),
+                "date":         item.get("date", ""),
+                "actual":       actual,
+                "forecast":     forecast,
+                "previous":     item.get("previous", "") or "",
+                "mins_from_now": round(diff_min, 1),
+                "direction":    direction,
+            })
+    events.sort(key=lambda x: x["mins_from_now"])
+    return events
+
+# ── Price Action + ICT + SMC AI Helpers ─────────────────────────────────────────
+
+def _detect_price_action(opens, closes, highs, lows):
+    """Detect candlestick patterns (all major patterns from books). Returns list of (name, dir, strength)."""
+    patterns = []
+    n = len(closes)
+    if n < 3:
+        return patterns
+    o1,c1,h1,l1 = opens[-1],closes[-1],highs[-1],lows[-1]
+    o2,c2,h2,l2 = opens[-2],closes[-2],highs[-2],lows[-2]
+    o3,c3       = opens[-3],closes[-3]
+    body1 = abs(c1-o1); body2 = abs(c2-o2)
+    uw1 = h1-max(c1,o1); lw1 = min(c1,o1)-l1
+    rng1 = h1-l1
+    if rng1 < 1e-10: return patterns
+
+    # ── Pin Bar — highest WR from books (long rejection wick) ─────────────────
+    if lw1 >= 2.0*body1 and body1 < rng1*0.35 and lw1 > rng1*0.5:
+        patterns.append(("Bullish Pin Bar","BUY",0.90))
+    if uw1 >= 2.0*body1 and body1 < rng1*0.35 and uw1 > rng1*0.5:
+        patterns.append(("Bearish Pin Bar","SELL",0.90))
+
+    # ── Engulfing (2nd body covers 1st entirely) ───────────────────────────────
+    if c2<o2 and c1>o1 and c1>o2 and o1<c2:
+        patterns.append(("Bullish Engulfing","BUY",0.85))
+    if c2>o2 and c1<o1 and c1<o2 and o1>c2:
+        patterns.append(("Bearish Engulfing","SELL",0.85))
+
+    # ── Marubozu (strong momentum, almost no wicks) ────────────────────────────
+    if rng1 > 0 and body1/rng1 > 0.88:
+        patterns.append(("Bullish Marubozu" if c1>o1 else "Bearish Marubozu",
+                         "BUY" if c1>o1 else "SELL", 0.82))
+
+    # ── Inside Bar False Breakout (institutional stop hunt — Candlestick Bible) ─
+    # Mother = [-3], Inside Bar = [-2], False breakout candle = [-1]
+    if n >= 4:
+        h_m,l_m   = highs[-3],lows[-3]
+        h_ib,l_ib = highs[-2],lows[-2]
+        if h_ib < h_m and l_ib > l_m:          # bar[-2] is inside bar of bar[-3]
+            if h1 > h_m and c1 < h_m:          # false break above mother → SELL reversal
+                patterns.append(("IB False Breakout","SELL",0.88))
+            if l1 < l_m and c1 > l_m:          # false break below mother → BUY reversal
+                patterns.append(("IB False Breakout","BUY",0.88))
+
+    # ── Morning Star / Evening Star (3-candle reversal) ───────────────────────
+    if c3<o3 and abs(c3-o3)>abs(c2-o2)*2 and c1>o1 and c1>(o3+c3)/2:
+        patterns.append(("Morning Star","BUY",0.80))
+    if c3>o3 and abs(c3-o3)>abs(c2-o2)*2 and c1<o1 and c1<(o3+c3)/2:
+        patterns.append(("Evening Star","SELL",0.80))
+
+    # ── Three White Soldiers / Three Black Crows ───────────────────────────────
+    if c1>o1 and c2>o2 and c3>o3 and c1>c2 and c2>c3:
+        patterns.append(("Three White Soldiers","BUY",0.80))
+    if c1<o1 and c2<o2 and c3<o3 and c1<c2 and c2<c3:
+        patterns.append(("Three Black Crows","SELL",0.80))
+
+    # ── Tweezer Tops/Bottoms (same high/low = rejection zone) ─────────────────
+    rng_tol = max(rng1, h2-l2) * 0.08
+    if abs(h1-h2) < rng_tol and c1 < (h1+l1)/2:
+        patterns.append(("Tweezer Top","SELL",0.78))
+    if abs(l1-l2) < rng_tol and c1 > (h1+l1)/2:
+        patterns.append(("Tweezer Bottom","BUY",0.78))
+
+    # ── Dark Cloud Cover / Piercing Pattern ────────────────────────────────────
+    if c2>o2 and c1<o1 and o1>h2 and c1<(o2+c2)/2 and c1>o2:
+        patterns.append(("Dark Cloud Cover","SELL",0.76))
+    if c2<o2 and c1>o1 and o1<l2 and c1>(o2+c2)/2 and c1<o2:
+        patterns.append(("Piercing Pattern","BUY",0.76))
+
+    # ── Hammer / Shooting Star ────────────────────────────────────────────────
+    if lw1>2*body1 and uw1<body1*0.5 and body1>0:
+        patterns.append(("Hammer","BUY",0.75))
+    if uw1>2*body1 and lw1<body1*0.5 and body1>0:
+        patterns.append(("Shooting Star","SELL",0.75))
+
+    # ── Harami (small body inside previous large body) ─────────────────────────
+    if body2 > 0 and body1 < body2*0.5:
+        b1h=max(o1,c1); b1l=min(o1,c1); b2h=max(o2,c2); b2l=min(o2,c2)
+        if b1h<=b2h and b1l>=b2l:
+            patterns.append(("Bullish Harami" if c2<o2 else "Bearish Harami",
+                             "BUY" if c2<o2 else "SELL", 0.72))
+
+    # ── Inside Bar (consolidation — trade breakout in trend direction) ─────────
+    if h1<h2 and l1>l2:
+        patterns.append(("Inside Bar","BUY" if c2>o2 else "SELL",0.70))
+
+    return patterns
+
+
+def _check_fibonacci_level(highs, lows, price, atr, lookback=80):
+    """Check if price is at 38.2/50/61.8% Fibonacci retracement (key levels from Candlestick Bible)."""
+    n = len(highs)
+    if n < 20: return "NEUTRAL", "Not enough data"
+    window = min(lookback, n)
+    recent_high = max(highs[-window:])
+    recent_low  = min(lows[-window:])
+    swing = recent_high - recent_low
+    if swing < atr * 2: return "NEUTRAL", "Swing too small"
+    tol = atr * 0.6
+    # Pullback levels from swing high (retracement in uptrend — BUY at fib)
+    fib618 = recent_high - 0.618 * swing
+    fib50  = recent_high - 0.500 * swing
+    fib382 = recent_high - 0.382 * swing
+    if abs(price - fib618) < tol: return "BUY", f"At 61.8% Fib [{fib618:.4f}] — golden ratio"
+    if abs(price - fib50)  < tol: return "BUY", f"At 50.0% Fib [{fib50:.4f}]"
+    if abs(price - fib382) < tol: return "BUY", f"At 38.2% Fib [{fib382:.4f}]"
+    # Pullback levels from swing low (retracement in downtrend — SELL at fib)
+    fib618u = recent_low + 0.618 * swing
+    fib50u  = recent_low + 0.500 * swing
+    fib382u = recent_low + 0.382 * swing
+    if abs(price - fib618u) < tol: return "SELL", f"At 61.8% Fib from low [{fib618u:.4f}]"
+    if abs(price - fib50u)  < tol: return "SELL", f"At 50.0% Fib from low [{fib50u:.4f}]"
+    if abs(price - fib382u) < tol: return "SELL", f"At 38.2% Fib from low [{fib382u:.4f}]"
+    return "NEUTRAL", f"Fib 61.8%={fib618:.4f}  50%={fib50:.4f}  38.2%={fib382:.4f}"
+
+
+def _check_21ema_bounce(closes, highs, lows, price, atr):
+    """Check if price is at/bouncing off 21 EMA (dynamic S/R from Candlestick Bible)."""
+    if len(closes) < 25: return "NEUTRAL", "Not enough data"
+    ema21v = _ema(closes, 21)
+    ema21  = ema21v[-1]
+    tol = atr * 0.4
+    rising = ema21 > (ema21v[-5] if len(ema21v) >= 5 else ema21)
+    # Price touching EMA
+    if abs(price - ema21) < tol:
+        if rising: return "BUY",  f"At rising 21 EMA [{ema21:.4f}] — dynamic support"
+        else:      return "SELL", f"At falling 21 EMA [{ema21:.4f}] — dynamic resistance"
+    # Price bounced off EMA last candle
+    if len(highs) >= 2 and len(ema21v) >= 2:
+        if abs(lows[-2] - ema21v[-2]) < tol and closes[-1] > ema21 and rising:
+            return "BUY",  f"Bounced off 21 EMA [{ema21:.4f}]"
+        if abs(highs[-2] - ema21v[-2]) < tol and closes[-1] < ema21 and not rising:
+            return "SELL", f"Rejected at 21 EMA [{ema21:.4f}]"
+    return "NEUTRAL", f"21 EMA: {ema21:.4f}"
+
+
+def _detect_double_top_bottom(highs, lows, closes, atr, lookback=60):
+    """Detect Double Top / Double Bottom chart pattern (reversal setup from cheat sheet)."""
+    n = len(closes)
+    if n < 20: return "NEUTRAL", "Not enough data"
+    window = min(lookback, n)
+    h = highs[-window:]; l = lows[-window:]; c = closes[-window:]
+    tol = atr * 2.5
+    lh = [(i, h[i]) for i in range(3, len(h)-2)
+          if h[i] >= max(h[max(0,i-3):i]+[0]) and h[i] >= max(h[i+1:min(len(h),i+4)]+[0])]
+    ll = [(i, l[i]) for i in range(3, len(l)-2)
+          if l[i] <= min(l[max(0,i-3):i]+[9e9]) and l[i] <= min(l[i+1:min(len(l),i+4)]+[9e9])]
+    if len(lh) >= 2:
+        p1, p2 = lh[-2][1], lh[-1][1]
+        if abs(p1-p2) < tol and c[-1] < min(p1,p2)-tol*0.3:
+            return "SELL", f"Double Top ~{(p1+p2)/2:.4f} — confirmed breakdown"
+    if len(ll) >= 2:
+        p1, p2 = ll[-2][1], ll[-1][1]
+        if abs(p1-p2) < tol and c[-1] > max(p1,p2)+tol*0.3:
+            return "BUY", f"Double Bottom ~{(p1+p2)/2:.4f} — confirmed breakout"
+    return "NEUTRAL", "No Double Top/Bottom detected"
+
+
+def _check_nr7(highs, lows):
+    """NR7: Current bar range = narrowest of last 7 bars (volatility contraction → breakout imminent)."""
+    if len(highs) < 7: return False
+    ranges = [highs[i]-lows[i] for i in range(-7, 0)]
+    return ranges[-1] == min(ranges) and ranges[-1] > 0
+
+
+def _get_ict_killzone():
+    """Returns (zone_name, level: HIGH/MEDIUM/LOW). All UTC."""
+    hm = datetime.now(timezone.utc).hour * 60 + datetime.now(timezone.utc).minute
+    if   0   <= hm <  120: return "Asia Open",     "MEDIUM"
+    elif 420  <= hm <  600: return "London KZ",     "HIGH"
+    elif 600  <= hm <  720: return "London-NY",     "MEDIUM"
+    elif 720  <= hm <  900: return "New York KZ",   "HIGH"
+    return "Off-Hours", "LOW"
+
+def _detect_bos(closes, highs, lows):
+    """Break of Structure: HH+HL=BUY, LL+LH=SELL."""
+    lb = 3
+    n  = len(closes)
+    ph = []; pl = []
+    for i in range(lb, n-lb):
+        if all(highs[i] >= highs[j] for j in range(i-lb, i+lb+1) if j!=i): ph.append(highs[i])
+        if all(lows[i]  <= lows[j]  for j in range(i-lb, i+lb+1) if j!=i): pl.append(lows[i])
+    if len(ph)<2 or len(pl)<2:
+        return "NEUTRAL","Not enough pivots"
+    hh = ph[-1]>ph[-2]; hl = pl[-1]>pl[-2]
+    ll = pl[-1]<pl[-2]; lh = ph[-1]<ph[-2]
+    if hh and hl: return "BUY",  f"BOS: HH+HL ({ph[-1]:.2f}/{pl[-1]:.2f})"
+    if ll and lh: return "SELL", f"BOS: LL+LH ({pl[-1]:.2f}/{ph[-1]:.2f})"
+    if hh and ll: return "BUY",  f"CHoCH: HH after LL — reversal UP"
+    if ll and hh: return "SELL", f"CHoCH: LL after HH — reversal DOWN"
+    return "NEUTRAL","No clear BOS"
+
+def _check_sr_level(closes, highs, lows, price, atr):
+    """Check if price is at a key S/R level (pivot high/low)."""
+    lb = 5; n = len(closes); tol = atr*0.3
+    ph = []; pl = []
+    for i in range(lb, n-lb):
+        if all(highs[i]>=highs[j] for j in range(i-lb,i+lb+1) if j!=i): ph.append(highs[i])
+        if all(lows[i] <=lows[j]  for j in range(i-lb,i+lb+1) if j!=i): pl.append(lows[i])
+    for r in ph[-8:]:
+        if abs(price-r)<tol: return "SELL",f"At Resistance {r:.2f}"
+    for s in pl[-8:]:
+        if abs(price-s)<tol: return "BUY", f"At Support {s:.2f}"
+    return "NEUTRAL","No key S/R nearby"
+
+def _check_fvg_zone(highs, lows, price):
+    """Return if price is inside a recent FVG."""
+    n = len(highs)
+    for i in range(max(2, n-40), n):
+        fd, fl, fh = _find_fvg(highs, lows, i)
+        if fd=="bullish" and fl<=price<=fh: return "BUY", f"In Bullish FVG [{fl:.2f}–{fh:.2f}]"
+        if fd=="bearish" and fl<=price<=fh: return "SELL",f"In Bearish FVG [{fl:.2f}–{fh:.2f}]"
+    return "NEUTRAL","No active FVG"
+
+def _check_ob_zone(opens, closes, highs, lows, price, atr):
+    """Check if price is at a fresh Order Block."""
+    IMPULSE=3; LOOKBACK=60; n=len(closes); tol=atr*0.5
+    avg_size = sum(abs(closes[i]-opens[i]) for i in range(-20,0))/20 if n>=20 else atr*0.1
+    bull_ob=bear_ob=None
+    for i in range(max(1,n-LOOKBACK), n-4):
+        bi = sum(1 for j in range(i+1,min(i+1+IMPULSE,n)) if closes[j]>opens[j] and abs(closes[j]-opens[j])>avg_size*0.5)
+        if bi>=IMPULSE and closes[i]<opens[i]:
+            oh=max(opens[i],closes[i]); ol=min(opens[i],closes[i])
+            if not any(lows[j]<=oh and highs[j]>=ol for j in range(i+IMPULSE+1,n-1)):
+                bull_ob=(ol,oh)
+        si = sum(1 for j in range(i+1,min(i+1+IMPULSE,n)) if closes[j]<opens[j] and abs(closes[j]-opens[j])>avg_size*0.5)
+        if si>=IMPULSE and closes[i]>opens[i]:
+            oh=max(opens[i],closes[i]); ol=min(opens[i],closes[i])
+            if not any(highs[j]>=ol and lows[j]<=oh for j in range(i+IMPULSE+1,n-1)):
+                bear_ob=(ol,oh)
+    if bull_ob:
+        ol,oh=bull_ob
+        if ol-tol<=price<=oh+tol: return "BUY", f"In Bullish OB [{ol:.2f}–{oh:.2f}]"
+    if bear_ob:
+        ol,oh=bear_ob
+        if ol-tol<=price<=oh+tol: return "SELL",f"In Bearish OB [{ol:.2f}–{oh:.2f}]"
+    return "NEUTRAL","No fresh OB"
+
+def _check_liq_sweep(highs, lows, closes, atr):
+    """Detect recent liquidity sweep with reversal (last 6 bars)."""
+    lb=5; n=len(closes)
+    for i in range(max(lb+2,n-6), n-1):
+        wh=max(highs[i-lb:i]); wl=min(lows[i-lb:i])
+        if lows[i]<wl-atr*0.1 and closes[i]>wl:
+            return "BUY",  f"Liq Sweep below {wl:.2f} → reversal UP"
+        if highs[i]>wh+atr*0.1 and closes[i]<wh:
+            return "SELL", f"Liq Sweep above {wh:.2f} → reversal DOWN"
+    return "NEUTRAL","No recent sweep"
+
 def _has_open_position(symbol, magic):
     positions = mt5.positions_get(symbol=symbol)
     if not positions:
@@ -1662,22 +2049,95 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
             min_dist = max(sym_info.trade_stops_level * sym_info.point, pip)
             signal   = None
 
+            # ── News auto-close: close positions 5 min before high-impact news ──────
+            try:
+                news_now = _get_upcoming_news(symbol, minutes_ahead=5, minutes_past=0)
+                high_news = [e for e in news_now if e["impact"]=="High" and 0<=e["mins_from_now"]<=5]
+                if high_news:
+                    cur_pos = _mt5_call(lambda: _count_open_positions(symbol, magic)) or 0
+                    if cur_pos > 0:
+                        def _close_all_news():
+                            positions = mt5.positions_get(symbol=symbol)
+                            if not positions: return 0
+                            closed = 0
+                            for pos in positions:
+                                if pos.magic != magic: continue
+                                rtype = mt5.ORDER_TYPE_SELL if pos.type==0 else mt5.ORDER_TYPE_BUY
+                                t = mt5.symbol_info_tick(symbol)
+                                pclose = t.bid if pos.type==0 else t.ask
+                                r = mt5.order_send({
+                                    "action": mt5.TRADE_ACTION_DEAL,
+                                    "symbol": symbol, "volume": pos.volume,
+                                    "type": rtype, "position": pos.ticket,
+                                    "price": pclose, "deviation": 30,
+                                    "magic": magic, "comment": "FarhanFX-News-Close",
+                                    "type_time": mt5.ORDER_TIME_GTC,
+                                    "type_filling": mt5.ORDER_FILLING_IOC,
+                                })
+                                if r and r.retcode==mt5.TRADE_RETCODE_DONE: closed+=1
+                            return closed
+                        n_cls = _mt5_call(_close_all_news)
+                        if n_cls:
+                            add_log(f"📰 Closed {n_cls} pos before news: {high_news[0]['title']}")
+            except Exception as _ne:
+                add_log(f"⚠️ News-close error: {_ne}")
+
+            # ── Session filter: avoid 12:00-12:59 UTC (data shows 44% WR, losing) ─
+            _utc_hour = datetime.now(timezone.utc).hour
+            _session_block = (_utc_hour == 12)
+
+            # ── Minimum TP enforcement: require TP >= 1.5 × SL (data-driven R:R fix) ─
+            if tp_pips < sl_pips * 1.5:
+                tp_pips = round(sl_pips * 2.0)  # force 2:1 R:R
+
+            # ── News bias: skip/filter signals 30 min around high-impact news ────
+            _news_bias  = "NEUTRAL"
+            _news_block = False
+            try:
+                news_soon = _get_upcoming_news(symbol, minutes_ahead=30, minutes_past=5)
+                for ev in news_soon:
+                    if ev["impact"]=="High":
+                        if -5 <= ev["mins_from_now"] <= 30:
+                            _news_block = True
+                        if ev["direction"] in ("BULLISH","BEARISH"):
+                            _news_bias = ev["direction"]
+            except Exception:
+                pass
+
             if strategy == "MA Cross":
-                fast = _ema(closes, 20)
-                slow = _ema(closes, 50)
-                if fast[-2] < slow[-2] and fast[-1] > slow[-1]:
+                # Upgraded to Supertrend for better win rate
+                direction = _supertrend(highs, lows, closes, period=10, mult=3.0)
+                fast = _ema(closes, 20); slow = _ema(closes, 50)
+                _strategies[sid]["indicator"] = f"[Upgraded→Supertrend] ST:{'▲' if direction[-1]==1 else '▼'}"
+                if direction[-2]==-1 and direction[-1]==1 and fast[-1]>slow[-1]:
                     signal = "BUY"
-                elif fast[-2] > slow[-2] and fast[-1] < slow[-1]:
+                elif direction[-2]==1 and direction[-1]==-1 and fast[-1]<slow[-1]:
                     signal = "SELL"
 
             elif strategy == "EMA Trend":
-                ema20 = _ema(closes, 20)
-                ema100 = _ema(closes, 100)
+                # Upgraded to EMA + RSI filter for better win rate
+                ema20 = _ema(closes, 20); ema100 = _ema(closes, 100)
+                rsi_v = _rsi(closes, 14)
                 price = closes[-1]
-                _strategies[sid]["indicator"] = f"EMA20:{ema20[-1]:.5f} EMA100:{ema100[-1]:.5f}"
-                if price > ema20[-1] > ema100[-1]:
+                _strategies[sid]["indicator"] = f"[Upgraded] EMA20:{ema20[-1]:.5f} RSI:{rsi_v}"
+                if price > ema20[-1] > ema100[-1] and rsi_v > 50:
                     signal = "BUY"
-                elif price < ema20[-1] < ema100[-1]:
+                elif price < ema20[-1] < ema100[-1] and rsi_v < 50:
+                    signal = "SELL"
+
+            elif strategy == "SMC Liquidity":
+                # Liquidity Sweep + BOS confirmation
+                n = len(closes)
+                liq_sigs = _compute_smc_liquidity_signals(opens, closes, highs, lows, n)
+                bos_dir, bos_detail = _detect_bos(closes, highs, lows)
+                atr_v = _atr(highs, lows, closes, 14)
+                liq_dir, liq_detail = _check_liq_sweep(highs, lows, closes, atr_v)
+                price = closes[-1]
+                _strategies[sid]["indicator"] = f"Liq:{liq_dir} | BOS:{bos_dir} | {liq_detail}"
+                # Entry: recent liquidity sweep signal + BOS agrees
+                if liq_sigs[-1]=="BUY" or (liq_dir=="BUY" and bos_dir=="BUY"):
+                    signal = "BUY"
+                elif liq_sigs[-1]=="SELL" or (liq_dir=="SELL" and bos_dir=="SELL"):
                     signal = "SELL"
 
             elif strategy == "Scalper":
@@ -1852,10 +2312,203 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                     f"RSI:{rsi_v} MACD:{'↑' if mhist[-1]>mhist[-2] else '↓'}"
                 )
 
-                if buy_pts >= 65 and buy_pts > sell_pts:
+                # News bias boost
+                if _news_bias == "BULLISH": buy_pts  += 15
+                if _news_bias == "BEARISH": sell_pts += 15
+                # SMC additions
+                atr_v2 = _atr(highs, lows, closes, 14)
+                bos2, _ = _detect_bos(closes, highs, lows)
+                liq2, _ = _check_liq_sweep(highs, lows, closes, atr_v2)
+                ob2, _  = _check_ob_zone(opens, closes, highs, lows, price, atr_v2)
+                if bos2=="BUY":  buy_pts  += 15
+                if bos2=="SELL": sell_pts += 15
+                if liq2=="BUY":  buy_pts  += 15
+                if liq2=="SELL": sell_pts += 15
+                if ob2=="BUY":   buy_pts  += 10
+                if ob2=="SELL":  sell_pts += 10
+                # Kill zone bonus
+                kz_name, kz_level = _get_ict_killzone()
+                if kz_level=="HIGH": buy_pts+=5; sell_pts+=5  # timing bonus (both)
+                # Fibonacci level (from Candlestick Bible — 50/61.8% key pullback zones)
+                fib3, _ = _check_fibonacci_level(highs, lows, price, atr_v2)
+                if fib3=="BUY":  buy_pts  += 12
+                if fib3=="SELL": sell_pts += 12
+                # 21 EMA dynamic support/resistance (Candlestick Bible)
+                ema21_3, _ = _check_21ema_bounce(closes, highs, lows, price, atr_v2)
+                if ema21_3=="BUY":  buy_pts  += 10
+                if ema21_3=="SELL": sell_pts += 10
+                # Double Top/Bottom chart pattern (reversal confirmation)
+                dt3, _ = _detect_double_top_bottom(highs, lows, closes, atr_v2)
+                if dt3=="BUY":  buy_pts  += 10
+                if dt3=="SELL": sell_pts += 10
+                # PA pattern bonus (IB FBO 0.88 and high-strength patterns boost score)
+                pa3 = _detect_price_action(opens, closes, highs, lows)
+                for p3 in pa3:
+                    if p3[1]=="BUY":  buy_pts  += int(p3[2] * 12)
+                    if p3[1]=="SELL": sell_pts += int(p3[2] * 12)
+                max_pts = 207  # 160 base + 12 fib + 10 ema21 + 10 dt + ~15 avg PA
+                buy_pct2  = round(buy_pts  / max_pts * 100)
+                sell_pct2 = round(sell_pts / max_pts * 100)
+                _strategies[sid]["indicator"] = (
+                    f"🤖 AI+ BUY:{buy_pct2}% SELL:{sell_pct2}% | "
+                    f"H4:{'▲' if h4_bull else '▼' if h4_bear else '—'} "
+                    f"BOS:{bos2} Liq:{liq2} KZ:{kz_name} News:{_news_bias}"
+                )
+                buy_pts  = buy_pct2
+                sell_pts = sell_pct2
+
+                if buy_pts >= 60 and buy_pts > sell_pts and not _news_block:
                     signal = "BUY"
-                elif sell_pts >= 65 and sell_pts > buy_pts:
+                elif sell_pts >= 60 and sell_pts > buy_pts and not _news_block:
                     signal = "SELL"
+
+            elif strategy == "Pin Bar SR":
+                # Pin Bar at Key Level: Trend + Level + Signal (3-pillar, Candlestick Bible)
+                atr_v = _atr(highs, lows, closes, 14)
+                price = closes[-1]
+                h4_rates, _ = _get_rates(symbol, "H4", 100)
+                h4_bull = h4_bear = False
+                if h4_rates is not None and len(h4_rates) >= 50:
+                    h4c    = [float(r["close"]) for r in h4_rates]
+                    h4e50  = _ema(h4c, 50)
+                    h4e200 = _ema(h4c, min(200, len(h4c)-1))
+                    h4_bull = h4c[-1] > h4e50[-1] > h4e200[-1]
+                    h4_bear = h4c[-1] < h4e50[-1] < h4e200[-1]
+                sr_dir,  sr_det  = _check_sr_level(closes, highs, lows, price, atr_v)
+                fib_dir, fib_det = _check_fibonacci_level(highs, lows, price, atr_v)
+                ema_dir, ema_det = _check_21ema_bounce(closes, highs, lows, price, atr_v)
+                level_bull = (sr_dir=="BUY" or fib_dir=="BUY" or ema_dir=="BUY")
+                level_bear = (sr_dir=="SELL" or fib_dir=="SELL" or ema_dir=="SELL")
+                pa = _detect_price_action(opens, closes, highs, lows)
+                pb_bull = any(p[0] in ("Bullish Pin Bar","Hammer","Tweezer Bottom") and p[1]=="BUY"  for p in pa)
+                pb_bear = any(p[0] in ("Bearish Pin Bar","Shooting Star","Tweezer Top") and p[1]=="SELL" for p in pa)
+                pa_names = [p[0] for p in pa] if pa else ["None"]
+                _strategies[sid]["indicator"] = (
+                    f"📌 PinBarSR | SR:{sr_dir}|Fib:{fib_dir}|EMA21:{ema_dir} | "
+                    f"PA:{','.join(pa_names)} | H4:{'▲' if h4_bull else '▼' if h4_bear else '—'}"
+                )
+                if h4_bull and level_bull and pb_bull: signal = "BUY"
+                elif h4_bear and level_bear and pb_bear: signal = "SELL"
+
+            elif strategy == "Engulfing Trend":
+                # Engulfing Bar at key level with trend (Candlestick Bible 3-pillar strategy)
+                atr_v = _atr(highs, lows, closes, 14)
+                price = closes[-1]
+                ema50  = _ema(closes, min(50,  len(closes)-1))
+                ema200 = _ema(closes, min(200, len(closes)-1))
+                trend_bull = price > ema50[-1] > ema200[-1]
+                trend_bear = price < ema50[-1] < ema200[-1]
+                sr_dir,  _  = _check_sr_level(closes, highs, lows, price, atr_v)
+                ema_dir, _  = _check_21ema_bounce(closes, highs, lows, price, atr_v)
+                fib_dir, _  = _check_fibonacci_level(highs, lows, price, atr_v)
+                level_bull = (sr_dir=="BUY" or ema_dir=="BUY" or fib_dir=="BUY")
+                level_bear = (sr_dir=="SELL" or ema_dir=="SELL" or fib_dir=="SELL")
+                pa = _detect_price_action(opens, closes, highs, lows)
+                eng_bull = any(p[0] in ("Bullish Engulfing","Morning Star","Piercing Pattern") and p[1]=="BUY"  for p in pa)
+                eng_bear = any(p[0] in ("Bearish Engulfing","Evening Star","Dark Cloud Cover") and p[1]=="SELL" for p in pa)
+                pa_names = [p[0] for p in pa] if pa else ["None"]
+                _strategies[sid]["indicator"] = (
+                    f"🕯️ EngulfTrend | Trend:{'▲' if trend_bull else '▼' if trend_bear else '—'} | "
+                    f"SR:{sr_dir}|EMA:{ema_dir}|Fib:{fib_dir} | PA:{','.join(pa_names)}"
+                )
+                if trend_bull and level_bull and eng_bull: signal = "BUY"
+                elif trend_bear and level_bear and eng_bear: signal = "SELL"
+
+            elif strategy == "Inside Bar":
+                # Inside Bar breakout in trend direction (consolidation → breakout setup)
+                atr_v = _atr(highs, lows, closes, 14)
+                price = closes[-1]
+                ema50  = _ema(closes, min(50,  len(closes)-1))
+                ema200 = _ema(closes, min(200, len(closes)-1))
+                st_dir = _supertrend(highs, lows, closes)
+                trend_bull = closes[-1] > ema50[-1] > ema200[-1] and st_dir[-1] == 1
+                trend_bear = closes[-1] < ema50[-1] < ema200[-1] and st_dir[-1] == -1
+                pa = _detect_price_action(opens, closes, highs, lows)
+                ib_detected = any(p[0] == "Inside Bar" for p in pa)
+                n_pa = len(closes)
+                mother_high = highs[-3] if n_pa >= 3 else highs[-2]
+                mother_low  = lows[-3]  if n_pa >= 3 else lows[-2]
+                _strategies[sid]["indicator"] = (
+                    f"📦 InsideBar | Trend:{'▲' if trend_bull else '▼' if trend_bear else '—'} | "
+                    f"IB:{'Yes' if ib_detected else 'No'} | Mother H={mother_high:.4f} L={mother_low:.4f}"
+                )
+                if ib_detected and trend_bull and closes[-1] > mother_high: signal = "BUY"
+                elif ib_detected and trend_bear and closes[-1] < mother_low: signal = "SELL"
+
+            elif strategy == "False Breakout":
+                # Inside Bar False Breakout — institutional stop hunt trap (highest WR pattern)
+                atr_v = _atr(highs, lows, closes, 14)
+                price = closes[-1]
+                pa = _detect_price_action(opens, closes, highs, lows)
+                fbo_bull = any(p[0] == "IB False Breakout" and p[1] == "BUY"  for p in pa)
+                fbo_bear = any(p[0] == "IB False Breakout" and p[1] == "SELL" for p in pa)
+                sr_dir,  _ = _check_sr_level(closes, highs, lows, price, atr_v)
+                fib_dir, _ = _check_fibonacci_level(highs, lows, price, atr_v)
+                dt_dir,  _ = _detect_double_top_bottom(highs, lows, closes, atr_v)
+                confirm_bull = (sr_dir in ("BUY","NEUTRAL") or fib_dir in ("BUY","NEUTRAL") or dt_dir == "BUY")
+                confirm_bear = (sr_dir in ("SELL","NEUTRAL") or fib_dir in ("SELL","NEUTRAL") or dt_dir == "SELL")
+                fbo_status = "BULL TRAP→BUY" if fbo_bull else ("BEAR TRAP→SELL" if fbo_bear else "None")
+                _strategies[sid]["indicator"] = (
+                    f"🎣 FalseBreakout | FBO:{fbo_status} | SR:{sr_dir} | Fib:{fib_dir} | DT:{dt_dir}"
+                )
+                if fbo_bull and confirm_bull: signal = "BUY"
+                elif fbo_bear and confirm_bear: signal = "SELL"
+
+            elif strategy == "PA Confluence":
+                # Full 3-Pillar PA Strategy: Trend + Key Level + PA Signal (all books)
+                atr_v = _atr(highs, lows, closes, 14)
+                price = closes[-1]
+                # PILLAR 1: TREND (H4 bias + current TF)
+                h4_rates, _ = _get_rates(symbol, "H4", 100)
+                h4_bull = h4_bear = False
+                if h4_rates is not None and len(h4_rates) >= 50:
+                    h4c    = [float(r["close"]) for r in h4_rates]
+                    h4e50  = _ema(h4c, 50)
+                    h4e200 = _ema(h4c, min(200, len(h4c)-1))
+                    h4_bull = h4c[-1] > h4e50[-1] > h4e200[-1]
+                    h4_bear = h4c[-1] < h4e50[-1] < h4e200[-1]
+                ema50  = _ema(closes, min(50, len(closes)-1))
+                st_dir = _supertrend(highs, lows, closes)
+                tf_bull = price > ema50[-1] and st_dir[-1] == 1
+                tf_bear = price < ema50[-1] and st_dir[-1] == -1
+                trend_score = (2 if h4_bull else -2 if h4_bear else 0) + (1 if tf_bull else -1 if tf_bear else 0)
+                trend_bull = trend_score >= 2
+                trend_bear = trend_score <= -2
+                # PILLAR 2: KEY LEVEL (multi-confluence)
+                sr_dir,  _ = _check_sr_level(closes, highs, lows, price, atr_v)
+                fib_dir, _ = _check_fibonacci_level(highs, lows, price, atr_v)
+                ema_dir, _ = _check_21ema_bounce(closes, highs, lows, price, atr_v)
+                ob_dir,  _ = _check_ob_zone(opens, closes, highs, lows, price, atr_v)
+                liq_dir, _ = _check_liq_sweep(highs, lows, closes, atr_v)
+                dt_dir,  _ = _detect_double_top_bottom(highs, lows, closes, atr_v)
+                lb_score = sum([sr_dir=="BUY", fib_dir=="BUY", ema_dir=="BUY", ob_dir=="BUY", liq_dir=="BUY", dt_dir=="BUY"])
+                ls_score = sum([sr_dir=="SELL", fib_dir=="SELL", ema_dir=="SELL", ob_dir=="SELL", liq_dir=="SELL", dt_dir=="SELL"])
+                level_bull = lb_score >= 1
+                level_bear = ls_score >= 1
+                # PILLAR 3: PA SIGNAL (strength ≥ 0.70)
+                pa = _detect_price_action(opens, closes, highs, lows)
+                pa_bull_str = max((p[2] for p in pa if p[1]=="BUY"),  default=0)
+                pa_bear_str = max((p[2] for p in pa if p[1]=="SELL"), default=0)
+                pa_bull = pa_bull_str >= 0.70
+                pa_bear = pa_bear_str >= 0.70
+                bull_pa = max((p for p in pa if p[1]=="BUY"),  key=lambda x:x[2], default=("None","",0))[0]
+                bear_pa = max((p for p in pa if p[1]=="SELL"), key=lambda x:x[2], default=("None","",0))[0]
+                buy_pillars  = sum([trend_bull, level_bull, pa_bull])
+                sell_pillars = sum([trend_bear, level_bear, pa_bear])
+                _strategies[sid]["indicator"] = (
+                    f"🏛️ PA Confluence | BUY:{buy_pillars}/3 SELL:{sell_pillars}/3 | "
+                    f"Trend:{'▲' if trend_bull else '▼' if trend_bear else '—'} "
+                    f"Level:B{lb_score}/S{ls_score} "
+                    f"PA:{'✓' if pa_bull else '✗'}{bull_pa if pa_bull else bear_pa}"
+                )
+                if buy_pillars == 3:  signal = "BUY"
+                elif sell_pillars == 3: signal = "SELL"
+
+            # Block trades during bad sessions or news
+            if signal and (_session_block or _news_block):
+                reason = "12:00 UTC dead zone" if _session_block else "high-impact news"
+                add_log(f"⛔ Signal {signal} blocked — {reason}")
+                signal = None
 
             if signal:
                 is_buy    = signal == "BUY"
@@ -1870,6 +2523,70 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                             else round(sl_tp_ref - tp_dist, sym_info.digits)
                 add_log(f"📊 Signal: {signal} @ {entry}  SL:{sl_val}  TP:{tp_val}  (pip={pip})")
                 do_trade(signal, entry, sl_val, tp_val)
+
+            # Breakeven trail: when profit distance >= risk distance (1:1 R:R), move SL to entry
+            def _trail_sl():
+                """
+                3-phase trailing SL:
+                  Phase 1 (profit < 1R): SL untouched
+                  Phase 2 (profit >= 1R, SL still behind entry): SL → entry (breakeven)
+                  Phase 3 (SL at/above entry): SL trails price at original risk distance
+                """
+                positions = mt5.positions_get(symbol=symbol)
+                if not positions: return 0, 0
+                be_moved = trail_moved = 0
+                for pos in positions:
+                    if pos.magic != magic: continue
+                    if not pos.sl: continue
+                    risk = abs(pos.price_open - pos.sl)
+                    if risk <= 0: continue
+                    pt   = sym_info.point
+                    digs = sym_info.digits
+                    is_buy = pos.type == 0
+
+                    if is_buy:
+                        profit_dist = pos.price_current - pos.price_open
+                        at_be       = pos.sl >= pos.price_open - pt  # SL already at/above entry
+
+                        if not at_be and profit_dist >= risk:
+                            # Phase 2: hit 1:1 → move SL to entry
+                            new_sl = round(pos.price_open, digs)
+                            r = mt5.order_send({"action": mt5.TRADE_ACTION_SLTP, "symbol": symbol,
+                                                "position": pos.ticket, "sl": new_sl, "tp": pos.tp})
+                            if r and r.retcode == mt5.TRADE_RETCODE_DONE: be_moved += 1
+
+                        elif at_be:
+                            # Phase 3: trail SL at (current_price - original_risk), only move up
+                            trail_sl = round(pos.price_current - risk, digs)
+                            if trail_sl > pos.sl + pt:
+                                r = mt5.order_send({"action": mt5.TRADE_ACTION_SLTP, "symbol": symbol,
+                                                    "position": pos.ticket, "sl": trail_sl, "tp": pos.tp})
+                                if r and r.retcode == mt5.TRADE_RETCODE_DONE: trail_moved += 1
+                    else:
+                        profit_dist = pos.price_open - pos.price_current
+                        at_be       = pos.sl <= pos.price_open + pt  # SL already at/below entry
+
+                        if not at_be and profit_dist >= risk:
+                            # Phase 2: hit 1:1 → move SL to entry
+                            new_sl = round(pos.price_open, digs)
+                            r = mt5.order_send({"action": mt5.TRADE_ACTION_SLTP, "symbol": symbol,
+                                                "position": pos.ticket, "sl": new_sl, "tp": pos.tp})
+                            if r and r.retcode == mt5.TRADE_RETCODE_DONE: be_moved += 1
+
+                        elif at_be:
+                            # Phase 3: trail SL at (current_price + original_risk), only move down
+                            trail_sl = round(pos.price_current + risk, digs)
+                            if trail_sl < pos.sl - pt:
+                                r = mt5.order_send({"action": mt5.TRADE_ACTION_SLTP, "symbol": symbol,
+                                                    "position": pos.ticket, "sl": trail_sl, "tp": pos.tp})
+                                if r and r.retcode == mt5.TRADE_RETCODE_DONE: trail_moved += 1
+                return be_moved, trail_moved
+            try:
+                be_n, tr_n = _mt5_call(_trail_sl)
+                if be_n:  add_log(f"📌 {be_n} position(s) → breakeven (1:1 R:R hit)")
+                if tr_n:  add_log(f"🔒 {tr_n} position(s) SL trailed (locking profit)")
+            except Exception:
+                pass
 
             # Detect position closures (SL/TP hit) and log them
             def _cur_count(): return _count_open_positions(symbol, magic)
@@ -1943,6 +2660,7 @@ def start_strategy(req: StrategyRequest):
     t = threading.Thread(target=_strategy_runner, args=(sid, cfg, stop_ev, log), daemon=True)
     _strategies[sid]["_stop"] = stop_ev
     t.start()
+    _save_strategies_state()   # persist to disk
     return {"success": True, "id": sid}
 
 @app.post("/api/strategy/stop/{sid}")
@@ -1951,7 +2669,20 @@ def stop_strategy(sid: str):
         return JSONResponse({"error": "Strategy not found"}, status_code=404)
     _strategies[sid]["_stop"].set()
     _strategies[sid]["status"] = "stopped"
+    _save_strategies_state()   # update disk — remove stopped strategy
     return {"success": True}
+
+@app.post("/api/strategy/stop_all")
+def stop_all_strategies():
+    """Stop every running strategy at once."""
+    stopped = 0
+    for sid, s in _strategies.items():
+        if s.get("status") == "running":
+            s["_stop"].set()
+            s["status"] = "stopped"
+            stopped += 1
+    _save_strategies_state()
+    return {"success": True, "stopped": stopped}
 
 @app.get("/api/strategy/list")
 def list_strategies():
@@ -2019,9 +2750,10 @@ def get_algo_live_positions():
             return []
         result = []
         for p in positions:
-            if not (p.comment or "").startswith("FarhanFX"):
+            c = (p.comment or "")
+            if not c.startswith("FarhanFX-") or "Close" in c:
                 continue
-            strategy = (p.comment or "").replace("FarhanFX-", "")
+            strategy = c[len("FarhanFX-"):]
             result.append({
                 "ticket":   p.ticket,
                 "symbol":   p.symbol,
@@ -2058,8 +2790,15 @@ def get_algo_history(days: int = 30):
         for d in deals:
             if d.type not in (0, 1):
                 continue
-            if d.entry == 0:    # opening leg — filter by FarhanFX comment
-                if (d.comment or "").startswith("FarhanFX"):
+            if d.entry == 0:    # opening leg — only FarhanFX-{Strategy} forex trades
+                c = (d.comment or "")
+                _CRYPTO = ("BTC","ETH","LTC","XRP","BNB","SOL","ADA","DOGE","XMR","DOT","AVAX","MATIC")
+                _is_crypto = any(x in d.symbol.upper() for x in _CRYPTO)
+                _FOREX_STRATS = {"MA Cross","EMA Trend","Scalper","Supertrend","Ichimoku","AI Confluence","AI Agent","Order Block","SMC Liquidity"}
+                _strat = c[len("FarhanFX-"):] if c.startswith("FarhanFX-") else ""
+                if (c.startswith("FarhanFX-") and "Close" not in c and
+                        not _is_crypto and
+                        any(_strat.startswith(s) or s.startswith(_strat) for s in _FOREX_STRATS)):
                     open_map[d.position_id] = d
             elif d.entry == 1:  # closing leg — collect all; match by position_id below
                 closed.append(d)
@@ -2074,9 +2813,12 @@ def get_algo_history(days: int = 30):
             if op_order:
                 sl_val = round(op_order.sl, 5) if op_order.sl else None
                 tp_val = round(op_order.tp, 5) if op_order.tp else None
+            open_comment = (open_d.comment or "") if open_d else ""
+            strat_name   = open_comment[len("FarhanFX-"):] if open_comment.startswith("FarhanFX-") else open_comment
             result.append({
                 "ticket":      d.position_id,
                 "symbol":      d.symbol,
+                "strategy":    strat_name,
                 "type":        "BUY" if (open_d.type if open_d else d.type) == 0 else "SELL",
                 "volume":      d.volume,
                 "entry_price": round(open_d.price, 5) if open_d else None,
@@ -2084,7 +2826,7 @@ def get_algo_history(days: int = 30):
                 "sl":          sl_val,
                 "tp":          tp_val,
                 "profit":      round(d.profit + d.commission + d.swap, 2),
-                "comment":     d.comment,
+                "comment":     open_comment,
                 "exit_reason": REASON.get(d.reason, "MANUAL"),
                 "time":        datetime.fromtimestamp(d.time).strftime("%Y-%m-%d %H:%M"),
             })
@@ -2094,24 +2836,20 @@ def get_algo_history(days: int = 30):
 
 @app.get("/api/ai/analyze/{symbol}")
 def ai_analyze(symbol: str, tf: str = "H1"):
-    """Full multi-timeframe AI market analysis.
-    Calls _get_rates directly (each call uses its own _mt5_call internally).
-    Never nests _mt5_call — that deadlocks the single worker thread.
-    """
-    # Step 1: fetch rates — each _get_rates uses _mt5_call internally, called sequentially
-    primary_rates, sym = _get_rates(symbol, tf, 200)
-    h4_rates,      _   = _get_rates(symbol, "H4", 100)
+    """Enhanced multi-timeframe AI analysis: Price Action + SMC + ICT + News."""
+    primary_rates, sym = _get_rates(symbol, tf, 300)
+    h4_rates,      _   = _get_rates(symbol, "H4", 200)
+    d1_rates,      _   = _get_rates(symbol, "D1", 100)
 
-    if primary_rates is None or len(primary_rates) < 30:
+    if primary_rates is None or len(primary_rates) < 50:
         return {"error": f"Not enough data for {symbol}"}
 
-    # Step 2: single _mt5_call for tick + symbol info only
     def get_tick_info():
         return mt5.symbol_info_tick(sym), mt5.symbol_info(sym)
     ti = _mt5_call(get_tick_info)
     tick, sym_inf = (ti if not isinstance(ti, dict) else (None, None))
 
-    # Step 3: all calculations in pure Python — no more MT5 calls
+    opens  = [float(r["open"])  for r in primary_rates]
     closes = [float(r["close"]) for r in primary_rates]
     highs  = [float(r["high"])  for r in primary_rates]
     lows   = [float(r["low"])   for r in primary_rates]
@@ -2128,97 +2866,220 @@ def ai_analyze(symbol: str, tf: str = "H1"):
     atr_v  = _atr(highs, lows, closes, 14)
     kv, dv = _stochastic(highs, lows, closes)
 
-    # H4 trend bias (pure Python after rates fetched)
+    # H4 trend bias
     h4_bias = "NEUTRAL"
     if h4_rates is not None and len(h4_rates) >= 50:
-        h4c    = [float(r["close"]) for r in h4_rates]
+        h4c = [float(r["close"]) for r in h4_rates]
         h4e50  = _ema(h4c, 50)
         h4e200 = _ema(h4c, min(200, len(h4c)-1))
-        if h4c[-1] > h4e50[-1] > h4e200[-1]:   h4_bias = "BULLISH"
-        elif h4c[-1] < h4e50[-1] < h4e200[-1]: h4_bias = "BEARISH"
+        if h4c[-1]>h4e50[-1]>h4e200[-1]:   h4_bias="BULLISH"
+        elif h4c[-1]<h4e50[-1]<h4e200[-1]: h4_bias="BEARISH"
+
+    # D1 trend bias
+    d1_bias = "NEUTRAL"
+    if d1_rates is not None and len(d1_rates) >= 30:
+        d1c = [float(r["close"]) for r in d1_rates]
+        d1e50  = _ema(d1c, min(50, len(d1c)-1))
+        d1e200 = _ema(d1c, min(200, len(d1c)-1))
+        if d1c[-1]>d1e50[-1] and d1e50[-1]>d1e200[-1]:   d1_bias="BULLISH"
+        elif d1c[-1]<d1e50[-1] and d1e50[-1]<d1e200[-1]: d1_bias="BEARISH"
+
+    # SMC / ICT / PA helpers
+    pa_patterns               = _detect_price_action(opens, closes, highs, lows)
+    bos_dir, bos_detail       = _detect_bos(closes, highs, lows)
+    sr_dir,  sr_detail        = _check_sr_level(closes, highs, lows, price, atr_v)
+    fvg_dir, fvg_detail       = _check_fvg_zone(highs, lows, price)
+    ob_dir,  ob_detail        = _check_ob_zone(opens, closes, highs, lows, price, atr_v)
+    liq_dir, liq_detail       = _check_liq_sweep(highs, lows, closes, atr_v)
+    kz_name, kz_level         = _get_ict_killzone()
+    news_events               = _get_upcoming_news(symbol, minutes_ahead=120, minutes_past=30)
 
     # ── SIGNAL SCORING ──────────────────────────────────────────────────────────
     components = []
 
-    # 1. H4 Trend (25 pts)
-    if h4_bias == "BULLISH":
+    # 1. D1 Trend (30 pts) — highest timeframe filter
+    if d1_bias=="BULLISH":
+        components.append({"name":"D1 Trend","dir":"BUY","score":30,"max":30,"detail":"Daily: price > EMA50 > EMA200"})
+    elif d1_bias=="BEARISH":
+        components.append({"name":"D1 Trend","dir":"SELL","score":30,"max":30,"detail":"Daily: price < EMA50 < EMA200"})
+    else:
+        components.append({"name":"D1 Trend","dir":"NEUTRAL","score":0,"max":30,"detail":"Daily: no clear alignment"})
+
+    # 2. H4 Trend (25 pts)
+    if h4_bias=="BULLISH":
         components.append({"name":"H4 Trend","dir":"BUY","score":25,"max":25,"detail":"H4 price > EMA50 > EMA200"})
-    elif h4_bias == "BEARISH":
+    elif h4_bias=="BEARISH":
         components.append({"name":"H4 Trend","dir":"SELL","score":25,"max":25,"detail":"H4 price < EMA50 < EMA200"})
     else:
         components.append({"name":"H4 Trend","dir":"NEUTRAL","score":0,"max":25,"detail":"No clear H4 alignment"})
 
-    # 2. EMA Stack (20 pts)
-    if price > ema20[-1] > ema50[-1]:
-        sc = 20 if price > ema200[-1] else 12
-        components.append({"name":"EMA Stack","dir":"BUY","score":sc,"max":20,"detail":f"Price>{ema20[-1]:.{digits}f}>{ema50[-1]:.{digits}f}"})
-    elif price < ema20[-1] < ema50[-1]:
-        sc = 20 if price < ema200[-1] else 12
-        components.append({"name":"EMA Stack","dir":"SELL","score":sc,"max":20,"detail":f"Price<{ema20[-1]:.{digits}f}<{ema50[-1]:.{digits}f}"})
+    # 3. Price Action patterns (25 pts)
+    if pa_patterns:
+        best = max(pa_patterns, key=lambda x: x[2])
+        pa_sc = round(25 * best[2])
+        components.append({"name":"Price Action","dir":best[1],"score":pa_sc,"max":25,"detail":best[0]})
     else:
-        components.append({"name":"EMA Stack","dir":"NEUTRAL","score":0,"max":20,"detail":"EMAs not aligned"})
+        components.append({"name":"Price Action","dir":"NEUTRAL","score":0,"max":25,"detail":"No clear PA pattern"})
 
-    # 3. Supertrend (20 pts)
-    if st_dir[-1] == 1:
-        components.append({"name":"Supertrend","dir":"BUY","score":20,"max":20,"detail":"Direction: BULLISH ▲"})
+    # 4. Liquidity Sweep (20 pts)
+    if liq_dir in ("BUY","SELL"):
+        components.append({"name":"Liq Sweep","dir":liq_dir,"score":20,"max":20,"detail":liq_detail})
     else:
-        components.append({"name":"Supertrend","dir":"SELL","score":20,"max":20,"detail":"Direction: BEARISH ▼"})
+        components.append({"name":"Liq Sweep","dir":"NEUTRAL","score":0,"max":20,"detail":liq_detail})
 
-    # 4. MACD Histogram (15 pts)
-    if hist[-1] > 0 and hist[-1] >= hist[-2]:
-        components.append({"name":"MACD","dir":"BUY","score":15,"max":15,"detail":f"Histogram rising: {hist[-1]:+.5f}"})
-    elif hist[-1] < 0 and hist[-1] <= hist[-2]:
-        components.append({"name":"MACD","dir":"SELL","score":15,"max":15,"detail":f"Histogram falling: {hist[-1]:+.5f}"})
+    # 5. BOS / CHoCH (20 pts)
+    if bos_dir in ("BUY","SELL"):
+        components.append({"name":"BOS/CHoCH","dir":bos_dir,"score":20,"max":20,"detail":bos_detail})
     else:
-        components.append({"name":"MACD","dir":"NEUTRAL","score":0,"max":15,"detail":f"Histogram flat: {hist[-1]:+.5f}"})
+        components.append({"name":"BOS/CHoCH","dir":"NEUTRAL","score":0,"max":20,"detail":bos_detail})
 
-    # 5. RSI Zone (10 pts)
-    if 50 <= rsi14 <= 68:
+    # 6. Order Block (20 pts)
+    if ob_dir in ("BUY","SELL"):
+        components.append({"name":"Order Block","dir":ob_dir,"score":20,"max":20,"detail":ob_detail})
+    else:
+        components.append({"name":"Order Block","dir":"NEUTRAL","score":0,"max":20,"detail":ob_detail})
+
+    # 7. Fair Value Gap (15 pts)
+    if fvg_dir in ("BUY","SELL"):
+        components.append({"name":"Fair Value Gap","dir":fvg_dir,"score":15,"max":15,"detail":fvg_detail})
+    else:
+        components.append({"name":"Fair Value Gap","dir":"NEUTRAL","score":0,"max":15,"detail":fvg_detail})
+
+    # 8. EMA Stack (15 pts)
+    if price>ema20[-1]>ema50[-1]:
+        sc2 = 15 if price>ema200[-1] else 9
+        components.append({"name":"EMA Stack","dir":"BUY","score":sc2,"max":15,"detail":f"Price>{ema20[-1]:.{digits}f}>{ema50[-1]:.{digits}f}"})
+    elif price<ema20[-1]<ema50[-1]:
+        sc2 = 15 if price<ema200[-1] else 9
+        components.append({"name":"EMA Stack","dir":"SELL","score":sc2,"max":15,"detail":f"Price<{ema20[-1]:.{digits}f}<{ema50[-1]:.{digits}f}"})
+    else:
+        components.append({"name":"EMA Stack","dir":"NEUTRAL","score":0,"max":15,"detail":"EMAs not aligned"})
+
+    # 9. Supertrend (15 pts)
+    st_txt = "BULLISH ▲" if st_dir[-1]==1 else "BEARISH ▼"
+    components.append({"name":"Supertrend","dir":"BUY" if st_dir[-1]==1 else "SELL","score":15,"max":15,"detail":f"Direction: {st_txt}"})
+
+    # 10. MACD (12 pts)
+    if hist[-1]>0 and hist[-1]>=hist[-2]:
+        components.append({"name":"MACD","dir":"BUY","score":12,"max":12,"detail":f"Histogram rising: {hist[-1]:+.5f}"})
+    elif hist[-1]<0 and hist[-1]<=hist[-2]:
+        components.append({"name":"MACD","dir":"SELL","score":12,"max":12,"detail":f"Histogram falling: {hist[-1]:+.5f}"})
+    else:
+        components.append({"name":"MACD","dir":"NEUTRAL","score":0,"max":12,"detail":f"Histogram flat: {hist[-1]:+.5f}"})
+
+    # 11. RSI Zone (10 pts)
+    if 50<=rsi14<=68:
         components.append({"name":"RSI","dir":"BUY","score":10,"max":10,"detail":f"RSI {rsi14} — bullish zone"})
-    elif 32 <= rsi14 <= 50:
+    elif 32<=rsi14<=50:
         components.append({"name":"RSI","dir":"SELL","score":10,"max":10,"detail":f"RSI {rsi14} — bearish zone"})
     else:
-        components.append({"name":"RSI","dir":"NEUTRAL","score":0,"max":10,"detail":f"RSI {rsi14} — extreme"})
+        components.append({"name":"RSI","dir":"NEUTRAL","score":0,"max":10,"detail":f"RSI {rsi14} — extreme/overbought/oversold"})
 
-    # 6. Stochastic (10 pts)
-    if kv[-2] < dv[-2] and kv[-1] > dv[-1] and kv[-1] < 60:
-        components.append({"name":"Stochastic","dir":"BUY","score":10,"max":10,"detail":f"%K {kv[-1]:.0f} crossed above %D {dv[-1]:.0f}"})
-    elif kv[-2] > dv[-2] and kv[-1] < dv[-1] and kv[-1] > 40:
-        components.append({"name":"Stochastic","dir":"SELL","score":10,"max":10,"detail":f"%K {kv[-1]:.0f} crossed below %D {dv[-1]:.0f}"})
+    # 12. Support / Resistance (10 pts)
+    if sr_dir in ("BUY","SELL"):
+        components.append({"name":"S/R Level","dir":sr_dir,"score":10,"max":10,"detail":sr_detail})
     else:
-        components.append({"name":"Stochastic","dir":"NEUTRAL","score":0,"max":10,"detail":f"%K:{kv[-1]:.0f}  %D:{dv[-1]:.0f}"})
+        components.append({"name":"S/R Level","dir":"NEUTRAL","score":0,"max":10,"detail":sr_detail})
+
+    # 13. Stochastic (8 pts)
+    if kv[-2]<dv[-2] and kv[-1]>dv[-1] and kv[-1]<60:
+        components.append({"name":"Stochastic","dir":"BUY","score":8,"max":8,"detail":f"%K {kv[-1]:.0f} crossed above %D {dv[-1]:.0f}"})
+    elif kv[-2]>dv[-2] and kv[-1]<dv[-1] and kv[-1]>40:
+        components.append({"name":"Stochastic","dir":"SELL","score":8,"max":8,"detail":f"%K {kv[-1]:.0f} crossed below %D {dv[-1]:.0f}"})
+    else:
+        components.append({"name":"Stochastic","dir":"NEUTRAL","score":0,"max":8,"detail":f"%K:{kv[-1]:.0f}  %D:{dv[-1]:.0f}"})
+
+    # 14. ICT Kill Zone (10 pts bonus)
+    if kz_level=="HIGH":
+        components.append({"name":"ICT Kill Zone","dir":"BUY","score":10,"max":10,"detail":f"Active: {kz_name} (HIGH probability)"})
+    elif kz_level=="MEDIUM":
+        components.append({"name":"ICT Kill Zone","dir":"BUY","score":5,"max":10,"detail":f"Active: {kz_name} (MEDIUM probability)"})
+    else:
+        components.append({"name":"ICT Kill Zone","dir":"NEUTRAL","score":0,"max":10,"detail":f"{kz_name} — off-hours"})
+
+    # 15. News Bias (15 pts, only when actual vs forecast available)
+    news_bias_dir = "NEUTRAL"
+    news_bias_detail = "No recent high-impact news"
+    for ev in news_events:
+        if ev["impact"]=="High" and ev["direction"] in ("BULLISH","BEARISH"):
+            news_bias_dir = "BUY" if ev["direction"]=="BULLISH" else "SELL"
+            news_bias_detail = f"{ev['title']} ({ev['country']}) — {ev['direction']}"
+            break
+    if news_bias_dir in ("BUY","SELL"):
+        components.append({"name":"News Bias","dir":news_bias_dir,"score":15,"max":15,"detail":news_bias_detail})
+    else:
+        components.append({"name":"News Bias","dir":"NEUTRAL","score":0,"max":15,"detail":news_bias_detail})
+
+    # 16. Fibonacci Level (15 pts) — key 38.2/50/61.8% retracement zones
+    fib_dir, fib_detail = _check_fibonacci_level(highs, lows, price, atr_v)
+    if fib_dir in ("BUY","SELL"):
+        components.append({"name":"Fibonacci","dir":fib_dir,"score":15,"max":15,"detail":fib_detail})
+    else:
+        components.append({"name":"Fibonacci","dir":"NEUTRAL","score":0,"max":15,"detail":fib_detail})
+
+    # 17. 21 EMA Bounce (12 pts) — dynamic support/resistance (Candlestick Bible)
+    ema21_dir, ema21_detail = _check_21ema_bounce(closes, highs, lows, price, atr_v)
+    if ema21_dir in ("BUY","SELL"):
+        components.append({"name":"21 EMA Bounce","dir":ema21_dir,"score":12,"max":12,"detail":ema21_detail})
+    else:
+        components.append({"name":"21 EMA Bounce","dir":"NEUTRAL","score":0,"max":12,"detail":ema21_detail})
+
+    # 18. Double Top/Bottom (12 pts) — confirmed chart pattern reversal
+    dt_dir, dt_detail = _detect_double_top_bottom(highs, lows, closes, atr_v)
+    if dt_dir in ("BUY","SELL"):
+        components.append({"name":"Double T/B","dir":dt_dir,"score":12,"max":12,"detail":dt_detail})
+    else:
+        components.append({"name":"Double T/B","dir":"NEUTRAL","score":0,"max":12,"detail":dt_detail})
 
     # ── FINAL SCORE ─────────────────────────────────────────────────────────────
-    buy_score  = sum(c["score"] for c in components if c["dir"] == "BUY")
-    sell_score = sum(c["score"] for c in components if c["dir"] == "SELL")
-    max_total  = sum(c["max"]   for c in components)  # always 100
+    buy_score  = sum(c["score"] for c in components if c["dir"]=="BUY")
+    sell_score = sum(c["score"] for c in components if c["dir"]=="SELL")
+    max_total  = sum(c["max"]   for c in components)
 
     buy_pct  = round(buy_score  / max_total * 100)
     sell_pct = round(sell_score / max_total * 100)
 
-    if buy_pct >= 60 and buy_pct > sell_pct:
+    # News event within 30 min? Block new trades
+    news_block = any(ev["impact"]=="High" and 0<=ev["mins_from_now"]<=30 for ev in news_events)
+
+    if buy_pct>=60 and buy_pct>sell_pct and not news_block:
         final_signal = "BUY";  confidence = buy_pct
-    elif sell_pct >= 60 and sell_pct > buy_pct:
+    elif sell_pct>=60 and sell_pct>buy_pct and not news_block:
         final_signal = "SELL"; confidence = sell_pct
+    elif news_block:
+        final_signal = "WAIT"; confidence = max(buy_pct, sell_pct)
     else:
         final_signal = "HOLD"; confidence = max(buy_pct, sell_pct)
 
     return {
-        "symbol":     sym,
-        "tf":         tf,
-        "price":      round(price, digits),
-        "bid":        round(tick.bid, digits) if tick else round(price, digits),
-        "ask":        round(tick.ask, digits) if tick else round(price, digits),
-        "signal":     final_signal,
-        "confidence": confidence,
-        "buy_score":  buy_pct,
-        "sell_score": sell_pct,
-        "h4_bias":    h4_bias,
-        "rsi":        rsi14,
-        "atr":        round(atr_v, digits),
-        "supertrend": "BULLISH" if st_dir[-1] == 1 else "BEARISH",
-        "components": components,
+        "symbol":      sym,
+        "tf":          tf,
+        "price":       round(price, digits),
+        "bid":         round(tick.bid, digits) if tick else round(price, digits),
+        "ask":         round(tick.ask, digits) if tick else round(price, digits),
+        "signal":      final_signal,
+        "confidence":  confidence,
+        "buy_score":   buy_pct,
+        "sell_score":  sell_pct,
+        "h4_bias":     h4_bias,
+        "d1_bias":     d1_bias,
+        "rsi":         rsi14,
+        "atr":         round(atr_v, digits),
+        "supertrend":  "BULLISH" if st_dir[-1]==1 else "BEARISH",
+        "killzone":    kz_name,
+        "kz_level":    kz_level,
+        "news_block":  news_block,
+        "news":        news_events[:8],
+        "bos":         bos_dir,
+        "components":  components,
     }
+
+
+@app.get("/api/news/calendar")
+def get_news_calendar(symbol: str = "XAUUSDc"):
+    """Return upcoming/recent high-impact news events for symbol's currencies."""
+    events = _get_upcoming_news(symbol, minutes_ahead=480, minutes_past=60)
+    return {"symbol": symbol, "currencies": _symbol_currencies(symbol), "events": events}
 
 
 @app.delete("/api/strategy/{sid}")
@@ -2465,6 +3326,83 @@ def run_backtest(req: BacktestRequest):
                     sig = "BUY"
                 elif req.custom_sell and all(_cr(r, c, h, l, closes[:i], hp, lp) for r in req.custom_sell):
                     sig = "SELL"
+
+            elif strat == "Pin Bar SR":
+                h = highs[:i+1]; l = lows[:i+1]; o = opens[:i+1]
+                atr_bt = _atr(h, l, c, 14)
+                pr = c[-1]
+                e50 = _ema(c, min(50, len(c)-1)); e200 = _ema(c, min(200, len(c)-1))
+                tb = pr > e50[-1] > e200[-1]; tb2 = pr < e50[-1] < e200[-1]
+                sr_d, _  = _check_sr_level(c, h, l, pr, atr_bt)
+                fib_d, _ = _check_fibonacci_level(h, l, pr, atr_bt)
+                em_d, _  = _check_21ema_bounce(c, h, l, pr, atr_bt)
+                lbull = (sr_d=="BUY"  or fib_d=="BUY"  or em_d=="BUY")
+                lbear = (sr_d=="SELL" or fib_d=="SELL" or em_d=="SELL")
+                pa_bt = _detect_price_action(o, c, h, l)
+                pb = any(p[0] in ("Bullish Pin Bar","Hammer","Tweezer Bottom") and p[1]=="BUY"  for p in pa_bt)
+                ps = any(p[0] in ("Bearish Pin Bar","Shooting Star","Tweezer Top") and p[1]=="SELL" for p in pa_bt)
+                if tb and lbull and pb: sig = "BUY"
+                elif tb2 and lbear and ps: sig = "SELL"
+
+            elif strat == "Engulfing Trend":
+                h = highs[:i+1]; l = lows[:i+1]; o = opens[:i+1]
+                atr_bt = _atr(h, l, c, 14)
+                pr = c[-1]
+                e50 = _ema(c, min(50, len(c)-1)); e200 = _ema(c, min(200, len(c)-1))
+                tb = pr > e50[-1] > e200[-1]; tb2 = pr < e50[-1] < e200[-1]
+                sr_d, _  = _check_sr_level(c, h, l, pr, atr_bt)
+                em_d, _  = _check_21ema_bounce(c, h, l, pr, atr_bt)
+                fib_d, _ = _check_fibonacci_level(h, l, pr, atr_bt)
+                lbull = (sr_d=="BUY"  or em_d=="BUY"  or fib_d=="BUY")
+                lbear = (sr_d=="SELL" or em_d=="SELL" or fib_d=="SELL")
+                pa_bt = _detect_price_action(o, c, h, l)
+                eb = any(p[0] in ("Bullish Engulfing","Morning Star","Piercing Pattern") and p[1]=="BUY"  for p in pa_bt)
+                es = any(p[0] in ("Bearish Engulfing","Evening Star","Dark Cloud Cover") and p[1]=="SELL" for p in pa_bt)
+                if tb and lbull and eb: sig = "BUY"
+                elif tb2 and lbear and es: sig = "SELL"
+
+            elif strat == "Inside Bar Breakout":
+                h = highs[:i+1]; l = lows[:i+1]; o = opens[:i+1]
+                e50 = _ema(c, min(50, len(c)-1)); e200 = _ema(c, min(200, len(c)-1))
+                st_bt = _supertrend(h, l, c)
+                tb  = c[-1] > e50[-1] > e200[-1] and st_bt[-1] == 1
+                tb2 = c[-1] < e50[-1] < e200[-1] and st_bt[-1] == -1
+                pa_bt = _detect_price_action(o, c, h, l)
+                ib_ok = any(p[0] == "Inside Bar" for p in pa_bt)
+                mh = h[-3] if len(h) >= 3 else h[-2]
+                ml = l[-3] if len(l) >= 3 else l[-2]
+                if ib_ok and tb  and c[-1] > mh: sig = "BUY"
+                elif ib_ok and tb2 and c[-1] < ml: sig = "SELL"
+
+            elif strat == "IB False Breakout":
+                h = highs[:i+1]; l = lows[:i+1]; o = opens[:i+1]
+                atr_bt = _atr(h, l, c, 14)
+                pr = c[-1]
+                pa_bt = _detect_price_action(o, c, h, l)
+                fbo_b = any(p[0] == "IB False Breakout" and p[1] == "BUY"  for p in pa_bt)
+                fbo_s = any(p[0] == "IB False Breakout" and p[1] == "SELL" for p in pa_bt)
+                if fbo_b: sig = "BUY"
+                elif fbo_s: sig = "SELL"
+
+            elif strat == "PA Confluence":
+                h = highs[:i+1]; l = lows[:i+1]; o = opens[:i+1]
+                atr_bt = _atr(h, l, c, 14)
+                pr = c[-1]
+                e50 = _ema(c, min(50, len(c)-1)); e200 = _ema(c, min(200, len(c)-1))
+                st_bt = _supertrend(h, l, c)
+                tb  = pr > e50[-1] and st_bt[-1] == 1
+                tb2 = pr < e50[-1] and st_bt[-1] == -1
+                sr_d, _  = _check_sr_level(c, h, l, pr, atr_bt)
+                fib_d, _ = _check_fibonacci_level(h, l, pr, atr_bt)
+                em_d, _  = _check_21ema_bounce(c, h, l, pr, atr_bt)
+                lbull = (sr_d=="BUY"  or fib_d=="BUY"  or em_d=="BUY")
+                lbear = (sr_d=="SELL" or fib_d=="SELL" or em_d=="SELL")
+                pa_bt = _detect_price_action(o, c, h, l)
+                pbs = max((p[2] for p in pa_bt if p[1]=="BUY"),  default=0)
+                pss = max((p[2] for p in pa_bt if p[1]=="SELL"), default=0)
+                pb2 = pbs >= 0.70; ps2 = pss >= 0.70
+                if   sum([tb,  lbull, pb2]) == 3: sig = "BUY"
+                elif sum([tb2, lbear, ps2]) == 3: sig = "SELL"
 
             signals[i] = sig
 
@@ -3610,6 +4548,30 @@ def _ai_full_analysis(ohlcv, bot_params=None):
     components["adx"] = {"score": adx_bonus, "max": 10, "detail": adx_detail, "adx": adx}
     score += adx_bonus
 
+    # 7. PRICE ACTION PATTERNS (0-20) — from Candlestick Bible + Cheat Sheet
+    opens_arr = [c[1] for c in ohlcv]
+    pa_patterns = _detect_price_action(opens_arr, closes, highs, lows)
+    pa_score = 0; pa_detail = "No PA patterns"
+    if pa_patterns:
+        best_pa = max(pa_patterns, key=lambda x: x[2])
+        pa_score = round(best_pa[2] * 20)
+        pa_detail = f"{best_pa[0]} ({best_pa[1]}) str={best_pa[2]:.2f}"
+    components["price_action"] = {"score": pa_score, "max": 20, "detail": pa_detail}
+    score += pa_score
+
+    # 8. FIBONACCI LEVEL (0-10) — 38.2/50/61.8% retracement key zones
+    atr_val = _atr_calc(highs, lows, closes, 14)
+    fib_d, fib_det = _check_fibonacci_level(highs, lows, price, atr_val)
+    fib_score = 10 if fib_d in ("BUY","SELL") else 0
+    components["fibonacci"] = {"score": fib_score, "max": 10, "detail": fib_det}
+    score += fib_score
+
+    # 9. 21 EMA BOUNCE (0-8) — dynamic support/resistance (Candlestick Bible)
+    ema21_d, ema21_det = _check_21ema_bounce(closes, highs, lows, price, atr_val)
+    ema21_score = 8 if ema21_d in ("BUY","SELL") else 0
+    components["ema21_bounce"] = {"score": ema21_score, "max": 8, "detail": ema21_det}
+    score += ema21_score
+
     # ATR for SL/TP suggestions
     atr = _atr_calc(highs, lows, closes, 14)
     vwap = _vwap_calc(ohlcv)
@@ -3757,6 +4719,86 @@ def _get_bot_signal(bot, ohlcv):
             return "BUY"
         if analysis["ai_score"] <= (100 - threshold):
             return "SELL"
+
+    elif strategy == "pin_bar_sr":
+        # Pin Bar at Key Level — 3-pillar (Candlestick Bible): Trend + Level + PA
+        opens_a = [c[1] for c in ohlcv]
+        atr_v = _atr_calc(highs, lows, closes, 14)
+        price = closes[-1]
+        fe50  = _ema_calc(closes, 50)
+        fe200 = _ema_calc(closes, min(200, len(closes)-1))
+        trend_bull = price > fe50[-1] > fe200[-1] if (fe50 and fe200) else False
+        trend_bear = price < fe50[-1] < fe200[-1] if (fe50 and fe200) else False
+        fib_dir, _ = _check_fibonacci_level(highs, lows, price, atr_v)
+        ema_dir, _ = _check_21ema_bounce(closes, highs, lows, price, atr_v)
+        # Simple SR: recent high/low proximity
+        w = min(40, len(highs)); rh = max(highs[-w:]); rl = min(lows[-w:])
+        tol = atr_v * 1.5
+        sr_dir = "BUY" if abs(price-rl)<tol else ("SELL" if abs(price-rh)<tol else "NEUTRAL")
+        level_bull = (sr_dir=="BUY" or fib_dir=="BUY" or ema_dir=="BUY")
+        level_bear = (sr_dir=="SELL" or fib_dir=="SELL" or ema_dir=="SELL")
+        pa = _detect_price_action(opens_a, closes, highs, lows)
+        pb_bull = any(p[0] in ("Bullish Pin Bar","Hammer","Tweezer Bottom") and p[1]=="BUY"  for p in pa)
+        pb_bear = any(p[0] in ("Bearish Pin Bar","Shooting Star","Tweezer Top") and p[1]=="SELL" for p in pa)
+        if trend_bull and level_bull and pb_bull: return "BUY"
+        if trend_bear and level_bear and pb_bear: return "SELL"
+
+    elif strategy == "engulfing_trend":
+        # Engulfing Bar at key level with trend
+        opens_a = [c[1] for c in ohlcv]
+        atr_v = _atr_calc(highs, lows, closes, 14)
+        price = closes[-1]
+        fe50  = _ema_calc(closes, 50)
+        fe200 = _ema_calc(closes, min(200, len(closes)-1))
+        trend_bull = price > fe50[-1] > fe200[-1] if (fe50 and fe200) else False
+        trend_bear = price < fe50[-1] < fe200[-1] if (fe50 and fe200) else False
+        fib_dir, _ = _check_fibonacci_level(highs, lows, price, atr_v)
+        ema_dir, _ = _check_21ema_bounce(closes, highs, lows, price, atr_v)
+        w = min(40, len(highs)); rh = max(highs[-w:]); rl = min(lows[-w:])
+        tol = atr_v * 1.5
+        sr_dir = "BUY" if abs(price-rl)<tol else ("SELL" if abs(price-rh)<tol else "NEUTRAL")
+        level_bull = (sr_dir=="BUY" or fib_dir=="BUY" or ema_dir=="BUY")
+        level_bear = (sr_dir=="SELL" or fib_dir=="SELL" or ema_dir=="SELL")
+        pa = _detect_price_action(opens_a, closes, highs, lows)
+        eng_bull = any(p[0] in ("Bullish Engulfing","Morning Star","Piercing Pattern") and p[1]=="BUY"  for p in pa)
+        eng_bear = any(p[0] in ("Bearish Engulfing","Evening Star","Dark Cloud Cover") and p[1]=="SELL" for p in pa)
+        if trend_bull and level_bull and eng_bull: return "BUY"
+        if trend_bear and level_bear and eng_bear: return "SELL"
+
+    elif strategy == "false_breakout":
+        # Inside Bar False Breakout — institutional stop hunt trap (highest WR)
+        opens_a = [c[1] for c in ohlcv]
+        pa = _detect_price_action(opens_a, closes, highs, lows)
+        fbo_bull = any(p[0] == "IB False Breakout" and p[1] == "BUY"  for p in pa)
+        fbo_bear = any(p[0] == "IB False Breakout" and p[1] == "SELL" for p in pa)
+        if fbo_bull: return "BUY"
+        if fbo_bear: return "SELL"
+
+    elif strategy == "pa_confluence":
+        # Full 3-Pillar PA: Trend + Key Level + PA Signal (all books synthesis)
+        opens_a = [c[1] for c in ohlcv]
+        atr_v = _atr_calc(highs, lows, closes, 14)
+        price = closes[-1]
+        fe50  = _ema_calc(closes, 50)
+        fe200 = _ema_calc(closes, min(200, len(closes)-1))
+        fe21  = _ema_calc(closes, 21)
+        curr_dir, _ = _supertrend_calc(highs, lows, closes)
+        trend_bull = (price > fe50[-1] > fe200[-1] if (fe50 and fe200) else False) and curr_dir == 1
+        trend_bear = (price < fe50[-1] < fe200[-1] if (fe50 and fe200) else False) and curr_dir == -1
+        fib_dir, _ = _check_fibonacci_level(highs, lows, price, atr_v)
+        ema_dir, _ = _check_21ema_bounce(closes, highs, lows, price, atr_v)
+        dt_dir, _  = _detect_double_top_bottom(highs, lows, closes, atr_v)
+        w = min(40, len(highs)); rh = max(highs[-w:]); rl = min(lows[-w:])
+        tol = atr_v * 1.5
+        sr_dir = "BUY" if abs(price-rl)<tol else ("SELL" if abs(price-rh)<tol else "NEUTRAL")
+        level_bull = (sr_dir=="BUY" or fib_dir=="BUY" or ema_dir=="BUY" or dt_dir=="BUY")
+        level_bear = (sr_dir=="SELL" or fib_dir=="SELL" or ema_dir=="SELL" or dt_dir=="SELL")
+        pa = _detect_price_action(opens_a, closes, highs, lows)
+        pa_bull_str = max((p[2] for p in pa if p[1]=="BUY"),  default=0)
+        pa_bear_str = max((p[2] for p in pa if p[1]=="SELL"), default=0)
+        pa_bull = pa_bull_str >= 0.70; pa_bear = pa_bear_str >= 0.70
+        if sum([trend_bull, level_bull, pa_bull]) == 3: return "BUY"
+        if sum([trend_bear, level_bear, pa_bear]) == 3: return "SELL"
 
     return None
 

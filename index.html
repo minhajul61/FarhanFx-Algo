@@ -67,6 +67,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
 .lstatus{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:16px}
 .dot{width:6px;height:6px;background:var(--green);border-radius:50%;animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+@keyframes jarvis-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+@keyframes jarvis-spin2{0%{transform:rotate(0deg)}100%{transform:rotate(-360deg)}}
+@keyframes jarvis-scan{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+@keyframes jarvis-pulse{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.15)}}
+@keyframes jarvis-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@keyframes jarvis-glow-buy{0%,100%{box-shadow:0 0 15px rgba(16,185,129,0.2)}50%{box-shadow:0 0 40px rgba(16,185,129,0.6)}}
+@keyframes jarvis-glow-sell{0%,100%{box-shadow:0 0 15px rgba(239,68,68,0.2)}50%{box-shadow:0 0 40px rgba(239,68,68,0.6)}}
+@keyframes jarvis-typing{0%,100%{opacity:1}40%,60%{opacity:0.2}}
 .lstatus-text{font-size:10px;color:var(--text2);letter-spacing:2px}
 .footer-text{text-align:center;font-size:11px;color:var(--text2);margin-top:16px}
 .footer-text a{color:var(--accent);text-decoration:none}
@@ -910,6 +918,13 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                     <option value="SMC - ChoCH">SMC — Change of Character (ChoCH)</option>
                     <option value="SMC - Liquidity Sweep">SMC — Liquidity Sweep Reversal</option>
                   </optgroup>
+                  <optgroup label="── Price Action (High Win Rate) ──">
+                    <option value="Pin Bar SR">📌 Pin Bar at S/R — 3-Pillar Setup</option>
+                    <option value="Engulfing Trend">🕯️ Engulfing Trend — At Key Level</option>
+                    <option value="Inside Bar Breakout">📦 Inside Bar Breakout — With Trend</option>
+                    <option value="IB False Breakout">🎣 IB False Breakout Trap</option>
+                    <option value="PA Confluence">🏛️ PA Confluence — All 3 Pillars</option>
+                  </optgroup>
                   <optgroup label="── নিজের Strategy ──">
                     <option value="Custom Strategy">⚙️ Custom Strategy — নিজে Rules বানাও</option>
                   </optgroup>
@@ -1147,6 +1162,40 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       <div class="page" id="page-algo">
         <div class="page-title">Forex Algo Strategies</div>
 
+        <!-- ═══════════════ LIVE ALGO DASHBOARD ═══════════════ -->
+        <div id="algo-dashboard" style="margin-bottom:16px">
+          <!-- KPI Row -->
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:10px">
+            <div class="kpi" style="border-top:2px solid var(--green);position:relative;overflow:hidden">
+              <div class="kpi-label">TOTAL LIVE P&L</div>
+              <div class="kpi-value" id="dash-total-pnl" style="font-size:22px">$0.00</div>
+              <div class="kpi-delta" id="dash-pnl-sub" style="font-size:9px">realized + floating</div>
+            </div>
+            <div class="kpi" style="border-top:2px solid var(--accent)">
+              <div class="kpi-label">ACTIVE STRATEGIES</div>
+              <div class="kpi-value purple" id="dash-active-count" style="font-size:22px">0</div>
+              <div class="kpi-delta" id="dash-strat-names" style="font-size:9px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+            </div>
+            <div class="kpi" style="border-top:2px solid var(--cyan)">
+              <div class="kpi-label">OPEN POSITIONS</div>
+              <div class="kpi-value cyan" id="dash-open-pos" style="font-size:22px">0</div>
+              <div class="kpi-delta" id="dash-floating-pnl" style="font-size:9px">floating: $0.00</div>
+            </div>
+            <div class="kpi" style="border-top:2px solid var(--amber)">
+              <div class="kpi-label">TODAY TRADES</div>
+              <div class="kpi-value amber" id="dash-today-trades" style="font-size:22px">0</div>
+              <div class="kpi-delta" id="dash-today-wr" style="font-size:9px">win rate: —</div>
+            </div>
+            <div class="kpi" style="border-top:2px solid var(--accent2)">
+              <div class="kpi-label">TODAY P&L</div>
+              <div class="kpi-value" id="dash-today-pnl" style="font-size:22px">$0.00</div>
+              <div class="kpi-delta" id="dash-today-wl" style="font-size:9px">W:0 / L:0</div>
+            </div>
+          </div>
+          <!-- Active Strategy Status Strip -->
+          <div id="dash-strategy-strip" style="display:flex;gap:8px;flex-wrap:wrap;min-height:32px"></div>
+        </div>
+
         <!-- ═══════════════ AI MARKET ANALYSIS PANEL ═══════════════ -->
         <div class="order-panel" style="border-color:var(--amber);margin-bottom:16px;background:linear-gradient(135deg,rgba(245,158,11,0.04),rgba(139,92,246,0.06))">
           <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -1161,39 +1210,83 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             </div>
           </div>
 
-          <!-- SIGNAL OUTPUT -->
-          <div id="ai-output" style="display:grid;grid-template-columns:200px 1fr;gap:16px;margin-top:16px">
-            <!-- Left: Big signal badge -->
-            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0d0f1a;border-radius:12px;padding:20px;border:1px solid var(--border)">
-              <div id="ai-badge" style="font-size:36px;font-weight:900;letter-spacing:2px;color:var(--text3)">—</div>
-              <div id="ai-confidence" style="font-size:12px;color:var(--text3);margin-top:6px">Confidence: —</div>
-              <div style="width:100%;background:var(--border);border-radius:4px;height:6px;margin-top:10px;overflow:hidden">
-                <div id="ai-conf-bar" style="height:100%;width:0%;border-radius:4px;transition:width 0.6s,background 0.3s;background:var(--text3)"></div>
+          <!-- SIGNAL OUTPUT — JARVIS AI Visualization -->
+          <div id="ai-output" style="margin-top:16px">
+            <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+
+              <!-- JARVIS Holographic Display -->
+              <div style="position:relative;width:300px;height:300px;flex-shrink:0;display:flex;align-items:center;justify-content:center">
+                <!-- Outer ring -->
+                <div style="position:absolute;width:290px;height:290px;border-radius:50%;border:1px solid rgba(139,92,246,0.18);animation:jarvis-spin 18s linear infinite"></div>
+                <!-- Tick marks on outer ring -->
+                <div style="position:absolute;width:290px;height:290px;border-radius:50%;background:conic-gradient(from 0deg,rgba(139,92,246,0.4) 2deg,transparent 2deg,transparent 10deg,rgba(139,92,246,0.2) 10deg,rgba(139,92,246,0.2) 12deg,transparent 12deg,transparent 20deg,rgba(6,182,212,0.4) 20deg,rgba(6,182,212,0.4) 22deg,transparent 22deg);animation:jarvis-spin 18s linear infinite"></div>
+                <!-- Ring 2 -->
+                <div style="position:absolute;width:240px;height:240px;border-radius:50%;border:1px dashed rgba(6,182,212,0.35);animation:jarvis-spin2 12s linear infinite"></div>
+                <!-- Ring 2 glow arc -->
+                <div style="position:absolute;width:240px;height:240px;border-radius:50%;background:conic-gradient(from 90deg,rgba(6,182,212,0.5) 0deg,rgba(6,182,212,0.1) 60deg,transparent 61deg);animation:jarvis-spin2 12s linear infinite"></div>
+                <!-- Ring 3 -->
+                <div style="position:absolute;width:190px;height:190px;border-radius:50%;border:1px solid rgba(139,92,246,0.45);animation:jarvis-spin 8s linear infinite"></div>
+                <!-- Radar sweep -->
+                <div style="position:absolute;width:190px;height:190px;border-radius:50%;background:conic-gradient(from 0deg,rgba(139,92,246,0.55) 0deg,rgba(139,92,246,0.1) 35deg,transparent 36deg);animation:jarvis-scan 3s linear infinite"></div>
+                <!-- Inner ring -->
+                <div style="position:absolute;width:130px;height:130px;border-radius:50%;border:1px solid rgba(6,182,212,0.6);animation:jarvis-spin2 5s linear infinite"></div>
+                <!-- Glow core -->
+                <div id="ai-jarvis-glow" style="position:absolute;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,rgba(139,92,246,0.2) 0%,transparent 70%);animation:jarvis-pulse 2s ease-in-out infinite"></div>
+                <!-- Center signal -->
+                <div style="position:relative;z-index:10;text-align:center;display:flex;flex-direction:column;align-items:center">
+                  <div id="ai-badge" style="font-size:26px;font-weight:900;letter-spacing:3px;color:var(--text3);text-shadow:0 0 20px currentColor;transition:all 0.4s">—</div>
+                  <div id="ai-confidence" style="font-size:10px;color:var(--text3);margin-top:2px;letter-spacing:1px">SCANNING...</div>
+                  <div style="width:70px;background:rgba(255,255,255,0.1);border-radius:4px;height:3px;margin:4px auto;overflow:hidden">
+                    <div id="ai-conf-bar" style="height:100%;width:0%;border-radius:4px;transition:width 0.6s,background 0.3s;background:var(--text3)"></div>
+                  </div>
+                </div>
+                <!-- Orbiting dots -->
+                <div style="position:absolute;width:240px;height:240px;border-radius:50%;animation:jarvis-spin2 12s linear infinite">
+                  <div style="position:absolute;top:-4px;left:50%;transform:translateX(-50%);width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan)"></div>
+                </div>
+                <div style="position:absolute;width:190px;height:190px;border-radius:50%;animation:jarvis-spin 8s linear infinite">
+                  <div style="position:absolute;top:-4px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)"></div>
+                  <div style="position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:rgba(139,92,246,0.7)"></div>
+                </div>
               </div>
-              <div style="display:flex;justify-content:space-between;width:100%;margin-top:8px">
-                <div style="text-align:center">
-                  <div style="font-size:9px;color:var(--text3)">BUY</div>
-                  <div id="ai-buy-pct" style="font-size:13px;font-weight:700;color:var(--green)">—</div>
+
+              <!-- Metrics grid -->
+              <div style="flex:1;min-width:260px;display:grid;grid-template-columns:1fr 1fr;gap:8px;align-content:start">
+                <div style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:10px 14px;animation:jarvis-float 3s ease-in-out infinite">
+                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:4px">▲ BUY SCORE</div>
+                  <div id="ai-buy-pct" style="font-size:24px;font-weight:900;color:var(--green);text-shadow:0 0 12px rgba(16,185,129,0.4)">—</div>
                 </div>
-                <div style="text-align:center">
-                  <div style="font-size:9px;color:var(--text3)">SELL</div>
-                  <div id="ai-sell-pct" style="font-size:13px;font-weight:700;color:var(--red)">—</div>
+                <div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:10px 14px;animation:jarvis-float 3s ease-in-out infinite 0.4s">
+                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:4px">▼ SELL SCORE</div>
+                  <div id="ai-sell-pct" style="font-size:24px;font-weight:900;color:var(--red);text-shadow:0 0 12px rgba(239,68,68,0.4)">—</div>
                 </div>
-                <div style="text-align:center">
-                  <div style="font-size:9px;color:var(--text3)">H4 BIAS</div>
-                  <div id="ai-h4-bias" style="font-size:11px;font-weight:700;color:var(--text2)">—</div>
+                <div style="background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.15);border-radius:8px;padding:10px 14px;animation:jarvis-float 3.5s ease-in-out infinite 0.8s">
+                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:4px">D1 TREND</div>
+                  <div id="ai-d1-bias" style="font-size:13px;font-weight:700;color:var(--text2)">—</div>
+                </div>
+                <div style="background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.15);border-radius:8px;padding:10px 14px;animation:jarvis-float 3.5s ease-in-out infinite 1.2s">
+                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:4px">H4 TREND</div>
+                  <div id="ai-h4-bias" style="font-size:13px;font-weight:700;color:var(--text2)">—</div>
+                </div>
+                <div style="background:rgba(6,182,212,0.05);border:1px solid rgba(6,182,212,0.15);border-radius:8px;padding:10px 14px;animation:jarvis-float 4s ease-in-out infinite 1.6s">
+                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:4px">ICT KILL ZONE</div>
+                  <div id="ai-killzone" style="font-size:13px;font-weight:700;color:var(--text2)">—</div>
+                </div>
+                <div style="background:rgba(6,182,212,0.05);border:1px solid rgba(6,182,212,0.15);border-radius:8px;padding:10px 14px;animation:jarvis-float 4s ease-in-out infinite 2s">
+                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:4px">STRUCTURE (BOS)</div>
+                  <div id="ai-bos" style="font-size:13px;font-weight:700;color:var(--text2)">—</div>
+                </div>
+                <div id="ai-news-block" style="grid-column:span 2"></div>
+                <div style="grid-column:span 2;background:#0a0a10;border:1px solid var(--border);border-radius:8px;padding:10px">
+                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:6px">📰 UPCOMING NEWS</div>
+                  <div id="ai-news-list"><div style="font-size:11px;color:var(--text3)">Waiting for analysis...</div></div>
                 </div>
               </div>
             </div>
 
-            <!-- Right: Indicator breakdown -->
-            <div>
-              <table id="ai-components-table" style="width:100%">
-                <thead><tr><th>INDICATOR</th><th>DIRECTION</th><th>STRENGTH</th><th>DETAIL</th></tr></thead>
-                <tbody id="ai-components-body">
-                  <tr><td colspan="4" style="text-align:center;color:var(--text3);padding:16px">Click ANALYZE to scan the market</td></tr>
-                </tbody>
-              </table>
+            <!-- Hidden indicator table (backend analysis, not displayed) -->
+            <div style="display:none">
+              <table id="ai-components-table"><tbody id="ai-components-body"></tbody></table>
             </div>
           </div>
 
@@ -1226,20 +1319,26 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               <label>Strategy</label>
               <select id="algo-strategy" class="sinput" style="width:100%">
                 <optgroup label="── Trend Following ──">
-                  <option value="MA Cross">📊 MA Cross (EMA 20/50)</option>
-                  <option value="EMA Trend">📈 EMA Trend (EMA 20/100)</option>
                   <option value="Supertrend">🎯 Supertrend (ATR×3)</option>
+                  <option value="Ichimoku">🌸 Ichimoku Cloud</option>
                 </optgroup>
                 <optgroup label="── Fast Entry ──">
                   <option value="Scalper">⚡ Scalper (EMA 5/13 + RSI7)</option>
                 </optgroup>
-                <optgroup label="── Smart Money ──">
+                <optgroup label="── Smart Money Concepts ──">
                   <option value="Order Block">📦 Order Block (SMC)</option>
+                  <option value="SMC Liquidity">💧 SMC Liquidity Sweep + BOS</option>
                 </optgroup>
-                <optgroup label="── Advanced ──">
-                  <option value="Ichimoku">🌸 Ichimoku Cloud</option>
+                <optgroup label="── Price Action (High Win Rate) ──">
+                  <option value="Pin Bar SR">📌 Pin Bar at S/R (3-Pillar)</option>
+                  <option value="Engulfing Trend">🕯️ Engulfing + Trend</option>
+                  <option value="Inside Bar">📦 Inside Bar Breakout</option>
+                  <option value="False Breakout">🎣 False Breakout Trap</option>
+                  <option value="PA Confluence">🏛️ PA Confluence (All 3 Pillars)</option>
+                </optgroup>
+                <optgroup label="── AI Powered ──">
                   <option value="AI Confluence">🤖 AI Confluence (4/4 agree)</option>
-                  <option value="AI Agent">🧠 AI Agent (Live Analysis)</option>
+                  <option value="AI Agent">🧠 AI Agent+ (SMC + ICT + News)</option>
                 </optgroup>
               </select>
             </div>
@@ -1297,16 +1396,6 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
         <!-- STRATEGY INFO CARDS -->
         <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:14px">
-          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--cyan)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='MA Cross'">
-            <div style="font-size:10px;color:var(--cyan);letter-spacing:1px;margin-bottom:4px">MA CROSS</div>
-            <div style="font-size:10px;color:var(--text3)">EMA 20/50 crossover</div>
-            <div style="font-size:9px;color:var(--green);margin-top:4px">WR ~58%</div>
-          </div>
-          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='EMA Trend'">
-            <div style="font-size:10px;color:var(--red);letter-spacing:1px;margin-bottom:4px">EMA TREND</div>
-            <div style="font-size:10px;color:var(--text3)">EMA 20/100 trend follow</div>
-            <div style="font-size:9px;color:var(--green);margin-top:4px">WR ~60%</div>
-          </div>
           <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;transition:border-color 0.2s" onmouseover="this.style.borderColor='#f97316'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Supertrend'">
             <div style="font-size:10px;color:#f97316;letter-spacing:1px;margin-bottom:4px">SUPERTREND</div>
             <div style="font-size:10px;color:var(--text3)">ATR(10) × 3.0 flip</div>
@@ -1322,20 +1411,42 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <div style="font-size:10px;color:var(--text3)">TK cross + cloud filter</div>
             <div style="font-size:9px;color:var(--green);margin-top:4px">WR ~65%</div>
           </div>
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(59,130,246,0.1),rgba(139,92,246,0.08));transition:border-color 0.2s" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Order Block'">
+            <div style="font-size:10px;background:linear-gradient(90deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">📦 ORDER BLOCK</div>
+            <div style="font-size:10px;color:var(--text3)">SMC — fresh OB retest</div>
+            <div style="font-size:9px;color:var(--green);margin-top:4px">WR ~68%</div>
+          </div>
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(6,182,212,0.1),rgba(59,130,246,0.08));transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--cyan)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='SMC Liquidity'">
+            <div style="font-size:10px;background:linear-gradient(90deg,var(--cyan),#3b82f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">💧 SMC LIQ</div>
+            <div style="font-size:10px;color:var(--text3)">Liq Sweep + BOS confirm</div>
+            <div style="font-size:9px;color:var(--green);margin-top:4px">WR ~70%</div>
+          </div>
           <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(245,158,11,0.08));transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--amber)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='AI Confluence'">
             <div style="font-size:10px;background:linear-gradient(90deg,var(--accent),var(--amber));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">🤖 AI CONFLUENCE</div>
             <div style="font-size:10px;color:var(--text3)">EMA+RSI+MACD+Stoch 4/4</div>
             <div style="font-size:9px;color:var(--green);margin-top:4px">WR ~70%</div>
           </div>
           <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(245,158,11,0.1),rgba(16,185,129,0.06));transition:border-color 0.2s" onmouseover="this.style.borderColor='#f59e0b'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='AI Agent'">
-            <div style="font-size:10px;background:linear-gradient(90deg,#f59e0b,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">🧠 AI AGENT</div>
-            <div style="font-size:10px;color:var(--text3)">Live MTF analysis auto</div>
-            <div style="font-size:9px;color:var(--green);margin-top:4px">WR ~75%</div>
+            <div style="font-size:10px;background:linear-gradient(90deg,#f59e0b,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">🧠 AI AGENT+</div>
+            <div style="font-size:10px;color:var(--text3)">SMC+ICT+PA+News MTF</div>
+            <div style="font-size:9px;color:var(--green);margin-top:4px">WR ~78%</div>
           </div>
-          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(59,130,246,0.1),rgba(139,92,246,0.08));transition:border-color 0.2s" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Order Block'">
-            <div style="font-size:10px;background:linear-gradient(90deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">📦 ORDER BLOCK</div>
-            <div style="font-size:10px;color:var(--text3)">SMC — fresh OB retest</div>
-            <div style="font-size:9px;color:var(--green);margin-top:4px">WR ~68%</div>
+        </div>
+
+        <!-- FOREX NEWS PANEL -->
+        <div class="panel" style="margin-bottom:14px">
+          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span>📰 Forex News Impact</span>
+              <span id="news-impact-badge" style="background:var(--card2);border:1px solid var(--border2);color:var(--text3);font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">—</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="news-symbol-label" style="font-size:10px;color:var(--text3)">XAUUSDc</span>
+              <button class="sbtn" onclick="loadNewsCalendar()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
+            </div>
+          </div>
+          <div id="news-calendar-body">
+            <div style="text-align:center;color:var(--text3);padding:16px;font-size:12px">Loading news calendar...</div>
           </div>
         </div>
 
@@ -1353,12 +1464,18 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
         <!-- ALGO TRADE HISTORY -->
         <div class="panel">
-          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
             <div style="display:flex;align-items:center;gap:10px">
               <span>📋 Algo Trade History</span>
               <span id="algo-mt5-hist-count" style="background:var(--card2);border:1px solid var(--border2);color:var(--text2);font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">0</span>
             </div>
-            <div style="display:flex;align-items:center;gap:8px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <!-- Date filter -->
+              <input type="date" id="algo-hist-date-from" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--text);font-family:var(--font);font-size:11px;outline:none" title="From date"/>
+              <span style="color:var(--text3);font-size:11px">—</span>
+              <input type="date" id="algo-hist-date-to" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--text);font-family:var(--font);font-size:11px;outline:none" title="To date"/>
+              <button onclick="algoHistApplyDateFilter()" style="padding:3px 10px;background:var(--accent);border:none;border-radius:6px;color:#fff;font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer">FILTER</button>
+              <button onclick="algoHistClearDate()" style="padding:3px 8px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text3);font-family:var(--font);font-size:10px;cursor:pointer">CLEAR</button>
               <!-- Filter tabs -->
               <div style="display:flex;gap:2px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:2px">
                 <button id="algo-hf-all" onclick="algoHistFilter('all')" style="padding:3px 10px;border:none;border-radius:6px;font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer;background:var(--accent);color:#fff;transition:all 0.2s">ALL</button>
@@ -1368,6 +1485,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               <button class="sbtn" onclick="loadAlgoHistory()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
             </div>
           </div>
+
           <!-- Live Open Positions from MT5 -->
           <div id="algo-live-pos-wrap" style="display:none;margin-bottom:12px">
             <div style="font-size:10px;color:var(--cyan);letter-spacing:1px;font-weight:700;margin-bottom:6px">⚡ LIVE OPEN POSITIONS (MT5)</div>
@@ -1377,11 +1495,79 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             </table>
             <div style="height:1px;background:var(--border);margin:12px 0"></div>
           </div>
-          <!-- Closed / All History -->
+
+          <!-- Closed / All History Table -->
           <table>
-            <thead><tr><th>TICKET</th><th>STRATEGY</th><th>SYMBOL</th><th>TYPE</th><th>LOTS</th><th>ENTRY</th><th>EXIT</th><th>SL</th><th>TP</th><th>P&amp;L</th><th>EXIT REASON</th><th>TIME</th></tr></thead>
+            <thead><tr><th>TICKET</th><th>STRATEGY</th><th>SYMBOL</th><th>TYPE</th><th>LOTS</th><th>ENTRY</th><th>EXIT</th><th>SL</th><th>TP</th><th>P&amp;L</th><th>RESULT</th><th>TIME</th></tr></thead>
             <tbody id="algo-history-tbody"><tr><td colspan="12" style="text-align:center;color:var(--text3);padding:20px">Loading...</td></tr></tbody>
           </table>
+
+          <!-- Pagination controls -->
+          <div id="algo-hist-pagination" style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;flex-wrap:wrap;gap:8px">
+            <div style="font-size:11px;color:var(--text3)" id="algo-hist-page-info">Showing 0 trades</div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <button onclick="algoHistPage('first')" id="algo-pg-first" style="padding:4px 8px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text3);font-family:var(--font);font-size:11px;cursor:pointer">«</button>
+              <button onclick="algoHistPage('prev')"  id="algo-pg-prev"  style="padding:4px 10px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:11px;cursor:pointer">‹ Prev</button>
+              <div id="algo-pg-numbers" style="display:flex;gap:4px"></div>
+              <button onclick="algoHistPage('next')"  id="algo-pg-next"  style="padding:4px 10px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:11px;cursor:pointer">Next ›</button>
+              <button onclick="algoHistPage('last')"  id="algo-pg-last"  style="padding:4px 8px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text3);font-family:var(--font);font-size:11px;cursor:pointer">»</button>
+              <select id="algo-pg-size" onchange="algoHistPageSizeChange()" style="padding:4px 6px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:11px">
+                <option value="25" selected>25 / page</option>
+                <option value="50">50 / page</option>
+                <option value="100">100 / page</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- DATE-WISE ANALYSIS -->
+        <div class="panel" style="margin-top:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;cursor:pointer" onclick="toggleDateAnalysis()">
+            <div class="panel-title" style="margin:0">📅 Date-wise P&L Analysis</div>
+            <span id="date-analysis-toggle" style="font-size:18px;color:var(--text3);transition:transform 0.2s">▼</span>
+          </div>
+          <div id="date-analysis-body">
+            <!-- Summary stats row -->
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+              <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">BEST DAY</div>
+                <div style="font-size:16px;font-weight:800;color:var(--green)" id="da-best-day">—</div>
+                <div style="font-size:10px;color:var(--text3)" id="da-best-day-date">—</div>
+              </div>
+              <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">WORST DAY</div>
+                <div style="font-size:16px;font-weight:800;color:var(--red)" id="da-worst-day">—</div>
+                <div style="font-size:10px;color:var(--text3)" id="da-worst-day-date">—</div>
+              </div>
+              <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">PROFITABLE DAYS</div>
+                <div style="font-size:16px;font-weight:800;color:var(--green)" id="da-prof-days">—</div>
+                <div style="font-size:10px;color:var(--text3)" id="da-prof-days-pct">of total days</div>
+              </div>
+              <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">
+                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">AVG DAILY P&L</div>
+                <div style="font-size:16px;font-weight:800" id="da-avg-day">—</div>
+                <div style="font-size:10px;color:var(--text3)">per trading day</div>
+              </div>
+            </div>
+            <!-- P&L bar chart -->
+            <div id="da-bar-chart" style="display:flex;align-items:flex-end;gap:4px;height:80px;margin-bottom:14px;padding:0 4px;overflow-x:auto"></div>
+            <!-- Daily table -->
+            <table style="font-size:12px">
+              <thead>
+                <tr>
+                  <th style="cursor:pointer" onclick="sortDateAnalysis('date')">DATE ⇅</th>
+                  <th style="cursor:pointer" onclick="sortDateAnalysis('trades')">TRADES ⇅</th>
+                  <th>WINS</th><th>LOSSES</th>
+                  <th style="cursor:pointer" onclick="sortDateAnalysis('wr')">WIN RATE ⇅</th>
+                  <th style="cursor:pointer" onclick="sortDateAnalysis('pnl')">P&L ⇅</th>
+                  <th>BEST TRADE</th><th>WORST TRADE</th>
+                  <th>STRATEGIES</th>
+                </tr>
+              </thead>
+              <tbody id="date-analysis-tbody"><tr><td colspan="9" style="text-align:center;color:var(--text3);padding:16px">Load history first</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -2326,13 +2512,21 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 <label>Strategy</label>
                 <select id="bot-strategy" onchange="botStrategyChange()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--font);font-size:12px;width:100%">
                   <option value="ai_score">⚡ AI Score (Multi-Indicator) — Recommended</option>
-                  <option value="macd_cross">📈 MACD Crossover</option>
-                  <option value="bb_squeeze">⚡ BB Squeeze + Volume</option>
-                  <option value="supertrend">🎯 Supertrend (ATR-based)</option>
-                  <option value="scalp">⚡ Scalp EMA(3/8/21)</option>
-                  <option value="ema_cross">📊 EMA Crossover</option>
-                  <option value="rsi">📉 RSI Mean Reversion</option>
-                  <option value="breakout">🔥 Breakout High/Low</option>
+                  <optgroup label="── Price Action (High WR) ──">
+                    <option value="pin_bar_sr">📌 Pin Bar at S/R (3-Pillar)</option>
+                    <option value="engulfing_trend">🕯️ Engulfing + Trend</option>
+                    <option value="false_breakout">🎣 False Breakout Trap</option>
+                    <option value="pa_confluence">🏛️ PA Confluence (All 3 Pillars)</option>
+                  </optgroup>
+                  <optgroup label="── Technical ──">
+                    <option value="macd_cross">📈 MACD Crossover</option>
+                    <option value="bb_squeeze">⚡ BB Squeeze + Volume</option>
+                    <option value="supertrend">🎯 Supertrend (ATR-based)</option>
+                    <option value="scalp">⚡ Scalp EMA(3/8/21)</option>
+                    <option value="ema_cross">📊 EMA Crossover</option>
+                    <option value="rsi">📉 RSI Mean Reversion</option>
+                    <option value="breakout">🔥 Breakout High/Low</option>
+                  </optgroup>
                 </select>
               </div>
               <div id="bot-strategy-hint" style="font-size:10px;color:var(--text3);margin-bottom:10px;line-height:1.5;padding:5px 8px;background:rgba(139,92,246,0.05);border-radius:6px;border-left:2px solid var(--accent)">
@@ -2856,7 +3050,10 @@ async function logout() {
 
 async function disconnectMT5Only() {
   if (ws) { ws.close(); ws = null; }
-  await apiFetch('/api/disconnect', { method: 'POST' });
+  const r = await apiFetch('/api/disconnect', { method: 'POST' });
+  if (r && r.skipped) {
+    toast(`⚠️ MT5 kept alive — ${r.reason}`);
+  }
   document.getElementById('app').style.display          = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('mt5-password').value = '';
@@ -3775,7 +3972,8 @@ async function doAuthLogout() {
   }
   _clearAuthToken();
   if (ws) { ws.close(); ws = null; }
-  try { await fetch(API + '/api/disconnect', { method: 'POST' }); } catch {}
+  // NOTE: Do NOT call /api/disconnect here — algo strategies keep running on the server
+  // MT5 stays connected so running strategies are not interrupted by logout
   document.getElementById('app').style.display          = 'none';
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('auth-screen').style.display  = 'flex';
@@ -5077,6 +5275,10 @@ async function runAiAnalysis() {
   aiLastSignal = data;
 
   // If auto mode ON and signal is clear, execute trade
+  if (aiAutoEnabled && data.news_block) {
+    toast('📰 AI Auto-trade paused — high-impact news within 30 min');
+    return;
+  }
   if (aiAutoEnabled && (data.signal === 'BUY' || data.signal === 'SELL')) {
     const minConf = parseInt((document.getElementById('ai-min-conf') || {}).value) || 65;
     if (data.confidence >= minConf) {
@@ -5130,14 +5332,24 @@ async function aiSafeguardCheck() {
 }
 
 function renderAiResult(data) {
-  const g = id => document.getElementById(id); // safe getter
-  const sigColor = data.signal === 'BUY' ? 'var(--green)' : data.signal === 'SELL' ? 'var(--red)' : 'var(--text3)';
+  const g = id => document.getElementById(id);
+  const sigColor = data.signal==='BUY'?'var(--green)':data.signal==='SELL'?'var(--red)':data.signal==='WAIT'?'var(--amber)':'var(--text3)';
+  const sigRgb   = data.signal==='BUY'?'16,185,129':data.signal==='SELL'?'239,68,68':data.signal==='WAIT'?'245,158,11':'139,92,246';
 
   const badge = g('ai-badge');
-  if (badge) { badge.textContent = data.signal; badge.style.color = sigColor; badge.style.textShadow = `0 0 20px ${sigColor}`; }
+  if (badge) { badge.textContent = data.signal; badge.style.color = sigColor; badge.style.textShadow = `0 0 30px ${sigColor},0 0 60px ${sigColor}`; }
+
+  // Animate JARVIS glow core with signal color
+  const glow = g('ai-jarvis-glow');
+  if (glow) {
+    glow.style.background = `radial-gradient(circle,rgba(${sigRgb},0.35) 0%,transparent 70%)`;
+    glow.style.boxShadow  = `0 0 30px rgba(${sigRgb},0.4),0 0 60px rgba(${sigRgb},0.15)`;
+    const animName = data.signal==='BUY'?'jarvis-glow-buy':data.signal==='SELL'?'jarvis-glow-sell':'jarvis-pulse';
+    glow.style.animation = `${animName} 1.5s ease-in-out infinite`;
+  }
 
   const confEl = g('ai-confidence');
-  if (confEl) confEl.textContent = `Confidence: ${data.confidence}%`;
+  if (confEl) confEl.textContent = `${data.confidence}% CONF`;
 
   const confBar = g('ai-conf-bar');
   if (confBar) { confBar.style.width = data.confidence + '%'; confBar.style.background = sigColor; }
@@ -5148,6 +5360,49 @@ function renderAiResult(data) {
   const biasColor = data.h4_bias === 'BULLISH' ? 'var(--green)' : data.h4_bias === 'BEARISH' ? 'var(--red)' : 'var(--text3)';
   const h4Bias = g('ai-h4-bias');
   if (h4Bias) { h4Bias.textContent = data.h4_bias; h4Bias.style.color = biasColor; }
+
+  // D1 bias
+  const d1El = g('ai-d1-bias');
+  if (d1El && data.d1_bias) {
+    const d1c = data.d1_bias==='BULLISH'?'var(--green)':data.d1_bias==='BEARISH'?'var(--red)':'var(--text3)';
+    d1El.textContent = 'D1: ' + data.d1_bias; d1El.style.color = d1c;
+  }
+  // Kill zone
+  const kzEl = g('ai-killzone');
+  if (kzEl && data.killzone) {
+    const kzc = data.kz_level==='HIGH'?'var(--green)':data.kz_level==='MEDIUM'?'var(--amber)':'var(--text3)';
+    kzEl.textContent = data.killzone + (data.kz_level==='HIGH'?' 🔥':''); kzEl.style.color=kzc;
+  }
+  // BOS
+  const bosEl = g('ai-bos');
+  if (bosEl && data.bos) {
+    bosEl.textContent = data.bos; bosEl.style.color = data.bos==='BUY'?'var(--green)':data.bos==='SELL'?'var(--red)':'var(--text3)';
+  }
+  // News block warning
+  const nbEl = g('ai-news-block');
+  if (nbEl) {
+    if (data.news_block) {
+      nbEl.innerHTML = '<span style="background:rgba(245,158,11,0.15);border:1px solid var(--amber);color:var(--amber);padding:3px 10px;border-radius:6px;font-size:11px">⚠️ High-impact news incoming — trading paused</span>';
+    } else { nbEl.innerHTML = ''; }
+  }
+  // News events
+  const newsEl = g('ai-news-list');
+  if (newsEl && data.news && data.news.length) {
+    newsEl.innerHTML = data.news.slice(0,6).map(ev => {
+      const mc = ev.mins_from_now<0?'var(--text3)':ev.mins_from_now<=30?'var(--red)':'var(--amber)';
+      const dc = ev.direction==='BULLISH'?'var(--green)':ev.direction==='BEARISH'?'var(--red)':'var(--text3)';
+      const timeStr = ev.mins_from_now<0?`${Math.abs(ev.mins_from_now)}m ago`:`in ${ev.mins_from_now}m`;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:9px;color:${mc};min-width:55px;font-weight:700">${timeStr}</span>
+        <span style="font-size:10px;color:var(--text2);flex:1">${ev.title}</span>
+        <span style="font-size:9px;color:var(--text3)">${ev.country}</span>
+        <span style="font-size:9px;padding:1px 6px;border-radius:4px;background:${ev.impact==='High'?'rgba(239,68,68,0.15)':'rgba(245,158,11,0.12)'};color:${ev.impact==='High'?'var(--red)':'var(--amber)'};font-weight:700">${ev.impact}</span>
+        ${ev.direction!=='NEUTRAL'?`<span style="font-size:9px;color:${dc};font-weight:700">${ev.direction}</span>`:''}
+      </div>`;
+    }).join('');
+  } else if (newsEl) {
+    newsEl.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:6px 0">No upcoming high-impact news</div>';
+  }
 
   const tbody = g('ai-components-body');
   if (tbody && data.components && data.components.length) {
@@ -5347,20 +5602,24 @@ async function loadStrategies() {
   const el = document.getElementById('algo-list');
   const countEl = document.getElementById('algo-mt5-running-count');
   const running = Array.isArray(data) ? data.filter(s => s.status === 'running') : [];
+  // Update live dashboard strip (uses already-cached live positions)
+  const livePosData = await apiFetch('/api/algo/live_positions').catch(()=>[]);
+  _updateAlgoDashboard(Array.isArray(data)?data:[], Array.isArray(livePosData)?livePosData:[]);
   if (countEl) countEl.textContent = running.length;
   if (!Array.isArray(data) || data.length === 0) {
     el.innerHTML = '<div style="text-align:center;color:var(--text3);padding:30px;font-size:12px">No strategies running. Start one above.</div>';
     return;
   }
   const colorMap = {
-    'MA Cross':      'var(--cyan)',
-    'EMA Trend':     'var(--red)',
     'Supertrend':    '#f97316',
     'Scalper':       'var(--accent)',
     'Ichimoku':      '#e879f9',
     'AI Confluence': 'var(--amber)',
     'AI Agent':      '#f59e0b',
     'Order Block':   '#3b82f6',
+    'SMC Liquidity': 'var(--cyan)',
+    'MA Cross':      '#666',
+    'EMA Trend':     '#666',
   };
   el.innerHTML = data.map(s => {
     const color      = colorMap[s.strategy] || 'var(--cyan)';
@@ -5486,87 +5745,336 @@ async function loadStrategies() {
   }).join('');
 }
 
-let _algoHistFilter = 'all';
-let _algoHistData   = [];
+// ══════════ ALGO HISTORY + DASHBOARD ══════════
+let _algoHistFilter   = 'all';
+let _algoHistData     = [];
+let _algoHistFiltered = [];
+let _algoHistPage     = 1;
+let _algoHistPageSize = 25;
+let _algoHistDateFrom = null;
+let _algoHistDateTo   = null;
+let _daSort = { col: 'date', asc: false };
 
 function algoHistFilter(f) {
   _algoHistFilter = f;
+  _algoHistPage = 1;
   ['all','open','closed'].forEach(k => {
     const btn = document.getElementById('algo-hf-' + k);
     if (btn) { btn.style.background = k === f ? 'var(--accent)' : 'transparent'; btn.style.color = k === f ? '#fff' : 'var(--text3)'; }
   });
+  _applyHistFilters();
+}
+
+function algoHistApplyDateFilter() {
+  _algoHistDateFrom = document.getElementById('algo-hist-date-from')?.value || null;
+  _algoHistDateTo   = document.getElementById('algo-hist-date-to')?.value   || null;
+  _algoHistPage = 1;
+  _applyHistFilters();
+}
+
+function algoHistClearDate() {
+  _algoHistDateFrom = null; _algoHistDateTo = null;
+  const f = document.getElementById('algo-hist-date-from');
+  const t = document.getElementById('algo-hist-date-to');
+  if (f) f.value = ''; if (t) t.value = '';
+  _algoHistPage = 1;
+  _applyHistFilters();
+}
+
+function _applyHistFilters() {
+  let rows = _algoHistData;
+  if (_algoHistFilter === 'open')   rows = rows.filter(d => !d.exit_price);
+  if (_algoHistFilter === 'closed') rows = rows.filter(d => !!d.exit_price);
+  if (_algoHistDateFrom) rows = rows.filter(d => (d.time||'') >= _algoHistDateFrom);
+  if (_algoHistDateTo)   rows = rows.filter(d => (d.time||'').substring(0,10) <= _algoHistDateTo);
+  _algoHistFiltered = rows;
+  const countEl = document.getElementById('algo-mt5-hist-count');
+  if (countEl) countEl.textContent = rows.length;
+  _renderAlgoHistory();
+  _renderDateAnalysis();
+}
+
+function algoHistPage(dir) {
+  const totalPages = Math.max(1, Math.ceil(_algoHistFiltered.length / _algoHistPageSize));
+  if (dir === 'first') _algoHistPage = 1;
+  else if (dir === 'prev')  _algoHistPage = Math.max(1, _algoHistPage - 1);
+  else if (dir === 'next')  _algoHistPage = Math.min(totalPages, _algoHistPage + 1);
+  else if (dir === 'last')  _algoHistPage = totalPages;
+  else _algoHistPage = parseInt(dir) || 1;
+  _renderAlgoHistory();
+}
+
+function algoHistPageSizeChange() {
+  _algoHistPageSize = parseInt(document.getElementById('algo-pg-size')?.value) || 25;
+  _algoHistPage = 1;
   _renderAlgoHistory();
 }
 
 function _renderAlgoHistory() {
-  const tbody  = document.getElementById('algo-history-tbody');
-  const countEl = document.getElementById('algo-mt5-hist-count');
-  let rows = _algoHistData;
-  if (_algoHistFilter === 'open')   rows = rows.filter(d => !d.exit_price);
-  if (_algoHistFilter === 'closed') rows = rows.filter(d => !!d.exit_price);
-  if (countEl) countEl.textContent = rows.length;
-  if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--text3);padding:20px">No ${_algoHistFilter === 'all' ? '' : _algoHistFilter + ' '}trades found.</td></tr>`;
+  const tbody   = document.getElementById('algo-history-tbody');
+  const rows    = _algoHistFiltered;
+  const total   = rows.length;
+  const pages   = Math.max(1, Math.ceil(total / _algoHistPageSize));
+  _algoHistPage = Math.min(_algoHistPage, pages);
+  const start   = (_algoHistPage - 1) * _algoHistPageSize;
+  const pageRows= rows.slice(start, start + _algoHistPageSize);
+
+  // Info text
+  const infoEl = document.getElementById('algo-hist-page-info');
+  if (infoEl) infoEl.textContent = total ? `Showing ${start+1}–${Math.min(start+_algoHistPageSize,total)} of ${total} trades` : 'No trades found';
+
+  // Page number buttons
+  const pgNums = document.getElementById('algo-pg-numbers');
+  if (pgNums) {
+    const range = [];
+    for (let p = Math.max(1,_algoHistPage-2); p <= Math.min(pages,_algoHistPage+2); p++) range.push(p);
+    pgNums.innerHTML = range.map(p => `<button onclick="algoHistPage(${p})" style="padding:4px 8px;background:${p===_algoHistPage?'var(--accent)':'var(--card2)'};border:1px solid ${p===_algoHistPage?'var(--accent)':'var(--border)'};border-radius:6px;color:${p===_algoHistPage?'#fff':'var(--text)'};font-family:var(--font);font-size:11px;cursor:pointer">${p}</button>`).join('');
+  }
+
+  // Disable/enable nav buttons
+  ['first','prev'].forEach(id => { const b = document.getElementById('algo-pg-'+id); if (b) b.disabled = _algoHistPage <= 1; });
+  ['next','last'].forEach(id  => { const b = document.getElementById('algo-pg-'+id); if (b) b.disabled = _algoHistPage >= pages; });
+
+  if (!pageRows.length) {
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--text3);padding:20px">No trades found.</td></tr>`;
     return;
   }
-  tbody.innerHTML = rows.map(d => {
-    const isOpen     = !d.exit_price;
-    const pnlColor   = (d.profit || 0) >= 0 ? 'var(--green)' : 'var(--red)';
-    const typeColor  = d.type === 'BUY' ? 'var(--green)' : 'var(--red)';
-    const stratLabel = d.comment ? d.comment.replace('FarhanFX-','') : '—';
-    const rowBg      = isOpen ? 'rgba(139,92,246,0.07)' : 'transparent';
-    const rowBorder  = isOpen ? 'border-left:2px solid var(--accent)' : '';
-    const reason     = d.exit_reason || (isOpen ? 'OPEN' : '—');
-    const reasonColor = reason === 'TP HIT'   ? 'var(--green)'
-                      : reason === 'SL HIT'   ? 'var(--red)'
-                      : reason === 'STOP OUT' ? 'var(--red)'
-                      : reason === 'OPEN'     ? 'var(--accent)'
-                      : 'var(--text3)';
-    const reasonBg   = reason === 'TP HIT'   ? 'rgba(16,185,129,0.12)'
-                      : reason === 'SL HIT'   ? 'rgba(239,68,68,0.12)'
-                      : reason === 'STOP OUT' ? 'rgba(239,68,68,0.12)'
-                      : reason === 'OPEN'     ? 'rgba(139,92,246,0.15)'
-                      : 'transparent';
-    return `<tr style="background:${rowBg};${rowBorder}">
+  tbody.innerHTML = pageRows.map(d => {
+    const isOpen    = !d.exit_price;
+    const pnl       = d.profit ?? null;
+    const pnlColor  = (pnl || 0) >= 0 ? 'var(--green)' : 'var(--red)';
+    const typeColor = d.type === 'BUY' ? 'var(--green)' : 'var(--red)';
+    const stratLabel= d.strategy || (d.comment ? d.comment.replace('FarhanFX-','') : '—');
+    const rowBg     = isOpen ? 'rgba(139,92,246,0.07)' : 'transparent';
+    const reason    = d.exit_reason || (isOpen ? 'OPEN' : '—');
+    const rc = reason==='TP HIT'?'var(--green)':reason==='SL HIT'?'var(--red)':reason==='OPEN'?'var(--accent)':'var(--text3)';
+    const rb = reason==='TP HIT'?'rgba(16,185,129,0.12)':reason==='SL HIT'?'rgba(239,68,68,0.12)':reason==='OPEN'?'rgba(139,92,246,0.15)':'transparent';
+    return `<tr style="background:${rowBg}${isOpen?';border-left:2px solid var(--accent)':''}">
       <td style="font-family:monospace;color:var(--text3)">#${d.ticket}</td>
       <td><span style="color:var(--cyan);font-size:11px;font-weight:700">${stratLabel}</span></td>
       <td style="font-weight:700">${d.symbol}</td>
       <td style="color:${typeColor};font-weight:700">${d.type}</td>
       <td>${d.volume}</td>
-      <td style="font-family:monospace">${d.entry_price ?? '—'}</td>
-      <td style="font-family:monospace">${d.exit_price ?? '—'}</td>
-      <td style="font-family:monospace;color:var(--amber)">${d.sl ?? '—'}</td>
-      <td style="font-family:monospace;color:var(--cyan)">${d.tp ?? '—'}</td>
-      <td style="color:${pnlColor};font-weight:800">${d.profit != null ? (d.profit>=0?'+':'') + d.profit.toFixed(2) : isOpen ? '<span style="color:var(--accent)">● OPEN</span>' : '—'}</td>
-      <td><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:${reasonBg};color:${reasonColor}">${reason}</span></td>
+      <td style="font-family:monospace">${d.entry_price??'—'}</td>
+      <td style="font-family:monospace">${d.exit_price??'—'}</td>
+      <td style="font-family:monospace;color:var(--amber)">${d.sl??'—'}</td>
+      <td style="font-family:monospace;color:var(--cyan)">${d.tp??'—'}</td>
+      <td style="color:${pnlColor};font-weight:800">${pnl!=null?(pnl>=0?'+':'')+pnl.toFixed(2):isOpen?'<span style="color:var(--accent)">● OPEN</span>':'—'}</td>
+      <td><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:${rb};color:${rc}">${reason}</span></td>
       <td style="font-size:10px;color:var(--text3)">${d.time}</td>
     </tr>`;
   }).join('');
+}
+
+// ── DATE-WISE ANALYSIS ──────────────────────────────────────────────
+function sortDateAnalysis(col) {
+  if (_daSort.col === col) _daSort.asc = !_daSort.asc;
+  else { _daSort.col = col; _daSort.asc = col !== 'date'; }
+  _renderDateAnalysis();
+}
+
+function toggleDateAnalysis() {
+  const body = document.getElementById('date-analysis-body');
+  const icon = document.getElementById('date-analysis-toggle');
+  const hidden = body.style.display === 'none';
+  body.style.display = hidden ? 'block' : 'none';
+  if (icon) icon.textContent = hidden ? '▼' : '▶';
+}
+
+function _renderDateAnalysis() {
+  const tbody  = document.getElementById('date-analysis-tbody');
+  const closed = _algoHistFiltered.filter(d => d.exit_price && d.profit != null);
+  if (!closed.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:16px">No closed trades in current filter</td></tr>';
+    _clearDaSummary(); return;
+  }
+
+  // Group by date
+  const byDate = {};
+  closed.forEach(d => {
+    const dt = (d.time||'').substring(0,10);
+    if (!byDate[dt]) byDate[dt] = { trades:0, wins:0, losses:0, pnl:0, best:-Infinity, worst:Infinity, strats:new Set() };
+    const g = byDate[dt];
+    g.trades++; g.pnl += d.profit;
+    if (d.profit > 0) g.wins++; else g.losses++;
+    if (d.profit > g.best)  g.best  = d.profit;
+    if (d.profit < g.worst) g.worst = d.profit;
+    const sl = d.strategy || (d.comment||'').replace('FarhanFX-','');
+    if (sl) g.strats.add(sl.substring(0,12));
+  });
+
+  let rows = Object.entries(byDate).map(([date, g]) => ({
+    date, trades:g.trades, wins:g.wins, losses:g.losses,
+    wr: g.trades ? (g.wins/g.trades*100) : 0,
+    pnl: g.pnl, best: g.best, worst: g.worst,
+    strats: [...g.strats].join(', ')
+  }));
+
+  // Sort
+  const {col, asc} = _daSort;
+  rows.sort((a,b) => {
+    let va=a[col], vb=b[col];
+    if (typeof va==='string') return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return asc ? va-vb : vb-va;
+  });
+
+  // Summary stats
+  const bestRow  = rows.reduce((a,b)=>b.pnl>a.pnl?b:a, rows[0]);
+  const worstRow = rows.reduce((a,b)=>b.pnl<a.pnl?b:a, rows[0]);
+  const profDays = rows.filter(r=>r.pnl>0).length;
+  const avgPnl   = rows.reduce((s,r)=>s+r.pnl,0)/rows.length;
+  const _e = (id,v)=>{ const el=document.getElementById(id); if(el) el.textContent=v; };
+  _e('da-best-day',  (bestRow.pnl>=0?'+':'')+bestRow.pnl.toFixed(2));
+  _e('da-best-day-date', bestRow.date);
+  _e('da-worst-day', worstRow.pnl.toFixed(2));
+  _e('da-worst-day-date', worstRow.date);
+  _e('da-prof-days', `${profDays} / ${rows.length}`);
+  _e('da-prof-days-pct', `${Math.round(profDays/rows.length*100)}% profitable`);
+  _e('da-avg-day', (avgPnl>=0?'+':'')+avgPnl.toFixed(2));
+  const avgEl = document.getElementById('da-avg-day');
+  if (avgEl) avgEl.style.color = avgPnl>=0?'var(--green)':'var(--red)';
+  const bestEl = document.getElementById('da-best-day'); if(bestEl) bestEl.style.color='var(--green)';
+  const worstEl = document.getElementById('da-worst-day'); if(worstEl) worstEl.style.color='var(--red)';
+
+  // Bar chart (last 20 days sorted by date)
+  const chartRows = [...rows].sort((a,b)=>a.date.localeCompare(b.date)).slice(-20);
+  const chartEl = document.getElementById('da-bar-chart');
+  if (chartEl && chartRows.length) {
+    const maxAbs = Math.max(...chartRows.map(r=>Math.abs(r.pnl)), 0.01);
+    chartEl.innerHTML = chartRows.map(r => {
+      const pct  = Math.abs(r.pnl)/maxAbs*100;
+      const col  = r.pnl>=0?'var(--green)':'var(--red)';
+      const lbl  = r.date.substring(5); // MM-DD
+      return `<div style="flex:1;min-width:20px;display:flex;flex-direction:column;align-items:center;gap:2px" title="${r.date}: ${r.pnl>=0?'+':''}${r.pnl.toFixed(2)}">
+        <div style="font-size:8px;color:${col};font-weight:700">${r.pnl>=0?'+':''}${Math.abs(r.pnl)<100?r.pnl.toFixed(1):Math.round(r.pnl)}</div>
+        <div style="width:100%;height:${Math.max(4,pct*0.6)}px;background:${col};border-radius:3px 3px 0 0;opacity:0.85"></div>
+        <div style="font-size:8px;color:var(--text3);writing-mode:vertical-rl;transform:rotate(180deg);height:32px">${lbl}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // Table rows
+  tbody.innerHTML = rows.map(r => {
+    const pc = r.pnl>=0?'var(--green)':'var(--red)';
+    const wr = r.wr.toFixed(0)+'%';
+    const wrC= r.wr>=60?'var(--green)':r.wr>=40?'var(--amber)':'var(--red)';
+    return `<tr>
+      <td style="font-weight:700;color:var(--cyan)">${r.date}</td>
+      <td style="text-align:center">${r.trades}</td>
+      <td style="text-align:center;color:var(--green)">${r.wins}</td>
+      <td style="text-align:center;color:var(--red)">${r.losses}</td>
+      <td style="text-align:center"><span style="font-weight:700;color:${wrC}">${wr}</span></td>
+      <td style="font-weight:800;color:${pc}">${r.pnl>=0?'+':''}${r.pnl.toFixed(2)}</td>
+      <td style="color:var(--green)">${r.best===Infinity?'—':(r.best>=0?'+':'')+r.best.toFixed(2)}</td>
+      <td style="color:var(--red)">${r.worst===-Infinity?'—':r.worst.toFixed(2)}</td>
+      <td style="font-size:10px;color:var(--text3);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.strats}">${r.strats||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function _clearDaSummary() {
+  ['da-best-day','da-best-day-date','da-worst-day','da-worst-day-date','da-prof-days','da-prof-days-pct','da-avg-day']
+    .forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent='—'; });
+  const c=document.getElementById('da-bar-chart'); if(c) c.innerHTML='';
+}
+
+// ── LIVE DASHBOARD UPDATE ───────────────────────────────────────────
+function _updateAlgoDashboard(strategies, livePositions) {
+  const running = (strategies||[]).filter(s => s.status==='running');
+
+  // Total floating P&L from live positions
+  const floating = (livePositions||[]).reduce((s,p)=>s+(p.profit||0), 0);
+  // Total realized P&L from all running strategies
+  const realized = running.reduce((s,st)=>s+(st.pnl||0), 0);
+  const totalPnl  = realized + floating;
+
+  const pnlEl = document.getElementById('dash-total-pnl');
+  if (pnlEl) {
+    pnlEl.textContent  = (totalPnl>=0?'+':'') + '$' + Math.abs(totalPnl).toFixed(2);
+    pnlEl.style.color  = totalPnl>=0?'var(--green)':'var(--red)';
+  }
+  const pnlSub = document.getElementById('dash-pnl-sub');
+  if (pnlSub) pnlSub.textContent = `realized $${realized.toFixed(2)} + float $${floating.toFixed(2)}`;
+
+  const countEl = document.getElementById('dash-active-count');
+  if (countEl) countEl.textContent = running.length;
+  const namesEl = document.getElementById('dash-strat-names');
+  if (namesEl) namesEl.textContent = running.length ? running.map(s=>s.strategy).join(', ') : 'No active strategies';
+
+  const openCount = (livePositions||[]).length;
+  const openEl = document.getElementById('dash-open-pos');
+  if (openEl) openEl.textContent = openCount;
+  const floatEl = document.getElementById('dash-floating-pnl');
+  if (floatEl) { floatEl.textContent = `floating: ${floating>=0?'+':''}$${Math.abs(floating).toFixed(2)}`; floatEl.style.color=floating>=0?'var(--green)':'var(--red)'; }
+
+  // Today trades from closed history
+  const today = new Date().toISOString().substring(0,10);
+  const todayTrades = _algoHistData.filter(d => d.exit_price && (d.time||'').startsWith(today) && d.profit!=null);
+  const tw = todayTrades.filter(d=>d.profit>0).length;
+  const tl = todayTrades.filter(d=>d.profit<=0).length;
+  const tPnl = todayTrades.reduce((s,d)=>s+d.profit,0);
+  const ttEl = document.getElementById('dash-today-trades');
+  if (ttEl) ttEl.textContent = todayTrades.length;
+  const twrEl = document.getElementById('dash-today-wr');
+  if (twrEl) twrEl.textContent = todayTrades.length ? `win rate: ${Math.round(tw/todayTrades.length*100)}%` : 'win rate: —';
+  const tpEl = document.getElementById('dash-today-pnl');
+  if (tpEl) { tpEl.textContent=(tPnl>=0?'+':'')+'$'+Math.abs(tPnl).toFixed(2); tpEl.style.color=tPnl>=0?'var(--green)':'var(--red)'; }
+  const twlEl = document.getElementById('dash-today-wl');
+  if (twlEl) twlEl.textContent = `W:${tw} / L:${tl}`;
+
+  // Strategy strip
+  const strip = document.getElementById('dash-strategy-strip');
+  if (strip) {
+    if (!running.length) {
+      strip.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:6px 0">No strategies active — start one above</div>';
+    } else {
+      const colMap={'Supertrend':'#f97316','Scalper':'var(--accent)','Ichimoku':'#e879f9','AI Confluence':'var(--amber)','AI Agent':'#f59e0b','Order Block':'#3b82f6','SMC Liquidity':'var(--cyan)','Pin Bar SR':'#10b981','Engulfing Trend':'#34d399','PA Confluence':'#a78bfa','False Breakout':'#f43f5e','Inside Bar':'#fb923c'};
+      strip.innerHTML = running.map(s => {
+        const col   = colMap[s.strategy]||'var(--cyan)';
+        const lp    = s.live_pnl != null ? s.live_pnl : null;
+        const rp    = s.pnl || 0;
+        const opos  = s.open_count || 0;
+        const indTxt= (s.indicator||'').substring(0,50);
+        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--card2);border:1px solid ${col}33;border-left:3px solid ${col};border-radius:8px;font-size:11px;min-width:180px;max-width:260px">
+          <div>
+            <div style="font-weight:700;color:${col}">${s.strategy}</div>
+            <div style="color:var(--text3);font-size:10px">${s.symbol} · ${s.timeframe}</div>
+            ${indTxt?`<div style="color:var(--text3);font-size:9px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px" title="${s.indicator||''}">${indTxt}</div>`:''}
+          </div>
+          <div style="margin-left:auto;text-align:right">
+            <div style="font-weight:800;color:${rp>=0?'var(--green)':'var(--red)'};font-size:12px">${rp>=0?'+':''}$${Math.abs(rp).toFixed(2)}</div>
+            <div style="font-size:9px;color:var(--text3)">${opos} pos open</div>
+            ${lp!=null?`<div style="font-size:9px;color:${lp>=0?'var(--green)':'var(--red)'}">float ${lp>=0?'+':''}$${Math.abs(lp).toFixed(2)}</div>`:''}
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
 }
 
 async function loadAlgoHistory() {
   const tbody = document.getElementById('algo-history-tbody');
   tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text3);padding:16px">Loading...</td></tr>';
 
-  // Load live open positions
-  const liveWrap = document.getElementById('algo-live-pos-wrap');
-  const liveTbody = document.getElementById('algo-live-pos-tbody');
-  const livePosData = await apiFetch('/api/algo/live_positions');
+  // Live open positions
+  const liveWrap   = document.getElementById('algo-live-pos-wrap');
+  const liveTbody  = document.getElementById('algo-live-pos-tbody');
+  const livePosData= await apiFetch('/api/algo/live_positions');
   if (Array.isArray(livePosData) && livePosData.length) {
     liveWrap.style.display = 'block';
     liveTbody.innerHTML = livePosData.map(p => {
-      const pc = p.profit >= 0 ? 'var(--green)' : 'var(--red)';
+      const pc = p.profit>=0?'var(--green)':'var(--red)';
       return `<tr style="background:rgba(139,92,246,0.07)">
         <td style="font-family:monospace;color:var(--text3)">#${p.ticket}</td>
-        <td><span style="color:var(--accent);font-size:11px">${p.strategy || '—'}</span></td>
+        <td><span style="color:var(--accent);font-size:11px">${p.strategy||'—'}</span></td>
         <td style="font-weight:700">${p.symbol}</td>
         <td style="color:${p.type==='BUY'?'var(--green)':'var(--red)'};font-weight:700">${p.type}</td>
         <td>${p.volume}</td>
         <td style="font-family:monospace">${p.open}</td>
         <td style="font-family:monospace">${p.current}</td>
-        <td style="font-family:monospace;color:var(--amber)">${p.sl || '—'}</td>
-        <td style="font-family:monospace;color:var(--cyan)">${p.tp || '—'}</td>
-        <td style="color:${pc};font-weight:700;animation:${p.profit>=0?'':''}pulse 2s infinite">${p.profit>=0?'+':''}${p.profit.toFixed(2)}</td>
+        <td style="font-family:monospace;color:var(--amber)">${p.sl||'—'}</td>
+        <td style="font-family:monospace;color:var(--cyan)">${p.tp||'—'}</td>
+        <td style="color:${pc};font-weight:700">${p.profit>=0?'+':''}${p.profit.toFixed(2)}</td>
       </tr>`;
     }).join('');
   } else if (liveWrap) {
@@ -5576,7 +6084,10 @@ async function loadAlgoHistory() {
   // Load history
   const data = await apiFetch('/api/algo/history');
   _algoHistData = (Array.isArray(data) && !data.error) ? data : [];
-  _renderAlgoHistory();
+  _applyHistFilters();
+  // Update dashboard with current strategies (reuse last fetched)
+  const strats = await apiFetch('/api/strategy/list');
+  _updateAlgoDashboard(Array.isArray(strats)?strats:[], Array.isArray(livePosData)?livePosData:[]);
 }
 
 // Auto-refresh strategies + history every 5s when ALGO page is active
@@ -5584,12 +6095,57 @@ function startAlgoRefresh() {
   stopAlgoRefresh();
   loadStrategies();
   loadAlgoHistory();
+  loadNewsCalendar();
   algoRefreshTimer = setInterval(() => { loadStrategies(); loadAlgoHistory(); }, 5000);
+  // Refresh news every 2 min
+  if (!window._newsTimer) window._newsTimer = setInterval(loadNewsCalendar, 120000);
 }
 
 function stopAlgoRefresh() {
   if (algoRefreshTimer) { clearInterval(algoRefreshTimer); algoRefreshTimer = null; }
   // aiAutoTimer is NEVER stopped by page navigation — only toggleAiAuto() stops it
+}
+
+async function loadNewsCalendar() {
+  const sym = (document.getElementById('algo-symbol') || {}).value || 'XAUUSDc';
+  const el = document.getElementById('news-calendar-body');
+  const badge = document.getElementById('news-impact-badge');
+  const symLbl = document.getElementById('news-symbol-label');
+  if (symLbl) symLbl.textContent = sym;
+  const data = await apiFetch(`/api/news/calendar?symbol=${encodeURIComponent(sym)}`);
+  if (!data || !Array.isArray(data.events)) {
+    if (el) el.innerHTML = '<div style="text-align:center;color:var(--text3);padding:12px;font-size:11px">Failed to load news — calendar unavailable</div>';
+    return;
+  }
+  const evs = data.events;
+  const highCount = evs.filter(e=>e.impact==='High').length;
+  if (badge) {
+    badge.textContent = highCount ? `${highCount} HIGH` : evs.length ? `${evs.length} events` : 'Clear';
+    badge.style.background = highCount ? 'rgba(239,68,68,0.15)' : 'var(--card2)';
+    badge.style.color = highCount ? 'var(--red)' : 'var(--text3)';
+    badge.style.borderColor = highCount ? 'rgba(239,68,68,0.5)' : 'var(--border2)';
+  }
+  if (!evs.length) {
+    if (el) el.innerHTML = '<div style="text-align:center;color:var(--green);padding:12px;font-size:11px">✅ No high/medium impact news in next 8h — Safe to trade</div>';
+    return;
+  }
+  if (el) el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;font-size:11px"><thead><tr><th>TIME</th><th>EVENT</th><th>CCY</th><th>IMPACT</th><th>FORECAST</th><th>ACTUAL</th><th>DIRECTION</th></tr></thead><tbody>
+    ${evs.map(ev => {
+      const mc = ev.mins_from_now<0?'var(--text3)':ev.mins_from_now<=30?'var(--red)':'var(--amber)';
+      const ic = ev.impact==='High'?'var(--red)':'var(--amber)';
+      const dc = ev.direction==='BULLISH'?'var(--green)':ev.direction==='BEARISH'?'var(--red)':'var(--text3)';
+      const timeStr = ev.mins_from_now<0?`${Math.abs(ev.mins_from_now).toFixed(0)}m ago`:`in ${ev.mins_from_now.toFixed(0)}m`;
+      return `<tr>
+        <td style="color:${mc};font-weight:700">${timeStr}</td>
+        <td style="color:var(--text1)">${ev.title}</td>
+        <td style="color:var(--cyan)">${ev.country}</td>
+        <td><span style="padding:1px 6px;border-radius:4px;background:${ev.impact==='High'?'rgba(239,68,68,0.15)':'rgba(245,158,11,0.12)'};color:${ic};font-weight:700">${ev.impact}</span></td>
+        <td style="color:var(--text3)">${ev.forecast||'—'}</td>
+        <td style="color:var(--text2);font-weight:700">${ev.actual||'—'}</td>
+        <td style="color:${dc};font-weight:700">${ev.direction!=='NEUTRAL'?ev.direction:'—'}</td>
+      </tr>`;
+    }).join('')}
+  </tbody></table></div>`;
 }
 
 // ── TELEGRAM SIGNAL BOT ────────────────────────────────────────────────────────
@@ -7092,14 +7648,18 @@ async function cryptoLoadReports() {
 
 // ── ALGO BOTS ─────────────────────────────────────────────────────────────────
 const _strategyHints = {
-  ai_score:   'Uses 6 indicators (EMA, RSI, MACD, BB, Volume, ADX) for a 0-100 confidence score. Trades only when score exceeds your threshold.',
-  macd_cross: 'MACD histogram crosses zero line. Strong trend-momentum signal. Best on 1h/4h charts.',
-  bb_squeeze: 'Trades BB band touches with volume confirmation. Catches reversals at extremes. Best in ranging markets.',
-  supertrend: 'ATR-based trailing indicator that flips direction on breakouts. Excellent for trending markets.',
-  scalp:      'EMA(3/8/21) crossover + RSI momentum zone + volume spike. Designed for 5m/15m fast scalping.',
-  ema_cross:  'Classic EMA crossover. Reliable trend-following, best with ADX filter to avoid choppy markets.',
-  rsi:        'Buy oversold, sell overbought. Works well in ranging sideways markets.',
-  breakout:   'Price breaks above/below 20-candle high/low. Pure momentum breakout strategy.',
+  ai_score:        'Uses 9 indicators (EMA, RSI, MACD, BB, Volume, ADX + PA patterns, Fibonacci, 21 EMA bounce) for a 0-100 confidence score.',
+  pin_bar_sr:      '3-Pillar: Trend (EMA50/200) + Key Level (S/R, Fib, 21 EMA) + Pin Bar/Hammer. High WR — from Candlestick Bible.',
+  engulfing_trend: '3-Pillar: Trend + Key Level + Engulfing/Morning Star/Piercing. Confirmed reversal at key level in trend direction.',
+  false_breakout:  'IB False Breakout — institutions break Inside Bar to hunt stops, then reverse. Highest WR pattern (0.88 strength).',
+  pa_confluence:   'All 3 Pillars must align: H4 Trend + any Key Level (SR/Fib/EMA/OB) + PA pattern ≥0.70 strength. Best setup.',
+  macd_cross:      'MACD histogram crosses zero line. Strong trend-momentum signal. Best on 1h/4h charts.',
+  bb_squeeze:      'Trades BB band touches with volume confirmation. Catches reversals at extremes. Best in ranging markets.',
+  supertrend:      'ATR-based trailing indicator that flips direction on breakouts. Excellent for trending markets.',
+  scalp:           'EMA(3/8/21) crossover + RSI momentum zone + volume spike. Designed for 5m/15m fast scalping.',
+  ema_cross:       'Classic EMA crossover. Reliable trend-following, best with ADX filter to avoid choppy markets.',
+  rsi:             'Buy oversold, sell overbought. Works well in ranging sideways markets.',
+  breakout:        'Price breaks above/below 20-candle high/low. Pure momentum breakout strategy.',
 };
 
 function botStrategyChange() {
