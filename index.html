@@ -1213,6 +1213,9 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 <optgroup label="── Fast Entry ──">
                   <option value="Scalper">⚡ Scalper (EMA 5/13 + RSI7)</option>
                 </optgroup>
+                <optgroup label="── Smart Money ──">
+                  <option value="Order Block">📦 Order Block (SMC)</option>
+                </optgroup>
                 <optgroup label="── Advanced ──">
                   <option value="Ichimoku">🌸 Ichimoku Cloud</option>
                   <option value="AI Confluence">🤖 AI Confluence (4/4 agree)</option>
@@ -1308,6 +1311,11 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <div style="font-size:10px;background:linear-gradient(90deg,#f59e0b,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">🧠 AI AGENT</div>
             <div style="font-size:10px;color:var(--text3)">Live MTF analysis auto</div>
             <div style="font-size:9px;color:var(--green);margin-top:4px">WR ~75%</div>
+          </div>
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(59,130,246,0.1),rgba(139,92,246,0.08));transition:border-color 0.2s" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Order Block'">
+            <div style="font-size:10px;background:linear-gradient(90deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">📦 ORDER BLOCK</div>
+            <div style="font-size:10px;color:var(--text3)">SMC — fresh OB retest</div>
+            <div style="font-size:9px;color:var(--green);margin-top:4px">WR ~68%</div>
           </div>
         </div>
 
@@ -5025,6 +5033,7 @@ async function loadStrategies() {
     'Ichimoku':      '#e879f9',
     'AI Confluence': 'var(--amber)',
     'AI Agent':      '#f59e0b',
+    'Order Block':   '#3b82f6',
   };
   el.innerHTML = data.map(s => {
     const color      = colorMap[s.strategy] || 'var(--cyan)';

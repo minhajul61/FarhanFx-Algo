@@ -1642,6 +1642,7 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
             closes = [float(r["close"]) for r in rates]
             highs  = [float(r["high"])  for r in rates]
             lows   = [float(r["low"])   for r in rates]
+            opens  = [float(r["open"])  for r in rates]
 
             def get_tick_pip():
                 t = mt5.symbol_info_tick(symbol)
@@ -1744,6 +1745,67 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                     signal = "BUY"
                 elif sell_score >= 4:
                     signal = "SELL"
+
+            elif strategy == "Order Block":
+                # Smart Money Concept — Order Block detection
+                # Bullish OB: last bearish candle before strong impulsive up-move
+                # Bearish OB: last bullish candle before strong impulsive down-move
+                # Entry: price returns into the OB zone (retrace), confirmed by a close back out
+                # Fresh OB only: price hasn't touched the zone since it formed
+
+                IMPULSE_CANDLES = 3   # minimum consecutive same-direction candles = impulsive move
+                OB_LOOKBACK     = 50  # candles to scan for OBs
+
+                def _is_bullish(i): return closes[i] > opens[i]
+                def _is_bearish(i): return closes[i] < opens[i]
+                def _candle_size(i): return abs(closes[i] - opens[i])
+                avg_size = sum(_candle_size(i) for i in range(-20, 0)) / 20 if len(closes) >= 20 else pip
+
+                bullish_ob = bearish_ob = None  # (ob_high, ob_low, formed_at_idx)
+
+                n = len(closes)
+                for i in range(max(1, n - OB_LOOKBACK), n - 4):
+                    # Check for impulsive bullish move starting at i+1
+                    bull_impulse = sum(1 for j in range(i + 1, min(i + 1 + IMPULSE_CANDLES, n))
+                                       if _is_bullish(j) and _candle_size(j) > avg_size * 0.5)
+                    if bull_impulse >= IMPULSE_CANDLES and _is_bearish(i):
+                        ob_high = max(opens[i], closes[i])
+                        ob_low  = min(opens[i], closes[i])
+                        # Check fresh: price hasn't re-entered zone after formation
+                        touched = any(lows[j] <= ob_high and highs[j] >= ob_low
+                                      for j in range(i + IMPULSE_CANDLES + 1, n - 1))
+                        if not touched:
+                            bullish_ob = (ob_high, ob_low, i)
+
+                    # Check for impulsive bearish move starting at i+1
+                    bear_impulse = sum(1 for j in range(i + 1, min(i + 1 + IMPULSE_CANDLES, n))
+                                       if _is_bearish(j) and _candle_size(j) > avg_size * 0.5)
+                    if bear_impulse >= IMPULSE_CANDLES and _is_bullish(i):
+                        ob_high = max(opens[i], closes[i])
+                        ob_low  = min(opens[i], closes[i])
+                        touched = any(highs[j] >= ob_low and lows[j] <= ob_high
+                                      for j in range(i + IMPULSE_CANDLES + 1, n - 1))
+                        if not touched:
+                            bearish_ob = (ob_high, ob_low, i)
+
+                price = closes[-1]
+                last_high = highs[-1]
+                last_low  = lows[-1]
+
+                ob_info = "No fresh OB found"
+                if bullish_ob:
+                    bh, bl, bi = bullish_ob
+                    ob_info = f"🟢 Bullish OB [{bl:.5f}–{bh:.5f}] formed @candle -{n-1-bi}"
+                    # Entry: price retraces into OB zone and last candle closes back above OB low
+                    if last_low <= bh and price >= bl and closes[-2] < bl and closes[-1] > bl:
+                        signal = "BUY"
+                if bearish_ob:
+                    bh, bl, bi = bearish_ob
+                    ob_info += f"  🔴 Bearish OB [{bl:.5f}–{bh:.5f}] formed @candle -{n-1-bi}"
+                    if last_high >= bl and price <= bh and closes[-2] > bh and closes[-1] < bh:
+                        signal = "SELL"
+
+                _strategies[sid]["indicator"] = f"📦 OB: {ob_info} | Price:{price}"
 
             elif strategy == "AI Agent":
                 # Full scoring via the same engine used in /api/ai/analyze
