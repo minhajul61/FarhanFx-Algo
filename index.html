@@ -395,6 +395,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
     <div class="sidebar">
       <div class="nav-item active" onclick="showPage('dashboard',this)"><i class="ti ti-layout-dashboard"></i> DASHBOARD</div>
       <div class="nav-item" onclick="showPage('trades',this)"><i class="ti ti-list"></i> TRADES</div>
+      <div class="nav-item" onclick="showPage('tradingview',this)"><i class="ti ti-chart-candle"></i> TRADING VIEW</div>
       <div class="nav-item" onclick="showPage('reports',this)"><i class="ti ti-chart-bar"></i> REPORTS</div>
       <div class="nav-item" onclick="showPage('wallet',this)"><i class="ti ti-wallet"></i> WALLET</div>
       <div class="nav-item" onclick="showPage('backtest',this)"><i class="ti ti-test-pipe"></i> BACKTEST</div>
@@ -526,31 +527,6 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           </div>
         </div>
 
-        <!-- TRADINGVIEW CHART -->
-        <div class="panel" id="tv-chart-panel" style="margin-bottom:14px;padding:0;overflow:hidden;border-color:var(--border2)">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border)">
-            <div style="display:flex;align-items:center;gap:10px">
-              <span style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:0.5px">📈 CHART</span>
-              <span id="tv-sym-label" style="font-size:11px;color:var(--accent);font-weight:700">EURUSD</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px">
-              <div style="display:flex;background:var(--bg);border:1px solid var(--border);border-radius:6px;overflow:hidden">
-                <button onclick="tvSetTf('1')"   class="tv-tf-btn" data-tf="1"   style="padding:3px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M1</button>
-                <button onclick="tvSetTf('5')"   class="tv-tf-btn" data-tf="5"   style="padding:3px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M5</button>
-                <button onclick="tvSetTf('15')"  class="tv-tf-btn" data-tf="15"  style="padding:3px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M15</button>
-                <button onclick="tvSetTf('30')"  class="tv-tf-btn" data-tf="30"  style="padding:3px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M30</button>
-                <button onclick="tvSetTf('60')"  class="tv-tf-btn" data-tf="60"  style="padding:3px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:var(--accent);color:#fff;transition:all 0.15s">H1</button>
-                <button onclick="tvSetTf('240')" class="tv-tf-btn" data-tf="240" style="padding:3px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">H4</button>
-                <button onclick="tvSetTf('D')"   class="tv-tf-btn" data-tf="D"   style="padding:3px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">D1</button>
-              </div>
-              <button onclick="tvToggle()" id="tv-toggle-btn" class="sbtn" style="font-size:10px;padding:3px 10px">▼ HIDE</button>
-            </div>
-          </div>
-          <div id="tv-wrap" style="height:440px;transition:height 0.3s ease;overflow:hidden">
-            <div id="tv-container" style="width:100%;height:100%"></div>
-          </div>
-        </div>
-
         <!-- PENDING ORDERS -->
         <div class="panel" id="pending-panel" style="display:none">
           <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
@@ -651,6 +627,37 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               <button class="sbtn" id="deals-next" onclick="dealsChangePage(1)" style="font-size:10px;padding:4px 12px">Next ▶</button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- TRADING VIEW PAGE -->
+      <div class="page" id="page-tradingview">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+          <div class="page-title" style="margin-bottom:0">TradingView Chart</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <!-- Symbol input -->
+            <input id="tv-page-symbol" class="sinput" list="jf-symbol-list" autocomplete="off"
+              value="EURUSDc" placeholder="Symbol…"
+              style="width:130px"
+              onchange="tvSetSymbol(this.value.trim())"
+              onkeydown="if(event.key==='Enter') tvSetSymbol(this.value.trim())"/>
+            <!-- Timeframe selector -->
+            <div style="display:flex;background:var(--bg2);border:1px solid var(--border);border-radius:6px;overflow:hidden">
+              <button onclick="tvSetTf('1')"   class="tv-tf-btn" data-tf="1"   style="padding:5px 11px;font-size:11px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M1</button>
+              <button onclick="tvSetTf('5')"   class="tv-tf-btn" data-tf="5"   style="padding:5px 11px;font-size:11px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M5</button>
+              <button onclick="tvSetTf('15')"  class="tv-tf-btn" data-tf="15"  style="padding:5px 11px;font-size:11px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M15</button>
+              <button onclick="tvSetTf('30')"  class="tv-tf-btn" data-tf="30"  style="padding:5px 11px;font-size:11px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M30</button>
+              <button onclick="tvSetTf('60')"  class="tv-tf-btn" data-tf="60"  style="padding:5px 11px;font-size:11px;font-weight:700;border:none;cursor:pointer;background:var(--accent);color:#fff;transition:all 0.15s">H1</button>
+              <button onclick="tvSetTf('240')" class="tv-tf-btn" data-tf="240" style="padding:5px 11px;font-size:11px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">H4</button>
+              <button onclick="tvSetTf('D')"   class="tv-tf-btn" data-tf="D"   style="padding:5px 11px;font-size:11px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">D1</button>
+              <button onclick="tvSetTf('W')"   class="tv-tf-btn" data-tf="W"   style="padding:5px 11px;font-size:11px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">W1</button>
+            </div>
+            <span id="tv-sym-label" style="font-size:12px;color:var(--accent);font-weight:800;letter-spacing:0.5px">FX:EURUSD</span>
+          </div>
+        </div>
+        <!-- Full-height chart -->
+        <div style="height:calc(100vh - 160px);min-height:500px;border-radius:10px;overflow:hidden;border:1px solid var(--border2)">
+          <div id="tv-page-container" style="width:100%;height:100%"></div>
         </div>
       </div>
 
@@ -2877,8 +2884,9 @@ function showPage(id, el) {
   el.classList.add('active');
   stopAlgoRefresh();
   stopTradesRefresh();
-  if (id === 'trades')   { startTradesRefresh(); }
-  if (id === 'algo')     { startAlgoRefresh(); _aiRestoreState(); }
+  if (id === 'trades')      { startTradesRefresh(); }
+  if (id === 'tradingview') { tvInit(_tvSym, _tvTf); }
+  if (id === 'algo')        { startAlgoRefresh(); _aiRestoreState(); }
   if (id === 'journal')  { jInit(); }
   if (id === 'risk')     { rcCalcPos(); rcCalcKelly(); rcCalcPropDD(); }
   if (id === 'reports')  { loadReports(); }
@@ -4399,9 +4407,6 @@ function startTradesRefresh() {
   _tradesTimer = setInterval(loadPositions,     5000);
   _dealsTimer  = setInterval(loadDeals,        30000);
   _todayTimer  = setInterval(loadTodayRealized, 10000);
-  // Init TradingView chart with current symbol
-  const sym = (document.getElementById('o-symbol') || {}).value || 'EURUSDc';
-  tvInit(sym, _tvTf);
 }
 
 // ── TRADINGVIEW CHART ──────────────────────────────────────────────────────────
@@ -4429,11 +4434,11 @@ function _tvMt5ToTv(mt5) {
 }
 
 function _tvBuild(tvSym, tf) {
-  const el = document.getElementById('tv-container');
+  const el = document.getElementById('tv-page-container');
   if (!el) return;
   el.innerHTML = '';
   new window.TradingView.widget({
-    container_id:         'tv-container',
+    container_id:         'tv-page-container',
     width:                '100%',
     height:               '100%',
     symbol:               tvSym,
@@ -4486,7 +4491,9 @@ function tvSetTf(tf) {
 }
 
 function tvSetSymbol(mt5sym) {
-  if (!mt5sym || mt5sym === _tvSym) return;
+  if (!mt5sym) return;
+  const inp = document.getElementById('tv-page-symbol');
+  if (inp && inp.value !== mt5sym) inp.value = mt5sym;
   tvInit(mt5sym, _tvTf);
 }
 
@@ -4596,7 +4603,6 @@ function oSetMode(mode) {
 async function oFetchPrice() {
   const symbol = document.getElementById('o-symbol').value.trim();
   if (!symbol) return;
-  tvSetSymbol(symbol);   // update chart when symbol changes
   const tick = await apiFetch('/api/price/' + symbol);
   if (!tick || tick.error) return;
   oCurrentTick = tick;
