@@ -1526,6 +1526,33 @@ def _has_open_position(symbol, magic):
         return False
     return any(p.magic == magic for p in positions)
 
+def _count_open_positions(symbol, magic):
+    """Return number of open positions for a given symbol+magic."""
+    positions = mt5.positions_get(symbol=symbol)
+    if not positions:
+        return 0
+    return sum(1 for p in positions if p.magic == magic)
+
+def _get_open_positions_detail(symbol, magic):
+    """Return list of dicts for open positions of a strategy."""
+    positions = mt5.positions_get(symbol=symbol)
+    if not positions:
+        return []
+    result = []
+    for p in positions:
+        if p.magic == magic:
+            result.append({
+                "ticket":    p.ticket,
+                "type":      "BUY" if p.type == 0 else "SELL",
+                "volume":    p.volume,
+                "price_open": round(p.price_open, 5),
+                "price_current": round(p.price_current, 5),
+                "profit":    round(p.profit, 2),
+                "sl":        round(p.sl, 5),
+                "tp":        round(p.tp, 5),
+            })
+    return result
+
 def _send_order(symbol, side, volume, sl, tp, magic, comment):
     tick = mt5.symbol_info_tick(symbol)
     if tick is None:
@@ -1582,13 +1609,19 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
 
     add_log(f"Strategy '{strategy}' started on {symbol} {tf}")
 
+    max_trades = int(cfg.get("max_trades", 2))
+
     def do_trade(side, entry, sl_val, tp_val):
         def fn():
-            if _has_open_position(symbol, magic):
-                return {"skip": True}
+            cur_count = _count_open_positions(symbol, magic)
+            if cur_count >= max_trades:
+                return {"skip": True, "reason": f"max_trades({max_trades})"}
             return _send_order(symbol, side, volume, sl_val, tp_val, magic, f"FarhanFX-{strategy}")
         result = _mt5_call(fn)
         if result and isinstance(result, dict) and result.get("skip"):
+            reason = result.get("reason", "")
+            if reason:
+                add_log(f"⏸ Signal blocked — {reason} open, waiting for SL/TP")
             return
         if result and hasattr(result, "retcode") and result.retcode == mt5.TRADE_RETCODE_DONE:
             add_log(f"✅ {side} #{result.order} @ {result.price}  SL:{sl_val}  TP:{tp_val}")
@@ -1801,12 +1834,13 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
 
 
 class StrategyRequest(BaseModel):
-    strategy:  str   # "MA Cross" | "RSI" | "Bollinger Bands" | "EMA Trend" | "Scalper"
-    symbol:    str
-    timeframe: str
-    volume:    float
-    sl:        float = 20.0
-    tp:        float = 40.0
+    strategy:   str   # "MA Cross" | "RSI" | "Bollinger Bands" | "EMA Trend" | "Scalper"
+    symbol:     str
+    timeframe:  str
+    volume:     float
+    sl:         float = 20.0
+    tp:         float = 40.0
+    max_trades: int   = 2     # max concurrent open positions per strategy
 
 @app.post("/api/strategy/start")
 def start_strategy(req: StrategyRequest):
@@ -1842,22 +1876,86 @@ def stop_strategy(sid: str):
 def list_strategies():
     result = []
     for sid, s in _strategies.items():
+        cfg        = s["config"]
+        magic      = 234000 + hash(sid) % 1000
+        max_trades = int(cfg.get("max_trades", 2))
+        symbol     = cfg["symbol"]
+
+        # Fetch live position data from MT5
+        def _live_data(sym=symbol, mg=magic):
+            positions = mt5.positions_get(symbol=sym)
+            if not positions:
+                return [], 0, 0.0
+            mine = [p for p in positions if p.magic == mg]
+            live_pnl = round(sum(p.profit for p in mine), 2)
+            open_detail = [{
+                "ticket": p.ticket,
+                "type":   "BUY" if p.type == 0 else "SELL",
+                "volume": p.volume,
+                "open":   round(p.price_open, 5),
+                "current": round(p.price_current, 5),
+                "profit": round(p.profit, 2),
+                "sl":     round(p.sl, 5),
+                "tp":     round(p.tp, 5),
+            } for p in mine]
+            return open_detail, len(mine), live_pnl
+
+        try:
+            open_positions, open_count, live_pnl = _mt5_call(_live_data)
+            if isinstance(open_positions, dict):  # mt5 error
+                open_positions, open_count, live_pnl = [], 0, 0.0
+        except Exception:
+            open_positions, open_count, live_pnl = [], 0, 0.0
+
         result.append({
-            "id":        sid,
-            "strategy":  s["config"]["strategy"],
-            "symbol":    s["config"]["symbol"],
-            "timeframe": s["config"]["timeframe"],
-            "volume":    s["config"]["volume"],
-            "sl":        s["config"].get("sl", 0),
-            "tp":        s["config"].get("tp", 0),
-            "status":    s["status"],
-            "trades":    s["trades"],
-            "pnl":       round(s.get("pnl", 0.0), 2),
-            "indicator": s.get("indicator", ""),
-            "started":   s["started"],
-            "log":       s["log"][-20:],
+            "id":             sid,
+            "strategy":       cfg["strategy"],
+            "symbol":         symbol,
+            "timeframe":      cfg["timeframe"],
+            "volume":         cfg["volume"],
+            "sl":             cfg.get("sl", 0),
+            "tp":             cfg.get("tp", 0),
+            "max_trades":     max_trades,
+            "status":         s["status"],
+            "trades":         s["trades"],
+            "pnl":            round(s.get("pnl", 0.0), 2),
+            "live_pnl":       live_pnl,
+            "open_count":     open_count,
+            "open_positions": open_positions,
+            "indicator":      s.get("indicator", ""),
+            "started":        s["started"],
+            "log":            s["log"][-20:],
         })
     return result
+
+
+@app.get("/api/algo/live_positions")
+def get_algo_live_positions():
+    """Return all currently open MT5 positions placed by algo strategies (FarhanFX comment)."""
+    def fn():
+        positions = mt5.positions_get()
+        if not positions:
+            return []
+        result = []
+        for p in positions:
+            if not (p.comment or "").startswith("FarhanFX"):
+                continue
+            strategy = (p.comment or "").replace("FarhanFX-", "")
+            result.append({
+                "ticket":   p.ticket,
+                "symbol":   p.symbol,
+                "type":     "BUY" if p.type == 0 else "SELL",
+                "volume":   p.volume,
+                "open":     round(p.price_open, 5),
+                "current":  round(p.price_current, 5),
+                "profit":   round(p.profit, 2),
+                "sl":       round(p.sl, 5),
+                "tp":       round(p.tp, 5),
+                "strategy": strategy,
+                "swap":     round(p.swap, 2),
+            })
+        return result
+    return _mt5_call(fn)
 
 
 @app.get("/api/algo/history")
@@ -2504,15 +2602,57 @@ class CoinSwitchClient:
     # ── ccxt-compatible interface ──────────────────────────────────────────────
 
     def fetch_balance(self):
-        d    = self._get("/trade/api/v2/futures/wallet_balance")
-        base = d.get("data", {}).get("base", {})
-        free = float(base.get("total_available_balance", 0))
-        tot  = float(base.get("total_wallet_balance",    0))
-        used = max(0.0, round(tot - free, 4))
-        return {
-            "USDT": {"free": round(free, 2), "used": round(used, 2), "total": round(tot, 2)},
-            "info": d.get("data", {}),
+        # 1. Futures wallet (USDT)
+        fw   = self._get("/trade/api/v2/futures/wallet_balance")
+        fdata = fw.get("data", {})
+        usdt_bal = {}
+        for item in (fdata.get("base_asset_balances") or []):
+            if (item.get("base_asset") or "").upper() == "USDT":
+                usdt_bal = item.get("balances", {})
+                break
+        f_free = float(usdt_bal.get("total_available_balance", 0) or 0)
+        f_tot  = float(usdt_bal.get("total_balance",           0) or 0)
+        f_used = max(0.0, round(f_tot - f_free, 4))
+
+        # 2. Main portfolio (all currencies)
+        portfolio_currencies = {}
+        try:
+            pr = self._get("/trade/api/v2/user/portfolio")
+            for item in (pr.get("data") or []):
+                cur = item.get("currency", "")
+                bal = float(item.get("main_balance", 0) or 0)
+                if bal > 0:
+                    portfolio_currencies[cur] = {
+                        "free":  bal,
+                        "used":  float(item.get("blocked_balance_order", 0) or 0),
+                        "total": bal + float(item.get("blocked_balance_order", 0) or 0),
+                    }
+        except Exception:
+            pass
+
+        # 3. Unrealized PnL from positions
+        upnl = 0.0
+        try:
+            for sym in self.TOP_SYMBOLS[:8]:
+                pr2 = self._get("/trade/api/v2/futures/positions",
+                                {"exchange": self.EX, "symbol": sym})
+                for p in (pr2.get("data") or []):
+                    if float(p.get("position_size") or 0) > 0:
+                        upnl += float(p.get("unrealized_pnl") or
+                                      p.get("unrealisedPnl") or 0)
+        except Exception:
+            pass
+
+        result = {
+            "USDT": {"free": round(f_free, 2), "used": round(f_used, 2), "total": round(f_tot, 2)},
+            "info": {
+                "totalUnrealizedProfit": round(upnl, 4),
+                "portfolio": portfolio_currencies,
+            },
         }
+        # Also expose each portfolio currency at top level (like ccxt does)
+        result.update(portfolio_currencies)
+        return result
 
     def fetch_positions(self):
         result = []
@@ -2592,6 +2732,39 @@ class CoinSwitchClient:
                 "price":  float(o.get("price") or 0) or None,
                 "status": o.get("status", ""),
             } for o in orders]
+        except Exception:
+            return []
+
+    def fetch_my_trades(self, symbol=None, limit=100):
+        """Fetch closed/executed orders as trade history."""
+        try:
+            body = {"exchange": self.EX, "limit": min(limit, 50)}
+            if symbol:
+                body["symbol"] = self._to_cs(symbol)
+            d      = self._post("/trade/api/v2/futures/orders/closed", body)
+            orders = d.get("data", {}).get("orders", []) or []
+            result = []
+            for o in orders:
+                st = o.get("status","")
+                if st not in ("EXECUTED","PARTIALLY_EXECUTED"):
+                    continue
+                pnl = float(o.get("realised_pnl") or 0)
+                fee = float(o.get("execution_fee") or 0)
+                price = float(o.get("avg_execution_price") or 0)
+                qty   = float(o.get("exec_quantity") or o.get("quantity") or 0)
+                ts    = o.get("created_at", 0)
+                result.append({
+                    "id":       o.get("order_id"),
+                    "symbol":   self._from_cs(o.get("symbol","")),
+                    "side":     (o.get("side") or "").lower(),
+                    "amount":   qty,
+                    "price":    price,
+                    "pnl":      pnl,
+                    "fee":      fee,
+                    "timestamp":ts,
+                    "datetime": datetime.fromtimestamp(ts/1000).strftime("%Y-%m-%d %H:%M") if ts else "",
+                })
+            return result
         except Exception:
             return []
 
@@ -2676,6 +2849,53 @@ def _restore_exchanges():
             print(f"Crypto: {name} restored ✓")
         except Exception as e:
             print(f"Crypto: {name} restore failed — {e}")
+    # After exchanges are ready, restore bots
+    _load_saved_bots()
+
+
+_BOTS_FILE = "bots.json"
+
+
+def _save_bots():
+    """Persist active bot configs (without timer objects) to disk."""
+    try:
+        saveable = {}
+        for bid, bot in _crypto_bots.items():
+            saveable[bid] = {k: v for k, v in bot.items()
+                             if not callable(v) and k != 'trades'}
+            # Keep last 100 trades for history
+            saveable[bid]['trades'] = bot.get('trades', [])[-100:]
+        with open(_BOTS_FILE, 'w') as f:
+            json.dump(saveable, f, indent=2, default=str)
+    except Exception as e:
+        print(f"_save_bots error: {e}")
+
+
+def _load_saved_bots():
+    """Load persisted bots from disk and resume active ones."""
+    import os as _os
+    if not _os.path.exists(_BOTS_FILE):
+        return
+    try:
+        with open(_BOTS_FILE) as f:
+            data = json.load(f)
+        keys = list(data.keys())
+        for bid, bot in data.items():
+            if bid in _crypto_bots:
+                continue
+            # Migrate old bots missing new fields
+            bot.setdefault("max_open_trades", 2)
+            bot.setdefault("open_trade_count", 1 if bot.get("open_side") else 0)
+            _crypto_bots[bid] = bot
+            if bot.get('status') == 'active':
+                delay = 15 + keys.index(bid) * 3
+                t = threading.Timer(delay, _bot_tick, args=[bid])
+                t.daemon = True
+                t.start()
+                _bot_timers[bid] = t
+                print(f"Algo bot {bid} ({bot.get('strategy')} {bot.get('symbol')}) resumed ✓")
+    except Exception as e:
+        print(f"_load_saved_bots error: {e}")
 
 
 def _fmt_position(p):
@@ -2758,6 +2978,19 @@ def crypto_status():
     }
 
 
+@app.get("/api/crypto/debug_raw")
+def crypto_debug_raw(exchange: str = "coinswitch", path: str = "/trade/api/v2/futures/wallet_balance"):
+    ex = _active_ex.get(exchange.lower())
+    if not ex:
+        return JSONResponse(status_code=400, content={"error": f"{exchange} not connected"})
+    try:
+        if isinstance(ex, CoinSwitchClient):
+            return ex._get(path)
+        return {"error": "not a CoinSwitch client"}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
+
 @app.get("/api/crypto/balance")
 def crypto_balance(exchange: str = "binance"):
     ex = _active_ex.get(exchange.lower())
@@ -2765,22 +2998,40 @@ def crypto_balance(exchange: str = "binance"):
         return JSONResponse(status_code=400, content={"error": f"{exchange} not connected"})
     try:
         bal  = ex.fetch_balance()
-        usdt = bal.get("USDT", {})
-        # Unrealized PnL (Binance futures returns it in info)
-        upnl = 0
+        info = bal.get("info", {})
+
+        # Unrealized PnL
+        upnl = 0.0
         try:
-            info = bal.get("info", {})
             upnl = round(float(
                 info.get("totalUnrealizedProfit") or
                 info.get("result", {}).get("list", [{}])[0].get("totalUnrealisedPnl", 0)
             ), 2)
-        except: pass
-        return {
+        except Exception:
+            pass
+
+        usdt = bal.get("USDT", {})
+        result = {
             "free":  round(float(usdt.get("free",  0)), 2),
             "used":  round(float(usdt.get("used",  0)), 2),
             "total": round(float(usdt.get("total", 0)), 2),
             "upnl":  upnl,
         }
+
+        # For CoinSwitch: also return the main portfolio currencies
+        if isinstance(ex, CoinSwitchClient):
+            portfolio = info.get("portfolio", {})
+            if portfolio:
+                result["portfolio"] = portfolio
+                # If USDT futures is 0 but there are portfolio currencies, show them
+                if result["total"] == 0:
+                    # Sum all portfolio balances in their native currency
+                    result["portfolio_summary"] = [
+                        {"currency": cur, "balance": round(v["total"], 2)}
+                        for cur, v in portfolio.items()
+                    ]
+
+        return result
     except Exception as e:
         return JSONResponse(status_code=400, content={"error": str(e)[:200]})
 
@@ -2913,6 +3164,775 @@ def crypto_markets(exchange: str = "binance"):
         return syms if syms else fallback
     except:
         return fallback
+
+
+# ── CRYPTO TRADE HISTORY ────────────────────────────────────────────────────────
+@app.get("/api/crypto/history")
+def crypto_history(exchange: str = "binance", symbol: str = "BTC/USDT:USDT", limit: int = 100):
+    ex = _active_ex.get(exchange.lower())
+    if not ex:
+        return JSONResponse(status_code=400, content={"error": f"{exchange} not connected"})
+    try:
+        if isinstance(ex, CoinSwitchClient):
+            return ex.fetch_my_trades(symbol, limit)
+        raw = ex.fetch_my_trades(symbol, limit=min(limit, 1000))
+        trades = []
+        for t in raw:
+            info = t.get("info", {})
+            pnl  = float(info.get("realizedPnl") or info.get("closedPnl") or 0)
+            fee  = float((t.get("fee") or {}).get("cost") or 0)
+            ts   = t.get("timestamp") or 0
+            trades.append({
+                "id":       t.get("id"),
+                "symbol":   t.get("symbol"),
+                "side":     t.get("side"),
+                "amount":   t.get("amount"),
+                "price":    t.get("price"),
+                "pnl":      round(pnl, 4),
+                "fee":      round(fee, 4),
+                "timestamp":ts,
+                "datetime": t.get("datetime", "")[:16] if t.get("datetime") else "",
+            })
+        return trades
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)[:200]})
+
+
+# ── CRYPTO OHLCV (public Binance futures data) ───────────────────────────────────
+_pub_mkt = None
+
+def _get_pub_mkt():
+    global _pub_mkt
+    if not _pub_mkt and _CCXT_OK:
+        try:
+            _pub_mkt = _ccxt.binanceusdm({"options": {"defaultType": "future"}})
+        except Exception:
+            pass
+    return _pub_mkt
+
+
+@app.get("/api/crypto/ohlcv")
+def crypto_ohlcv(symbol: str = "BTC/USDT:USDT", timeframe: str = "1h", limit: int = 100):
+    pm = _get_pub_mkt()
+    if not pm:
+        return JSONResponse(status_code=400, content={"error": "Market data not available"})
+    try:
+        data = pm.fetch_ohlcv(symbol, timeframe, limit=limit)
+        return [{"t": c[0], "o": c[1], "h": c[2], "l": c[3], "c": c[4], "v": c[5]} for c in data]
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)[:200]})
+
+
+# ── CRYPTO ALGO BOTS ─────────────────────────────────────────────────────────────
+import uuid as _uuid
+
+_crypto_bots: dict = {}
+_bot_timers:  dict = {}
+
+_TF_SECONDS = {
+    "1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800,
+    "1h": 3600, "2h": 7200, "4h": 14400, "6h": 21600, "1d": 86400,
+}
+
+
+class CryptoBotReq(BaseModel):
+    exchange:       str
+    symbol:         str
+    strategy:       str          # ema_cross|rsi|breakout|macd_cross|bb_squeeze|supertrend|scalp|ai_score
+    timeframe:      str   = "1h"
+    risk_pct:       float = 1.0
+    leverage:       int   = 10
+    # EMA params
+    fast_ema:       int   = 9
+    slow_ema:       int   = 21
+    # RSI params
+    rsi_period:     int   = 14
+    rsi_ob:         int   = 70
+    rsi_os:         int   = 30
+    # MACD params
+    macd_fast:      int   = 12
+    macd_slow:      int   = 26
+    macd_signal:    int   = 9
+    # BB params
+    bb_period:      int   = 20
+    bb_std:         float = 2.0
+    # Supertrend / Scalp params
+    atr_period:     int   = 14
+    st_multiplier:  float = 3.0
+    # AI strategy
+    ai_min_score:   int   = 65   # 0-100, only trade if AI score >= this
+    # Risk management (ATR-based)
+    trailing_atr:   float = 0.0  # 0=off, e.g. 2.0 = trail by 2*ATR
+    tp_atr:         float = 0.0  # 0=off, e.g. 3.0 = TP at 3*ATR
+    adx_min:        int   = 0    # min ADX to take a trade (0=off)
+    max_open_trades: int  = 2    # max simultaneous open trades per bot
+
+
+# ── INDICATOR LIBRARY ────────────────────────────────────────────────────────────
+def _ema_calc(data, period):
+    if len(data) < period:
+        return data[:]
+    k = 2 / (period + 1)
+    out = [sum(data[:period]) / period]
+    for v in data[period:]:
+        out.append(v * k + out[-1] * (1 - k))
+    return out
+
+
+def _rsi_calc(closes, period=14):
+    if len(closes) < period + 1:
+        return 50.0
+    gains  = [max(0.0, closes[i] - closes[i-1]) for i in range(1, len(closes))]
+    losses = [max(0.0, closes[i-1] - closes[i]) for i in range(1, len(closes))]
+    ag = sum(gains[-period:]) / period
+    al = sum(losses[-period:]) / period
+    return round(100 - 100 / (1 + ag / al), 2) if al else 100.0
+
+
+def _macd_calc(closes, fast=12, slow=26, signal=9):
+    if len(closes) < slow + signal:
+        return None, None, None
+    fe = _ema_calc(closes, fast)
+    se = _ema_calc(closes, slow)
+    # align lengths
+    diff = len(fe) - len(se)
+    fe   = fe[diff:] if diff > 0 else fe
+    macd = [f - s for f, s in zip(fe, se)]
+    sig  = _ema_calc(macd, signal)
+    diff2 = len(macd) - len(sig)
+    macd  = macd[diff2:] if diff2 > 0 else macd
+    hist  = [m - s for m, s in zip(macd, sig)]
+    return macd, sig, hist
+
+
+def _atr_calc(highs, lows, closes, period=14):
+    if len(closes) < 2:
+        return 0.0
+    trs = [max(highs[i] - lows[i],
+               abs(highs[i] - closes[i-1]),
+               abs(lows[i]  - closes[i-1]))
+           for i in range(1, len(closes))]
+    if len(trs) < period:
+        return sum(trs) / len(trs) if trs else 0.0
+    atr = sum(trs[:period]) / period
+    for tr in trs[period:]:
+        atr = (atr * (period - 1) + tr) / period
+    return round(atr, 6)
+
+
+def _adx_calc(highs, lows, closes, period=14):
+    if len(closes) < period * 2:
+        return 25.0
+    plus_dm, minus_dm, tr_list = [], [], []
+    for i in range(1, len(closes)):
+        h_diff = highs[i] - highs[i-1]
+        l_diff = lows[i-1] - lows[i]
+        plus_dm.append(h_diff if h_diff > l_diff and h_diff > 0 else 0.0)
+        minus_dm.append(l_diff if l_diff > h_diff and l_diff > 0 else 0.0)
+        tr_list.append(max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1])))
+
+    def _smooth(lst, p):
+        s = sum(lst[:p])
+        out = [s]
+        for v in lst[p:]:
+            s = s - s/p + v
+            out.append(s)
+        return out
+
+    str_ = _smooth(tr_list, period)
+    spdm = _smooth(plus_dm, period)
+    smdm = _smooth(minus_dm, period)
+    pdi  = [100 * p / t if t else 0 for p, t in zip(spdm, str_)]
+    mdi  = [100 * m / t if t else 0 for m, t in zip(smdm, str_)]
+    dx   = [100 * abs(p - m) / (p + m) if (p + m) else 0 for p, m in zip(pdi, mdi)]
+    if len(dx) < period:
+        return 25.0
+    adx = sum(dx[:period]) / period
+    for v in dx[period:]:
+        adx = (adx * (period - 1) + v) / period
+    return round(adx, 2)
+
+
+def _bb_calc(closes, period=20, std_mult=2.0):
+    if len(closes) < period:
+        return None, None, None, None
+    import math
+    middle = sum(closes[-period:]) / period
+    var    = sum((c - middle) ** 2 for c in closes[-period:]) / period
+    sd     = math.sqrt(var)
+    upper  = middle + std_mult * sd
+    lower  = middle - std_mult * sd
+    width  = (upper - lower) / middle * 100  # % width
+    return round(upper,6), round(middle,6), round(lower,6), round(width,4)
+
+
+def _supertrend_calc(highs, lows, closes, period=10, multiplier=3.0):
+    if len(closes) < period + 1:
+        return 1, closes[-1]  # default bullish
+    atrs = []
+    for i in range(1, len(closes)):
+        tr = max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1]))
+        atrs.append(tr)
+    # Smooth ATR
+    atr = sum(atrs[:period]) / period
+    for v in atrs[period:]:
+        atr = (atr * (period-1) + v) / period
+
+    hl2 = [(highs[i]+lows[i])/2 for i in range(len(closes))]
+    upper_band = hl2[-1] + multiplier * atr
+    lower_band = hl2[-1] - multiplier * atr
+
+    # Simplified: compare close vs supertrend bands
+    prev_close = closes[-2]
+    curr_close = closes[-1]
+    # Trend: 1=bullish (above lower), -1=bearish (below upper)
+    if curr_close > upper_band and prev_close <= upper_band:
+        return -1, upper_band   # bearish flip
+    if curr_close < lower_band and prev_close >= lower_band:
+        return 1, lower_band    # bullish flip
+    # Sustained trend
+    if curr_close > lower_band:
+        return 1, lower_band
+    return -1, upper_band
+
+
+def _vwap_calc(ohlcv):
+    cum_tp_vol, cum_vol = 0.0, 0.0
+    for c in ohlcv:
+        tp = (c[2] + c[3] + c[4]) / 3
+        cum_tp_vol += tp * c[5]
+        cum_vol    += c[5]
+    return round(cum_tp_vol / cum_vol, 6) if cum_vol else 0.0
+
+
+# ── AI SCORING ENGINE ─────────────────────────────────────────────────────────────
+def _ai_full_analysis(ohlcv, bot_params=None):
+    """Multi-indicator scoring engine. Returns score 0-100 + full breakdown."""
+    if len(ohlcv) < 30:
+        return {"ai_score": 50, "signal": "NEUTRAL", "confidence": "LOW", "components": {}}
+
+    closes  = [c[4] for c in ohlcv]
+    highs   = [c[2] for c in ohlcv]
+    lows    = [c[3] for c in ohlcv]
+    volumes = [c[5] for c in ohlcv]
+    price   = closes[-1]
+    score   = 0
+    components = {}
+
+    # 1. EMA TREND (0-25)
+    fast_p = (bot_params or {}).get("fast_ema", 9)
+    slow_p = (bot_params or {}).get("slow_ema", 21)
+    fe     = _ema_calc(closes, fast_p)
+    se     = _ema_calc(closes, slow_p)
+    ema200 = _ema_calc(closes, min(200, len(closes)-1))
+    trend_score = 0
+    ema_detail  = []
+    if fe and se and fe[-1] > se[-1]:
+        trend_score += 12
+        ema_detail.append(f"EMA{fast_p}>{slow_p} ✓")
+    else:
+        ema_detail.append(f"EMA{fast_p}<{slow_p}")
+    if ema200 and price > ema200[-1]:
+        trend_score += 8
+        ema_detail.append("Above EMA200 ✓")
+    if fe and len(fe) >= 2 and fe[-1] > fe[-2]:
+        trend_score += 5
+        ema_detail.append("EMA rising ✓")
+    components["trend"] = {"score": trend_score, "max": 25, "detail": ", ".join(ema_detail)}
+    score += trend_score
+
+    # 2. RSI MOMENTUM (0-20)
+    rsi = _rsi_calc(closes, 14)
+    rsi_score = 0
+    if 45 <= rsi <= 65:
+        rsi_score = 20   # momentum zone
+    elif 40 <= rsi < 45 or 65 < rsi <= 70:
+        rsi_score = 14
+    elif 30 <= rsi < 40:
+        rsi_score = 16   # oversold recovery
+    elif rsi > 70 and rsi <= 80:
+        rsi_score = 8    # overbought
+    elif rsi < 30:
+        rsi_score = 18   # deep oversold = potential bounce
+    rsi_zone = "Bullish" if rsi > 50 else "Bearish"
+    components["momentum"] = {"score": rsi_score, "max": 20, "detail": f"RSI={rsi:.1f} ({rsi_zone})", "rsi": rsi}
+    score += rsi_score
+
+    # 3. MACD (0-20)
+    macd_l, sig_l, hist = _macd_calc(closes, 12, 26, 9)
+    macd_score = 0
+    macd_detail = "N/A"
+    if macd_l and sig_l and hist:
+        if macd_l[-1] > sig_l[-1]:
+            macd_score += 12
+        if hist[-1] > 0:
+            macd_score += 4
+        if len(hist) >= 2 and hist[-1] > hist[-2]:
+            macd_score += 4
+        macd_detail = f"MACD={macd_l[-1]:.4f}, Signal={sig_l[-1]:.4f}, Hist={'↑' if hist[-1]>0 else '↓'}"
+    components["macd"] = {"score": macd_score, "max": 20, "detail": macd_detail}
+    score += macd_score
+
+    # 4. BOLLINGER BANDS (0-15)
+    upper, middle, lower, bw = _bb_calc(closes, 20, 2.0)
+    bb_score = 0
+    bb_detail = "N/A"
+    if upper and lower and middle:
+        pos = (price - lower) / (upper - lower) * 100  # 0-100% of band
+        if 30 <= pos <= 70:
+            bb_score = 15   # mid-band, healthy trend
+        elif pos < 30:
+            bb_score = 10   # near lower, bounce potential
+        elif pos > 70:
+            bb_score = 5    # near upper, caution
+        bb_detail = f"Price@{pos:.0f}% of band, BW={bw:.2f}%"
+    components["bb"] = {"score": bb_score, "max": 15, "detail": bb_detail}
+    score += bb_score
+
+    # 5. VOLUME (0-10)
+    avg_vol    = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else sum(volumes) / len(volumes)
+    curr_vol   = volumes[-1]
+    vol_ratio  = curr_vol / avg_vol if avg_vol else 1
+    vol_score  = min(10, int(vol_ratio * 6))
+    components["volume"] = {"score": vol_score, "max": 10,
+                            "detail": f"Vol={vol_ratio:.2f}x avg ({'High' if vol_ratio>1.2 else 'Normal'})"}
+    score += vol_score
+
+    # 6. ADX TREND STRENGTH (0-10 bonus, not penalized)
+    adx = _adx_calc(highs, lows, closes, 14)
+    adx_bonus = 0
+    adx_detail = f"ADX={adx:.1f}"
+    if adx > 40:
+        adx_bonus = 10
+        adx_detail += " (Strong trend)"
+    elif adx > 25:
+        adx_bonus = 6
+        adx_detail += " (Trending)"
+    else:
+        adx_detail += " (Ranging)"
+    components["adx"] = {"score": adx_bonus, "max": 10, "detail": adx_detail, "adx": adx}
+    score += adx_bonus
+
+    # ATR for SL/TP suggestions
+    atr = _atr_calc(highs, lows, closes, 14)
+    vwap = _vwap_calc(ohlcv)
+
+    # Score interpretation
+    score = min(100, score)
+    if score >= 75:
+        signal, confidence = "STRONG BUY", "HIGH"
+    elif score >= 62:
+        signal, confidence = "BUY", "MEDIUM"
+    elif score >= 50:
+        signal, confidence = "NEUTRAL", "LOW"
+    elif score >= 38:
+        signal, confidence = "SELL", "MEDIUM"
+    else:
+        signal, confidence = "STRONG SELL", "HIGH"
+
+    sl_long  = round(price - 2 * atr, 4)
+    tp_long  = round(price + 3 * atr, 4)
+    sl_short = round(price + 2 * atr, 4)
+    tp_short = round(price - 3 * atr, 4)
+
+    return {
+        "ai_score":     score,
+        "signal":       signal,
+        "confidence":   confidence,
+        "components":   components,
+        "adx":          adx,
+        "rsi":          rsi,
+        "atr":          round(atr, 4),
+        "vwap":         vwap,
+        "price":        price,
+        "sl_long":      sl_long,
+        "tp_long":      tp_long,
+        "sl_short":     sl_short,
+        "tp_short":     tp_short,
+        "macd":         round(macd_l[-1], 6) if macd_l else None,
+        "macd_signal":  round(sig_l[-1], 6) if sig_l else None,
+        "bb_upper":     upper,
+        "bb_lower":     lower,
+        "bb_width":     bw,
+    }
+
+
+# ── STRATEGY SIGNAL ENGINE ───────────────────────────────────────────────────────
+def _get_bot_signal(bot, ohlcv):
+    closes  = [c[4] for c in ohlcv]
+    highs   = [c[2] for c in ohlcv]
+    lows    = [c[3] for c in ohlcv]
+    volumes = [c[5] for c in ohlcv]
+    strategy = bot["strategy"]
+
+    # ADX filter: skip if market is too choppy
+    adx_min = bot.get("adx_min", 0)
+    if adx_min > 0:
+        adx = _adx_calc(highs, lows, closes, 14)
+        bot["last_adx"] = adx
+        if adx < adx_min:
+            return None   # choppy market, no trade
+
+    if strategy == "ema_cross":
+        fe = _ema_calc(closes, bot["fast_ema"])
+        se = _ema_calc(closes, bot["slow_ema"])
+        if len(fe) < 2 or len(se) < 2:
+            return None
+        if fe[-2] <= se[-2] and fe[-1] > se[-1]:
+            return "BUY"
+        if fe[-2] >= se[-2] and fe[-1] < se[-1]:
+            return "SELL"
+
+    elif strategy == "rsi":
+        rsi = _rsi_calc(closes, bot["rsi_period"])
+        bot["last_rsi"] = rsi
+        if rsi <= bot["rsi_os"]:
+            return "BUY"
+        if rsi >= bot["rsi_ob"]:
+            return "SELL"
+
+    elif strategy == "breakout":
+        lb = min(20, len(closes) - 1)
+        if closes[-1] > max(highs[-lb-1:-1]):
+            return "BUY"
+        if closes[-1] < min(lows[-lb-1:-1]):
+            return "SELL"
+
+    elif strategy == "macd_cross":
+        macd_l, sig_l, hist = _macd_calc(closes, bot["macd_fast"], bot["macd_slow"], bot["macd_signal"])
+        if not hist or len(hist) < 2:
+            return None
+        bot["last_macd"]  = round(macd_l[-1], 6)
+        bot["last_macd_s"]= round(sig_l[-1], 6)
+        # MACD line crosses signal line
+        if hist[-2] <= 0 and hist[-1] > 0:
+            return "BUY"
+        if hist[-2] >= 0 and hist[-1] < 0:
+            return "SELL"
+
+    elif strategy == "bb_squeeze":
+        # Price bounces off bands with volume confirmation
+        upper, middle, lower, bw = _bb_calc(closes, bot["bb_period"], bot["bb_std"])
+        if not upper:
+            return None
+        rsi = _rsi_calc(closes, 14)
+        avg_vol = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else 1
+        vol_ok  = volumes[-1] > avg_vol * 1.2
+        # Price touched lower band + RSI oversold + volume spike → BUY
+        if closes[-2] <= lower * 1.002 and closes[-1] > lower and rsi < 45 and vol_ok:
+            return "BUY"
+        # Price touched upper band + RSI overbought + volume spike → SELL
+        if closes[-2] >= upper * 0.998 and closes[-1] < upper and rsi > 55 and vol_ok:
+            return "SELL"
+
+    elif strategy == "supertrend":
+        prev_dir, _ = _supertrend_calc(highs[:-1], lows[:-1], closes[:-1],
+                                       bot.get("atr_period", 10), bot.get("st_multiplier", 3.0))
+        curr_dir, _ = _supertrend_calc(highs, lows, closes,
+                                       bot.get("atr_period", 10), bot.get("st_multiplier", 3.0))
+        if prev_dir == -1 and curr_dir == 1:
+            return "BUY"
+        if prev_dir == 1 and curr_dir == -1:
+            return "SELL"
+
+    elif strategy == "scalp":
+        # Fast scalp: 3/8 EMA cross + RSI momentum zone + volume
+        fe3  = _ema_calc(closes, 3)
+        fe8  = _ema_calc(closes, 8)
+        fe21 = _ema_calc(closes, 21)
+        rsi  = _rsi_calc(closes, 7)  # fast RSI
+        avg_vol = sum(volumes[-10:]) / 10 if len(volumes) >= 10 else 1
+        vol_ok  = volumes[-1] > avg_vol
+        if (len(fe3) < 2 or len(fe8) < 2): return None
+        # BUY: 3 crosses above 8, price > 21 EMA, RSI 45-65, volume ok
+        if fe3[-2] <= fe8[-2] and fe3[-1] > fe8[-1] and closes[-1] > fe21[-1] and 45 < rsi < 65 and vol_ok:
+            return "BUY"
+        # SELL: 3 crosses below 8, price < 21 EMA, RSI 35-55
+        if fe3[-2] >= fe8[-2] and fe3[-1] < fe8[-1] and closes[-1] < fe21[-1] and 35 < rsi < 55 and vol_ok:
+            return "SELL"
+
+    elif strategy == "ai_score":
+        analysis = _ai_full_analysis(ohlcv, bot)
+        bot["last_ai_score"]  = analysis["ai_score"]
+        bot["last_ai_signal"] = analysis["signal"]
+        threshold = bot.get("ai_min_score", 65)
+        if analysis["ai_score"] >= threshold:
+            return "BUY"
+        if analysis["ai_score"] <= (100 - threshold):
+            return "SELL"
+
+    return None
+
+
+def _bot_tick(bot_id):
+    bot = _crypto_bots.get(bot_id)
+    if not bot or bot["status"] != "active":
+        return
+    try:
+        pm = _get_pub_mkt()
+        if not pm:
+            return
+        limit = max(100, (bot.get("slow_ema", 21) or 21) + 30)
+        ohlcv  = pm.fetch_ohlcv(bot["symbol"], bot["timeframe"], limit=limit)
+        signal = _get_bot_signal(bot, ohlcv)
+        price  = float(ohlcv[-1][4])
+        bot["last_run"]    = datetime.now().strftime("%H:%M:%S")
+        bot["last_price"]  = price
+
+        # Trailing stop / TP check (exit open position if hit)
+        atr = _atr_calc([c[2] for c in ohlcv], [c[3] for c in ohlcv], [c[4] for c in ohlcv], 14)
+        if bot.get("open_side") and (bot.get("trailing_atr", 0) > 0 or bot.get("tp_atr", 0) > 0):
+            ep    = bot.get("open_entry_price", price)
+            oside = bot["open_side"]
+            trail = bot.get("trailing_atr", 0) * atr
+            tp    = bot.get("tp_atr", 0) * atr
+            ex    = _active_ex.get(bot["exchange"])
+            if ex:
+                should_exit = False
+                exit_reason = ""
+                if oside == "BUY":
+                    bot["open_peak"] = max(bot.get("open_peak", ep), price)
+                    if trail > 0 and price < bot["open_peak"] - trail:
+                        should_exit, exit_reason = True, "trailing_stop"
+                    if tp > 0 and price >= ep + tp:
+                        should_exit, exit_reason = True, "take_profit"
+                else:
+                    bot["open_trough"] = min(bot.get("open_trough", ep), price)
+                    if trail > 0 and price > bot["open_trough"] + trail:
+                        should_exit, exit_reason = True, "trailing_stop"
+                    if tp > 0 and price <= ep - tp:
+                        should_exit, exit_reason = True, "take_profit"
+                if should_exit:
+                    try:
+                        close_side = "sell" if oside == "BUY" else "buy"
+                        for p in ex.fetch_positions():
+                            if p.get("symbol") == bot["symbol"] and float(p.get("contracts") or 0) > 0:
+                                ex.create_order(bot["symbol"], "market", close_side,
+                                                float(p["contracts"]), params={"reduceOnly": True})
+                        bot["open_side"]        = None
+                        bot["open_entry_price"] = None
+                        bot["open_trade_count"] = 0
+                        if bot.get("trades"):
+                            bot["trades"][-1]["exit_reason"] = exit_reason
+                            bot["trades"][-1]["exit_price"]  = round(price, 4)
+                            bot["trades"][-1]["status"]      = "closed"
+                        threading.Thread(target=_save_bots, daemon=True).start()
+                    except Exception:
+                        pass
+
+        if signal:
+            ex = _active_ex.get(bot["exchange"])
+            if not ex:
+                return
+
+            # Step 1: Close any opposite-side positions (signal flip)
+            opp_closed = False
+            try:
+                for p in ex.fetch_positions():
+                    sym_ok = p.get("symbol") == bot["symbol"]
+                    pside  = (p.get("side") or "").lower()
+                    sz     = float(p.get("contracts") or 0)
+                    if sym_ok and sz > 0:
+                        if (signal == "BUY" and pside == "short") or (signal == "SELL" and pside == "long"):
+                            cs = "buy" if pside == "short" else "sell"
+                            ex.create_order(bot["symbol"], "market", cs, sz, params={"reduceOnly": True})
+                            opp_closed = True
+            except Exception:
+                pass
+
+            if opp_closed:
+                # Signal flip: mark last trade exited and reset counter
+                if bot.get("trades"):
+                    bot["trades"][-1]["exit_reason"] = "signal_flip"
+                    bot["trades"][-1]["exit_price"]  = round(price, 4)
+                    bot["trades"][-1]["status"]      = "closed"
+                bot["open_trade_count"] = 0
+                bot["open_side"]        = None
+
+            # Step 2: Gate — if already at max open trades, skip opening new one
+            max_t = bot.get("max_open_trades", 2)
+            cur_t = bot.get("open_trade_count", 0)
+            if cur_t >= max_t:
+                bot["total_signals"] += 1
+                bot["last_signal"]    = signal
+                bot["last_error"]     = f"⏸ Max {max_t} trades open — waiting for SL/TP to close"
+                threading.Thread(target=_save_bots, daemon=True).start()
+                return
+
+            # Step 3: Size the order
+            bal      = ex.fetch_balance()
+            free     = float((bal.get("USDT") or {}).get("free") or 0)
+            risk_usd = free * bot["risk_pct"] / 100
+            if price <= 0: return
+            atr_pct     = (atr / price) * 100 if price else 0
+            size_factor = min(1.0, 0.5 / atr_pct) if atr_pct > 0.5 else 1.0
+            amount      = round((risk_usd * bot["leverage"] * size_factor) / price, 4)
+            if amount <= 0: return
+
+            try:
+                ex.set_leverage(bot["leverage"], bot["symbol"])
+            except Exception:
+                pass
+
+            # Step 4: Place order
+            side  = "buy" if signal == "BUY" else "sell"
+            order = ex.create_order(bot["symbol"], "market", side, amount)
+            entry = {
+                "time":     datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "signal":   signal,
+                "price":    round(price, 4),
+                "amount":   amount,
+                "order_id": order.get("id", ""),
+                "pnl":      0,
+                "status":   "open",
+            }
+            if bot.get("tp_atr", 0) > 0 or bot.get("trailing_atr", 0) > 0:
+                entry["sl"] = round(price - 2*atr, 4) if signal == "BUY" else round(price + 2*atr, 4)
+                entry["tp"] = round(price + bot["tp_atr"]*atr, 4) if signal == "BUY" else round(price - bot["tp_atr"]*atr, 4)
+            bot["trades"].append(entry)
+            bot["total_signals"]    += 1
+            bot["last_signal"]       = signal
+            bot["open_side"]         = signal
+            bot["open_entry_price"]  = price
+            bot["open_peak"]         = price
+            bot["open_trough"]       = price
+            bot["open_trade_count"]  = cur_t + 1
+            bot["last_error"]        = None
+            threading.Thread(target=_save_bots, daemon=True).start()
+
+    except Exception as e:
+        bot["last_error"] = str(e)[:200]
+    finally:
+        if _crypto_bots.get(bot_id, {}).get("status") == "active":
+            interval = _TF_SECONDS.get(bot.get("timeframe", "1h"), 3600)
+            t = threading.Timer(interval, _bot_tick, args=[bot_id])
+            t.daemon = True
+            t.start()
+            _bot_timers[bot_id] = t
+
+
+@app.post("/api/crypto/algo/start")
+def crypto_algo_start(req: CryptoBotReq):
+    ex = _active_ex.get(req.exchange.lower())
+    if not ex:
+        return JSONResponse(status_code=400, content={"error": f"{req.exchange} not connected"})
+    bid = str(_uuid.uuid4())[:8]
+    _crypto_bots[bid] = {
+        "id": bid, "exchange": req.exchange.lower(),
+        "symbol": req.symbol, "strategy": req.strategy,
+        "timeframe": req.timeframe, "risk_pct": req.risk_pct,
+        "leverage": req.leverage,
+        # EMA
+        "fast_ema": req.fast_ema, "slow_ema": req.slow_ema,
+        # RSI
+        "rsi_period": req.rsi_period, "rsi_ob": req.rsi_ob, "rsi_os": req.rsi_os,
+        # MACD
+        "macd_fast": req.macd_fast, "macd_slow": req.macd_slow, "macd_signal": req.macd_signal,
+        # BB
+        "bb_period": req.bb_period, "bb_std": req.bb_std,
+        # Supertrend / ATR
+        "atr_period": req.atr_period, "st_multiplier": req.st_multiplier,
+        # AI
+        "ai_min_score": req.ai_min_score,
+        # Risk management
+        "trailing_atr": req.trailing_atr, "tp_atr": req.tp_atr, "adx_min": req.adx_min,
+        # Risk management
+        "max_open_trades": req.max_open_trades,
+        # Runtime state
+        "status": "active", "trades": [], "total_signals": 0,
+        "last_signal": None, "last_run": None, "last_rsi": None,
+        "last_adx": None, "last_macd": None, "last_ai_score": None, "last_ai_signal": None,
+        "last_price": None, "last_error": None, "open_side": None, "open_entry_price": None,
+        "open_trade_count": 0,
+        "created": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+    t = threading.Timer(3, _bot_tick, args=[bid])
+    t.daemon = True
+    t.start()
+    _bot_timers[bid] = t
+    _save_bots()
+    return {"success": True, "bot_id": bid}
+
+
+@app.get("/api/crypto/algo/analyze")
+def crypto_algo_analyze(symbol: str = "BTC/USDT:USDT", timeframe: str = "1h",
+                        fast_ema: int = 9, slow_ema: int = 21):
+    pm = _get_pub_mkt()
+    if not pm:
+        return JSONResponse(status_code=400, content={"error": "Market data not available"})
+    try:
+        ohlcv = pm.fetch_ohlcv(symbol, timeframe, limit=200)
+        result = _ai_full_analysis(ohlcv, {"fast_ema": fast_ema, "slow_ema": slow_ema})
+        return result
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)[:200]})
+
+
+@app.post("/api/crypto/algo/stop/{bot_id}")
+def crypto_algo_stop(bot_id: str):
+    if bot_id not in _crypto_bots:
+        return JSONResponse(status_code=404, content={"error": "Bot not found"})
+    _crypto_bots[bot_id]["status"] = "stopped"
+    t = _bot_timers.pop(bot_id, None)
+    if t:
+        t.cancel()
+    _save_bots()
+    return {"success": True}
+
+
+@app.delete("/api/crypto/algo/{bot_id}")
+def crypto_algo_delete(bot_id: str):
+    t = _bot_timers.pop(bot_id, None)
+    if t:
+        t.cancel()
+    _crypto_bots.pop(bot_id, None)
+    _save_bots()
+    return {"success": True}
+
+
+@app.get("/api/crypto/algo/history")
+def crypto_algo_history():
+    """Return all trade records from all bots, newest first."""
+    rows = []
+    for bid, b in _crypto_bots.items():
+        for t in b.get("trades", []):
+            rows.append({
+                "bot_id":   bid,
+                "exchange": b.get("exchange", ""),
+                "symbol":   b.get("symbol", ""),
+                "strategy": b.get("strategy", ""),
+                **t,
+            })
+    rows.sort(key=lambda x: x.get("time", ""), reverse=True)
+    return rows[:300]
+
+
+@app.get("/api/crypto/algo/list")
+def crypto_algo_list(live: bool = False):
+    result = []
+    for b in _crypto_bots.values():
+        entry = {k: v for k, v in b.items() if k != "trades"} | {
+            "trade_count":  len(b.get("trades", [])),
+            "recent_trades": b.get("trades", [])[-5:],
+            "live_pnl":     None,
+            "live_size":    None,
+            "live_mark":    None,
+        }
+        # Fetch live unrealized PnL for active in-position bots
+        if live and b.get("open_side") and b.get("status") == "active":
+            ex = _active_ex.get(b["exchange"])
+            if ex:
+                try:
+                    for p in ex.fetch_positions():
+                        if p.get("symbol") == b["symbol"] and float(p.get("contracts") or 0) > 0:
+                            entry["live_pnl"]  = round(float(p.get("unrealizedPnl") or 0), 4)
+                            entry["live_size"] = float(p.get("contracts", 0))
+                            entry["live_mark"] = float(p.get("markPrice") or b.get("last_price") or 0)
+                            break
+                except Exception:
+                    pass
+        result.append(entry)
+    return result
 
 
 @app.get("/")

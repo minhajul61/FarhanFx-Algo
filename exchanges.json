@@ -1,0 +1,7 @@
+{
+  "coinswitch": {
+    "api_key": "a984c2b0508dad6bc3e57d251a0febef74ec8e101f0c8f0de2b2b934fc02e5d3",
+    "api_secret": "04d8139538bb6cb786972c91a8a96d340530f3836d84ff2c7f2c16019f50aaa6",
+    "testnet": false
+  }
+}
