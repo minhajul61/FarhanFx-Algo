@@ -526,6 +526,31 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           </div>
         </div>
 
+        <!-- TRADINGVIEW CHART -->
+        <div class="panel" id="tv-chart-panel" style="margin-bottom:14px;padding:0;overflow:hidden;border-color:var(--border2)">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:0.5px">📈 CHART</span>
+              <span id="tv-sym-label" style="font-size:11px;color:var(--accent);font-weight:700">EURUSD</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <div style="display:flex;background:var(--bg);border:1px solid var(--border);border-radius:6px;overflow:hidden">
+                <button onclick="tvSetTf('1')"   class="tv-tf-btn" data-tf="1"   style="padding:3px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M1</button>
+                <button onclick="tvSetTf('5')"   class="tv-tf-btn" data-tf="5"   style="padding:3px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M5</button>
+                <button onclick="tvSetTf('15')"  class="tv-tf-btn" data-tf="15"  style="padding:3px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M15</button>
+                <button onclick="tvSetTf('30')"  class="tv-tf-btn" data-tf="30"  style="padding:3px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M30</button>
+                <button onclick="tvSetTf('60')"  class="tv-tf-btn" data-tf="60"  style="padding:3px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:var(--accent);color:#fff;transition:all 0.15s">H1</button>
+                <button onclick="tvSetTf('240')" class="tv-tf-btn" data-tf="240" style="padding:3px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">H4</button>
+                <button onclick="tvSetTf('D')"   class="tv-tf-btn" data-tf="D"   style="padding:3px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">D1</button>
+              </div>
+              <button onclick="tvToggle()" id="tv-toggle-btn" class="sbtn" style="font-size:10px;padding:3px 10px">▼ HIDE</button>
+            </div>
+          </div>
+          <div id="tv-wrap" style="height:440px;transition:height 0.3s ease;overflow:hidden">
+            <div id="tv-container" style="width:100%;height:100%"></div>
+          </div>
+        </div>
+
         <!-- PENDING ORDERS -->
         <div class="panel" id="pending-panel" style="display:none">
           <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
@@ -4371,9 +4396,106 @@ function startTradesRefresh() {
   loadPositions();
   loadDeals();
   loadTodayRealized();
-  _tradesTimer = setInterval(loadPositions,     5000);   // live P&L every 5s
-  _dealsTimer  = setInterval(loadDeals,        30000);   // deal history every 30s
-  _todayTimer  = setInterval(loadTodayRealized, 10000);  // today realized every 10s
+  _tradesTimer = setInterval(loadPositions,     5000);
+  _dealsTimer  = setInterval(loadDeals,        30000);
+  _todayTimer  = setInterval(loadTodayRealized, 10000);
+  // Init TradingView chart with current symbol
+  const sym = (document.getElementById('o-symbol') || {}).value || 'EURUSDc';
+  tvInit(sym, _tvTf);
+}
+
+// ── TRADINGVIEW CHART ──────────────────────────────────────────────────────────
+let _tvTf     = '60';
+let _tvSym    = 'EURUSDc';
+let _tvHidden = false;
+
+function _tvMt5ToTv(mt5) {
+  const s = mt5.replace(/[cm]$/, '').toUpperCase();
+  // Crypto
+  if (/^(BTC|ETH|BNB|SOL|ADA|XRP|DOGE|MATIC|LINK|DOT|AVAX|LTC)USDT?$/.test(s))
+    return 'BINANCE:' + (s.endsWith('USDT') ? s : s + 'USDT');
+  // Commodities / indices
+  if (s === 'XAUUSD')                     return 'TVC:GOLD';
+  if (s === 'XAGUSD')                     return 'TVC:SILVER';
+  if (s === 'USOIL' || s === 'WTIUSD')   return 'TVC:USOIL';
+  if (s === 'UKOIL' || s === 'BRENTOIL') return 'TVC:UKOIL';
+  if (s === 'US30'  || s === 'DJ30')     return 'FOREXCOM:DJI';
+  if (s === 'US500' || s === 'SP500')    return 'FOREXCOM:SPXUSD';
+  if (s === 'NAS100' || s === 'NASDAQ')  return 'FOREXCOM:NSXUSD';
+  if (s === 'GER40'  || s === 'DAX40')   return 'FOREXCOM:GER40';
+  if (s === 'UK100')                      return 'FOREXCOM:UK100';
+  // Forex default
+  return 'FX:' + s;
+}
+
+function _tvBuild(tvSym, tf) {
+  const el = document.getElementById('tv-container');
+  if (!el) return;
+  el.innerHTML = '';
+  new window.TradingView.widget({
+    container_id:         'tv-container',
+    width:                '100%',
+    height:               '100%',
+    symbol:               tvSym,
+    interval:             tf,
+    timezone:             'Etc/UTC',
+    theme:                'dark',
+    style:                '1',
+    locale:               'en',
+    toolbar_bg:           '#0d0d12',
+    enable_publishing:    false,
+    hide_side_toolbar:    false,
+    allow_symbol_change:  true,
+    save_image:           false,
+    studies:              ['RSI@tv-basicstudies'],
+    overrides: {
+      'paneProperties.background':     '#0d0d12',
+      'paneProperties.backgroundType': 'solid',
+      'scalesProperties.lineColor':    '#2a2a3a',
+      'scalesProperties.textColor':    '#9ca3af',
+    },
+  });
+}
+
+function tvInit(mt5sym, tf) {
+  if (mt5sym) _tvSym = mt5sym;
+  if (tf)     _tvTf  = tf;
+  const tvSym = _tvMt5ToTv(_tvSym);
+  const lbl   = document.getElementById('tv-sym-label');
+  if (lbl) lbl.textContent = tvSym.split(':')[1] || tvSym;
+
+  if (window.TradingView) {
+    _tvBuild(tvSym, _tvTf);
+  } else {
+    // Lazy-load TV library
+    const script  = document.createElement('script');
+    script.src    = 'https://s3.tradingview.com/tv.js';
+    script.onload = () => _tvBuild(tvSym, _tvTf);
+    document.head.appendChild(script);
+  }
+}
+
+function tvSetTf(tf) {
+  _tvTf = tf;
+  document.querySelectorAll('.tv-tf-btn').forEach(b => {
+    const active = b.dataset.tf === tf;
+    b.style.background = active ? 'var(--accent)' : 'transparent';
+    b.style.color      = active ? '#fff' : 'var(--text2)';
+  });
+  tvInit(_tvSym, tf);
+}
+
+function tvSetSymbol(mt5sym) {
+  if (!mt5sym || mt5sym === _tvSym) return;
+  tvInit(mt5sym, _tvTf);
+}
+
+function tvToggle() {
+  _tvHidden = !_tvHidden;
+  const wrap = document.getElementById('tv-wrap');
+  const btn  = document.getElementById('tv-toggle-btn');
+  if (wrap) wrap.style.height = _tvHidden ? '0' : '440px';
+  if (btn)  btn.textContent   = _tvHidden ? '▶ SHOW' : '▼ HIDE';
 }
 
 function stopTradesRefresh() {
@@ -4474,6 +4596,7 @@ function oSetMode(mode) {
 async function oFetchPrice() {
   const symbol = document.getElementById('o-symbol').value.trim();
   if (!symbol) return;
+  tvSetSymbol(symbol);   // update chart when symbol changes
   const tick = await apiFetch('/api/price/' + symbol);
   if (!tick || tick.error) return;
   oCurrentTick = tick;
