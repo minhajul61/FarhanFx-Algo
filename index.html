@@ -493,7 +493,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               <label>Symbol</label>
               <input id="o-symbol" class="sinput" list="jf-symbol-list" autocomplete="off"
                 onblur="oFetchPrice()"
-                style="width:100%" value="EURUSDc" placeholder="Type or select..."/>
+                style="width:100%" value="XAUUSDc" placeholder="Type or select..."/>
               <div id="o-price-preview" style="font-size:10px;color:var(--cyan);margin-top:3px;height:14px;white-space:nowrap;overflow:hidden"></div>
             </div>
             <div class="field">
@@ -645,7 +645,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
           <!-- Symbol input -->
           <input id="tv-page-symbol" class="sinput" list="jf-symbol-list" autocomplete="off"
-            value="EURUSDc" placeholder="Symbol…"
+            value="XAUUSDc" placeholder="Symbol…"
             style="width:110px;font-size:11px;padding:4px 8px"
             onchange="tvSetSymbol(this.value.trim())"
             onkeydown="if(event.key==='Enter')tvSetSymbol(this.value.trim())"/>
@@ -1170,7 +1170,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
             <span style="background:linear-gradient(90deg,var(--amber),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:14px">🧠 AI Market Analysis — Live Signal</span>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <input id="ai-symbol" class="sinput" list="jf-symbol-list" style="width:130px" value="EURUSDc" placeholder="Symbol" autocomplete="off"/>
+              <input id="ai-symbol" class="sinput" list="jf-symbol-list" style="width:130px" value="XAUUSDc" placeholder="Symbol" autocomplete="off"/>
               <select id="ai-tf" class="sinput" style="width:80px">
                 <option>M15</option><option>M30</option><option value="H1" selected>H1</option><option>H4</option><option>D1</option>
               </select>
@@ -1263,7 +1263,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             </div>
             <div class="field" style="margin-bottom:0">
               <label>Symbol</label>
-              <input id="algo-symbol" class="sinput" list="jf-symbol-list" autocomplete="off" style="width:100%;font-weight:700;color:var(--cyan)" value="EURUSDc" placeholder="Symbol..."/>
+              <input id="algo-symbol" class="sinput" list="jf-symbol-list" autocomplete="off" style="width:100%;font-weight:700;color:var(--cyan)" value="XAUUSDc" placeholder="Symbol..."/>
             </div>
             <div class="field" style="margin-bottom:0">
               <label>Timeframe</label>
@@ -4427,16 +4427,15 @@ function startTradesRefresh() {
 }
 
 // ── TRADINGVIEW CHART ──────────────────────────────────────────────────────────
-let _tvTf     = '60';
-let _tvSym    = 'EURUSDc';
-let _tvHidden = false;
+let _tvTf      = '60';
+let _tvSym     = 'XAUUSDc';
+let _tvWidget  = null;   // persistent widget instance — never rebuild unless necessary
+let _tvReady   = false;  // true once onChartReady fires
 
 function _tvMt5ToTv(mt5) {
   const s = mt5.replace(/[cm]$/, '').toUpperCase();
-  // Crypto
   if (/^(BTC|ETH|BNB|SOL|ADA|XRP|DOGE|MATIC|LINK|DOT|AVAX|LTC)USDT?$/.test(s))
     return 'BINANCE:' + (s.endsWith('USDT') ? s : s + 'USDT');
-  // Commodities / indices
   if (s === 'XAUUSD')                     return 'TVC:GOLD';
   if (s === 'XAGUSD')                     return 'TVC:SILVER';
   if (s === 'USOIL' || s === 'WTIUSD')   return 'TVC:USOIL';
@@ -4446,53 +4445,71 @@ function _tvMt5ToTv(mt5) {
   if (s === 'NAS100' || s === 'NASDAQ')  return 'FOREXCOM:NSXUSD';
   if (s === 'GER40'  || s === 'DAX40')   return 'FOREXCOM:GER40';
   if (s === 'UK100')                      return 'FOREXCOM:UK100';
-  // Forex default
   return 'FX:' + s;
+}
+
+function _tvUpdateLabel(tvSym) {
+  const lbl = document.getElementById('tv-sym-label');
+  if (lbl) lbl.textContent = tvSym.split(':')[1] || tvSym;
 }
 
 function _tvBuild(tvSym, tf) {
   const el = document.getElementById('tv-page-container');
   if (!el) return;
   el.innerHTML = '';
-  new window.TradingView.widget({
-    container_id:         'tv-page-container',
-    width:                '100%',
-    height:               '100%',
-    symbol:               tvSym,
-    interval:             tf,
-    timezone:             'Etc/UTC',
-    theme:                'dark',
-    style:                '1',
-    locale:               'en',
-    toolbar_bg:           '#0d0d12',
-    enable_publishing:    false,
-    hide_side_toolbar:    false,
-    allow_symbol_change:  true,
-    save_image:           false,
-    studies:              ['RSI@tv-basicstudies'],
+  _tvReady  = false;
+  _tvWidget = new window.TradingView.widget({
+    container_id:        'tv-page-container',
+    autosize:            true,
+    symbol:              tvSym,
+    interval:            tf,
+    timezone:            'Etc/UTC',
+    theme:               'dark',
+    style:               '1',
+    locale:              'en',
+    toolbar_bg:          '#0a0a10',
+    enable_publishing:   false,
+    hide_side_toolbar:   false,
+    allow_symbol_change: true,
+    save_image:          true,
+    studies:             ['RSI@tv-basicstudies'],
     overrides: {
-      'paneProperties.background':     '#0d0d12',
+      'paneProperties.background':     '#0a0a10',
       'paneProperties.backgroundType': 'solid',
       'scalesProperties.lineColor':    '#2a2a3a',
       'scalesProperties.textColor':    '#9ca3af',
     },
   });
+  _tvWidget.onChartReady(() => { _tvReady = true; });
 }
 
 function tvInit(mt5sym, tf) {
   if (mt5sym) _tvSym = mt5sym;
   if (tf)     _tvTf  = tf;
   const tvSym = _tvMt5ToTv(_tvSym);
-  const lbl   = document.getElementById('tv-sym-label');
-  if (lbl) lbl.textContent = tvSym.split(':')[1] || tvSym;
+  _tvUpdateLabel(tvSym);
+
+  const _run = () => {
+    // Widget already exists and ready → update in-place (preserves drawings)
+    if (_tvWidget && _tvReady) {
+      try {
+        _tvWidget.activeChart().setSymbol(tvSym, () => {});
+        _tvWidget.activeChart().setResolution(_tvTf, () => {});
+        return;
+      } catch(e) { /* widget stale, fall through to rebuild */ }
+    }
+    // Widget exists but not ready yet → still initialising, skip
+    if (_tvWidget && !_tvReady) return;
+    // Build fresh widget
+    _tvBuild(tvSym, _tvTf);
+  };
 
   if (window.TradingView) {
-    _tvBuild(tvSym, _tvTf);
+    _run();
   } else {
-    // Lazy-load TV library
     const script  = document.createElement('script');
     script.src    = 'https://s3.tradingview.com/tv.js';
-    script.onload = () => _tvBuild(tvSym, _tvTf);
+    script.onload = _run;
     document.head.appendChild(script);
   }
 }
@@ -4502,8 +4519,12 @@ function tvSetTf(tf) {
   document.querySelectorAll('.tv-tf-btn').forEach(b => {
     const active = b.dataset.tf === tf;
     b.style.background = active ? 'var(--accent)' : 'transparent';
-    b.style.color      = active ? '#fff' : 'var(--text2)';
+    b.style.color      = active ? '#fff'           : 'var(--text2)';
   });
+  // Update in-place if ready, otherwise full init
+  if (_tvWidget && _tvReady) {
+    try { _tvWidget.activeChart().setResolution(tf, () => {}); return; } catch(e) {}
+  }
   tvInit(_tvSym, tf);
 }
 
@@ -4511,15 +4532,14 @@ function tvSetSymbol(mt5sym) {
   if (!mt5sym) return;
   const inp = document.getElementById('tv-page-symbol');
   if (inp && inp.value !== mt5sym) inp.value = mt5sym;
+  _tvSym = mt5sym;
+  const tvSym = _tvMt5ToTv(mt5sym);
+  _tvUpdateLabel(tvSym);
+  // Update in-place if ready, otherwise full init
+  if (_tvWidget && _tvReady) {
+    try { _tvWidget.activeChart().setSymbol(tvSym, () => {}); return; } catch(e) {}
+  }
   tvInit(mt5sym, _tvTf);
-}
-
-function tvToggle() {
-  _tvHidden = !_tvHidden;
-  const wrap = document.getElementById('tv-wrap');
-  const btn  = document.getElementById('tv-toggle-btn');
-  if (wrap) wrap.style.height = _tvHidden ? '0' : '440px';
-  if (btn)  btn.textContent   = _tvHidden ? '▶ SHOW' : '▼ HIDE';
 }
 
 function stopTradesRefresh() {
@@ -5038,7 +5058,7 @@ function toggleAiAnalyze() {
 async function runAiAnalysis() {
   const symEl = document.getElementById('ai-symbol');
   const tfEl  = document.getElementById('ai-tf');
-  const sym   = (symEl ? symEl.value.trim() : '') || _aiLastSym || 'EURUSDc';
+  const sym   = (symEl ? symEl.value.trim() : '') || _aiLastSym || 'XAUUSDc';
   const tf    = (tfEl  ? tfEl.value          : '') || _aiLastTf  || 'H1';
   if (!sym) return;
 
@@ -5216,7 +5236,7 @@ function toggleAiAuto() {
     if (tpEl  && !parseFloat(tpEl.value))  tpEl.value  = s.tp;
     if (confEl) confEl.value = s.aiConf;
     // Cache symbol+tf now so background runs know what to analyze
-    _aiLastSym = (document.getElementById('ai-symbol') || {}).value || _aiLastSym || 'EURUSDc';
+    _aiLastSym = (document.getElementById('ai-symbol') || {}).value || _aiLastSym || 'XAUUSDc';
     _aiLastTf  = (document.getElementById('ai-tf')     || {}).value || _aiLastTf  || 'H1';
 
     _aiAutoUpdateBtn();
