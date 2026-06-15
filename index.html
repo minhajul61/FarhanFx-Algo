@@ -5411,13 +5411,17 @@ async function loadStrategies() {
         </table>
       </div>` : '';
 
-    // Signal blocked warning
-    const lastLog = s.log && s.log.length ? s.log[s.log.length - 1] : '';
-    const blocked = lastLog.includes('⏸') || lastLog.includes('Max');
-    const blockedHtml = blocked ? `
+    // Signal blocked warning — only show if positions ARE open and last log says blocked
+    const lastLog   = s.log && s.log.length ? s.log[s.log.length - 1] : '';
+    const isBlocked = curT >= maxT && (lastLog.includes('⏸') || lastLog.includes('Max'));
+    const blockedHtml = isBlocked ? `
       <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.35);border-radius:6px;padding:7px 10px;margin-bottom:10px;font-size:11px;color:var(--amber)">
-        ⏸ ${lastLog}
-      </div>` : '';
+        ⏸ Max trades (${maxT}) open — waiting for SL/TP
+      </div>` :
+      (curT === 0 && isRunning ? `
+      <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:11px;color:var(--green)">
+        🟢 Ready — scanning for next signal (0/${maxT} slots used)
+      </div>` : '');
 
     // Activity log
     const logHtml = s.log && s.log.length

@@ -1609,7 +1609,8 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
 
     add_log(f"Strategy '{strategy}' started on {symbol} {tf}")
 
-    max_trades = int(cfg.get("max_trades", 2))
+    max_trades  = int(cfg.get("max_trades", 2))
+    prev_count  = 0   # track open position count to detect closures
 
     def do_trade(side, entry, sl_val, tp_val):
         def fn():
@@ -1870,16 +1871,34 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 add_log(f"📊 Signal: {signal} @ {entry}  SL:{sl_val}  TP:{tp_val}  (pip={pip})")
                 do_trade(signal, entry, sl_val, tp_val)
 
-            # Update running P&L from deal history
+            # Detect position closures (SL/TP hit) and log them
+            def _cur_count(): return _count_open_positions(symbol, magic)
+            try:
+                cur_count = _mt5_call(_cur_count) or 0
+                if prev_count > 0 and cur_count < prev_count:
+                    freed = prev_count - cur_count
+                    add_log(f"✅ {freed} position(s) closed (SL/TP hit) — {cur_count}/{max_trades} slots open")
+                prev_count = cur_count
+            except Exception:
+                pass
+
+            # Update running P&L — match by OPENING deal comment, not closing
             def _update_pnl():
                 from datetime import timedelta as _td
                 df = datetime.now() - _td(days=30)
                 deals = mt5.history_deals_get(df, datetime.now())
                 if not deals:
                     return 0.0
+                # Collect position_ids opened by this strategy
+                our_pos = set()
+                for d in deals:
+                    if (d.entry == 0 and d.symbol == symbol and
+                            (d.comment or "").startswith(f"FarhanFX-{strategy}")):
+                        our_pos.add(d.position_id)
+                # Sum closing-deal P&L for our positions
                 total = 0.0
                 for d in deals:
-                    if d.entry == 1 and (d.comment or "").startswith(f"FarhanFX-{strategy}") and d.symbol == symbol:
+                    if d.entry == 1 and d.position_id in our_pos:
                         total += d.profit + d.commission + d.swap
                 return round(total, 2)
             try:
@@ -2039,22 +2058,22 @@ def get_algo_history(days: int = 30):
         for d in deals:
             if d.type not in (0, 1):
                 continue
-            if not (d.comment or "").startswith("FarhanFX"):
-                continue
-            if d.entry == 0:    # opening leg
-                open_map[d.position_id] = d
-            elif d.entry == 1:  # closing leg
+            if d.entry == 0:    # opening leg — filter by FarhanFX comment
+                if (d.comment or "").startswith("FarhanFX"):
+                    open_map[d.position_id] = d
+            elif d.entry == 1:  # closing leg — collect all; match by position_id below
                 closed.append(d)
 
         result = []
         for d in closed:
             open_d  = open_map.get(d.position_id)
+            if not open_d:          # closing deal belongs to non-algo trade — skip
+                continue
             sl_val  = tp_val = None
-            if open_d:
-                op_order = order_map.get(open_d.order)
-                if op_order:
-                    sl_val = round(op_order.sl, 5) if op_order.sl else None
-                    tp_val = round(op_order.tp, 5) if op_order.tp else None
+            op_order = order_map.get(open_d.order)
+            if op_order:
+                sl_val = round(op_order.sl, 5) if op_order.sl else None
+                tp_val = round(op_order.tp, 5) if op_order.tp else None
             result.append({
                 "ticket":      d.position_id,
                 "symbol":      d.symbol,
