@@ -1136,8 +1136,8 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               <select id="ai-tf" class="sinput" style="width:80px">
                 <option>M15</option><option>M30</option><option value="H1" selected>H1</option><option>H4</option><option>D1</option>
               </select>
-              <button onclick="runAiAnalysis()" id="ai-run-btn" style="padding:6px 16px;background:linear-gradient(135deg,var(--amber),#d97706);border:none;color:#000;font-weight:800;border-radius:6px;font-family:var(--font);font-size:11px;cursor:pointer;letter-spacing:0.5px">▶ ANALYZE</button>
-              <button onclick="toggleAiAuto()" id="ai-auto-btn" style="padding:6px 14px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:6px;font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer">AUTO: OFF</button>
+              <button onclick="toggleAiAnalyze()" id="ai-run-btn" style="padding:6px 16px;background:linear-gradient(135deg,var(--amber),#d97706);border:none;color:#000;font-weight:800;border-radius:6px;font-family:var(--font);font-size:11px;cursor:pointer;letter-spacing:0.5px">▶ ANALYZE</button>
+              <button onclick="toggleAiAuto()" id="ai-auto-btn" style="padding:6px 14px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:6px;font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer">AUTO TRADE: OFF</button>
             </div>
           </div>
 
@@ -2826,6 +2826,8 @@ function showApp(accountInfo) {
   loadAccount();
   loadPositions();
   loadDeals();
+  // Restart any background AI analysis loop that was active before refresh
+  setTimeout(_aiRestoreState, 500);
 }
 
 async function logout() {
@@ -2851,7 +2853,7 @@ function showPage(id, el) {
   stopAlgoRefresh();
   stopTradesRefresh();
   if (id === 'trades')   { startTradesRefresh(); }
-  if (id === 'algo')     { startAlgoRefresh(); _aiAutoUpdateBtn(); }
+  if (id === 'algo')     { startAlgoRefresh(); _aiRestoreState(); }
   if (id === 'journal')  { jInit(); }
   if (id === 'risk')     { rcCalcPos(); rcCalcKelly(); rcCalcPropDD(); }
   if (id === 'reports')  { loadReports(); }
@@ -4808,20 +4810,93 @@ async function doModalSession() {
 }
 
 // ── AI MARKET ANALYSIS ─────────────────────────────────────────────────────────
-let aiAutoTimer    = null;
-let aiAutoEnabled  = false;
-let aiLastSignal   = null;
-let _aiLastSym     = '';   // cached symbol for background runs
-let _aiLastTf      = 'H1'; // cached timeframe for background runs
+let aiAutoTimer      = null;   // trade execution timer
+let aiAutoEnabled    = false;
+let aiLastSignal     = null;
+let _aiLastSym       = '';
+let _aiLastTf        = 'H1';
+let _aiAnalyzeTimer  = null;   // analysis-only background timer
+let _aiAnalyzeActive = false;
+
+// Persist AUTO state so page refresh / navigation doesn't kill it
+function _aiSaveState() {
+  localStorage.setItem('farhanfx_ai_auto', JSON.stringify({
+    enabled:  aiAutoEnabled,
+    analyze:  _aiAnalyzeActive,
+    sym:      _aiLastSym,
+    tf:       _aiLastTf,
+  }));
+}
+
+function _aiRestoreState() {
+  try {
+    const s = JSON.parse(localStorage.getItem('farhanfx_ai_auto') || '{}');
+    if (s.sym) _aiLastSym = s.sym;
+    if (s.tf)  _aiLastTf  = s.tf;
+    // Restore analysis loop
+    if (s.analyze && !_aiAnalyzeActive) {
+      _aiAnalyzeActive = true;
+      if (_aiAnalyzeTimer) clearInterval(_aiAnalyzeTimer);
+      _aiAnalyzeTimer = setInterval(runAiAnalysis, 30000);
+      runAiAnalysis();
+    }
+    // Restore auto-trade loop
+    if (s.enabled && !aiAutoEnabled) {
+      aiAutoEnabled = true;
+      if (aiAutoTimer) clearInterval(aiAutoTimer);
+      aiAutoTimer = setInterval(runAiAnalysis, 30000);
+    }
+    _aiUpdateAnalyzeBtn();
+    _aiAutoUpdateBtn();
+  } catch {}
+}
+
+function _aiUpdateAnalyzeBtn() {
+  const btn = document.getElementById('ai-run-btn');
+  if (!btn) return;
+  if (_aiAnalyzeActive) {
+    btn.textContent      = '⏹ ANALYZING…';
+    btn.style.background = 'linear-gradient(135deg,#10b981,#059669)';
+    btn.style.color      = '#fff';
+    btn.style.animation  = 'pulse 2s infinite';
+  } else {
+    btn.textContent      = '▶ ANALYZE';
+    btn.style.background = 'linear-gradient(135deg,var(--amber),#d97706)';
+    btn.style.color      = '#000';
+    btn.style.animation  = 'none';
+  }
+}
+
+function toggleAiAnalyze() {
+  // Cache symbol+tf from UI
+  const symEl = document.getElementById('ai-symbol');
+  const tfEl  = document.getElementById('ai-tf');
+  if (symEl && symEl.value.trim()) _aiLastSym = symEl.value.trim();
+  if (tfEl  && tfEl.value)         _aiLastTf  = tfEl.value;
+
+  _aiAnalyzeActive = !_aiAnalyzeActive;
+  if (_aiAnalyzeActive) {
+    if (_aiAnalyzeTimer) clearInterval(_aiAnalyzeTimer);
+    _aiAnalyzeTimer = setInterval(runAiAnalysis, 30000);
+    runAiAnalysis();   // run immediately
+    toast('📊 Analysis started — running every 30s on any page');
+  } else {
+    clearInterval(_aiAnalyzeTimer);
+    _aiAnalyzeTimer = null;
+    toast('📊 Analysis stopped');
+  }
+  _aiUpdateAnalyzeBtn();
+  _aiSaveState();
+}
 
 async function runAiAnalysis() {
   const symEl = document.getElementById('ai-symbol');
   const tfEl  = document.getElementById('ai-tf');
-  const sym   = symEl ? symEl.value.trim() : (_aiLastSym || '');
-  const tf    = tfEl  ? tfEl.value          : (_aiLastTf  || 'H1');
-  if (!sym) { if (!aiAutoEnabled) toast('Enter a symbol', false); return; }
+  const sym   = (symEl ? symEl.value.trim() : '') || _aiLastSym || 'EURUSDc';
+  const tf    = (tfEl  ? tfEl.value          : '') || _aiLastTf  || 'H1';
+  if (!sym) return;
 
-  // Save for background use when DOM elements may be on hidden page
+  // Cache for background runs
   _aiLastSym = sym;
   _aiLastTf  = tf;
 
@@ -4999,13 +5074,15 @@ function toggleAiAuto() {
     _aiLastTf  = (document.getElementById('ai-tf')     || {}).value || _aiLastTf  || 'H1';
 
     _aiAutoUpdateBtn();
+    _aiSaveState();
     // Start global background loop — analyze every 30s regardless of active page
     if (aiAutoTimer) clearInterval(aiAutoTimer);
     aiAutoTimer = setInterval(runAiAnalysis, 30000);
     runAiAnalysis();  // run immediately
-    toast('🧠 AI Auto-Trade ENABLED — Max ' + s.maxTrades + ' trades, ' + s.maxDailyLossPct + '% daily loss limit');
+    toast('🧠 AI Auto-Trade ENABLED — runs every 30s in background on any page');
   } else {
     _aiAutoUpdateBtn();
+    _aiSaveState();
     clearInterval(aiAutoTimer);
     aiAutoTimer = null;
     toast('AI Auto-Trade disabled');
