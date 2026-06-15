@@ -2783,7 +2783,7 @@ function showPage(id, el) {
   stopAlgoRefresh();
   stopTradesRefresh();
   if (id === 'trades')   { startTradesRefresh(); }
-  if (id === 'algo')     { startAlgoRefresh(); }
+  if (id === 'algo')     { startAlgoRefresh(); _aiAutoUpdateBtn(); }
   if (id === 'journal')  { jInit(); }
   if (id === 'risk')     { rcCalcPos(); rcCalcKelly(); rcCalcPropDD(); }
   if (id === 'reports')  { loadReports(); }
@@ -4743,19 +4743,26 @@ async function doModalSession() {
 let aiAutoTimer    = null;
 let aiAutoEnabled  = false;
 let aiLastSignal   = null;
+let _aiLastSym     = '';   // cached symbol for background runs
+let _aiLastTf      = 'H1'; // cached timeframe for background runs
 
 async function runAiAnalysis() {
-  const sym = document.getElementById('ai-symbol').value.trim();
-  const tf  = document.getElementById('ai-tf').value;
-  if (!sym) { toast('Enter a symbol', false); return; }
+  const symEl = document.getElementById('ai-symbol');
+  const tfEl  = document.getElementById('ai-tf');
+  const sym   = symEl ? symEl.value.trim() : (_aiLastSym || '');
+  const tf    = tfEl  ? tfEl.value          : (_aiLastTf  || 'H1');
+  if (!sym) { if (!aiAutoEnabled) toast('Enter a symbol', false); return; }
+
+  // Save for background use when DOM elements may be on hidden page
+  _aiLastSym = sym;
+  _aiLastTf  = tf;
 
   const badge = document.getElementById('ai-badge');
-  badge.textContent = '…';
-  badge.style.color = 'var(--text3)';
+  if (badge) { badge.textContent = '…'; badge.style.color = 'var(--text3)'; }
 
   const data = await apiFetch(`/api/ai/analyze/${encodeURIComponent(sym)}?tf=${tf}`);
   if (!data || data.error) {
-    toastErr('Analysis failed: ' + (data?.error || 'No response'));
+    if (!aiAutoEnabled) toastErr('Analysis failed: ' + (data?.error || 'No response'));
     return;
   }
   renderAiResult(data);
@@ -4763,7 +4770,7 @@ async function runAiAnalysis() {
 
   // If auto mode ON and signal is clear, execute trade
   if (aiAutoEnabled && (data.signal === 'BUY' || data.signal === 'SELL')) {
-    const minConf = parseInt(document.getElementById('ai-min-conf').value) || 65;
+    const minConf = parseInt((document.getElementById('ai-min-conf') || {}).value) || 65;
     if (data.confidence >= minConf) {
       const blocked = await aiSafeguardCheck();
       if (!blocked) await executeAiTrade(data);
@@ -4815,31 +4822,27 @@ async function aiSafeguardCheck() {
 }
 
 function renderAiResult(data) {
-  const badge    = document.getElementById('ai-badge');
-  const confEl   = document.getElementById('ai-confidence');
-  const confBar  = document.getElementById('ai-conf-bar');
-  const buyPct   = document.getElementById('ai-buy-pct');
-  const sellPct  = document.getElementById('ai-sell-pct');
-  const h4Bias   = document.getElementById('ai-h4-bias');
-  const tbody    = document.getElementById('ai-components-body');
-
+  const g = id => document.getElementById(id); // safe getter
   const sigColor = data.signal === 'BUY' ? 'var(--green)' : data.signal === 'SELL' ? 'var(--red)' : 'var(--text3)';
-  badge.textContent = data.signal;
-  badge.style.color = sigColor;
-  badge.style.textShadow = `0 0 20px ${sigColor}`;
 
-  confEl.textContent = `Confidence: ${data.confidence}%`;
-  confBar.style.width = data.confidence + '%';
-  confBar.style.background = sigColor;
+  const badge = g('ai-badge');
+  if (badge) { badge.textContent = data.signal; badge.style.color = sigColor; badge.style.textShadow = `0 0 20px ${sigColor}`; }
 
-  buyPct.textContent  = data.buy_score  + '%';
-  sellPct.textContent = data.sell_score + '%';
+  const confEl = g('ai-confidence');
+  if (confEl) confEl.textContent = `Confidence: ${data.confidence}%`;
+
+  const confBar = g('ai-conf-bar');
+  if (confBar) { confBar.style.width = data.confidence + '%'; confBar.style.background = sigColor; }
+
+  const buyPct = g('ai-buy-pct');   if (buyPct)  buyPct.textContent  = data.buy_score  + '%';
+  const sellPct = g('ai-sell-pct'); if (sellPct) sellPct.textContent = data.sell_score + '%';
 
   const biasColor = data.h4_bias === 'BULLISH' ? 'var(--green)' : data.h4_bias === 'BEARISH' ? 'var(--red)' : 'var(--text3)';
-  h4Bias.textContent = data.h4_bias;
-  h4Bias.style.color = biasColor;
+  const h4Bias = g('ai-h4-bias');
+  if (h4Bias) { h4Bias.textContent = data.h4_bias; h4Bias.style.color = biasColor; }
 
-  if (data.components && data.components.length) {
+  const tbody = g('ai-components-body');
+  if (tbody && data.components && data.components.length) {
     tbody.innerHTML = data.components.map(c => {
       const dc = c.dir === 'BUY' ? 'var(--green)' : c.dir === 'SELL' ? 'var(--red)' : 'var(--text3)';
       const arrow = c.dir === 'BUY' ? '▲ BUY' : c.dir === 'SELL' ? '▼ SELL' : '— NEUTRAL';
@@ -4862,9 +4865,10 @@ function renderAiResult(data) {
 }
 
 async function executeAiTrade(data) {
-  const vol    = parseFloat(document.getElementById('ai-vol').value) || 0.01;
-  const slPips = parseFloat(document.getElementById('ai-sl').value)  || 20;
-  const tpPips = parseFloat(document.getElementById('ai-tp').value)  || 40;
+  const s      = getSettings();
+  const vol    = parseFloat((document.getElementById('ai-vol')      || {}).value) || s.lot  || 0.01;
+  const slPips = parseFloat((document.getElementById('ai-sl')       || {}).value) || s.sl   || 20;
+  const tpPips = parseFloat((document.getElementById('ai-tp')       || {}).value) || s.tp   || 40;
   const lastEl = document.getElementById('ai-last-action');
 
   const body = {
@@ -4881,19 +4885,36 @@ async function executeAiTrade(data) {
   const r = await apiFetch('/api/order', { method: 'POST', body: JSON.stringify(body) });
   const ts = new Date().toLocaleTimeString();
   if (r.error) {
-    lastEl.innerHTML = `<span style="color:var(--red)">[${ts}] ❌ Trade failed: ${r.error}</span>`;
-    toastErr('AI trade failed: ' + r.error);
+    if (lastEl) lastEl.innerHTML = `<span style="color:var(--red)">[${ts}] ❌ Trade failed: ${r.error}</span>`;
+    toast(`🧠 AI ❌ Trade failed: ${r.error}`, false);
   } else {
     const entryPrice = data.signal === 'BUY' ? data.ask : data.bid;
-    lastEl.innerHTML = `<span style="color:var(--green)">[${ts}] ✅ ${data.signal} ${vol} lots @ ${entryPrice} — ${data.confidence}% confidence</span>`;
-    toast(`🧠 AI Agent: ${data.signal} executed at ${data.confidence}% confidence`);
+    if (lastEl) lastEl.innerHTML = `<span style="color:var(--green)">[${ts}] ✅ ${data.signal} ${vol} lots @ ${entryPrice} — ${data.confidence}% confidence</span>`;
+    toast(`🧠 AI Agent: ✅ ${data.signal} executed @ ${data.confidence}% confidence`);
+  }
+}
+
+function _aiAutoUpdateBtn() {
+  const btn   = document.getElementById('ai-auto-btn');
+  const panel = document.getElementById('ai-auto-panel');
+  if (!btn) return;
+  if (aiAutoEnabled) {
+    btn.textContent = 'AUTO: ON';
+    btn.style.background  = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+    btn.style.color       = '#000';
+    if (panel) panel.style.display = 'block';
+  } else {
+    btn.textContent = 'AUTO: OFF';
+    btn.style.background  = 'transparent';
+    btn.style.borderColor = 'var(--border)';
+    btn.style.color       = 'var(--text3)';
+    if (panel) panel.style.display = 'none';
   }
 }
 
 function toggleAiAuto() {
   aiAutoEnabled = !aiAutoEnabled;
-  const btn   = document.getElementById('ai-auto-btn');
-  const panel = document.getElementById('ai-auto-panel');
   if (aiAutoEnabled) {
     // Pre-fill from Settings
     const s = getSettings();
@@ -4905,22 +4926,18 @@ function toggleAiAuto() {
     if (slEl  && !parseFloat(slEl.value))  slEl.value  = s.sl;
     if (tpEl  && !parseFloat(tpEl.value))  tpEl.value  = s.tp;
     if (confEl) confEl.value = s.aiConf;
+    // Cache symbol+tf now so background runs know what to analyze
+    _aiLastSym = (document.getElementById('ai-symbol') || {}).value || _aiLastSym || 'EURUSDc';
+    _aiLastTf  = (document.getElementById('ai-tf')     || {}).value || _aiLastTf  || 'H1';
 
-    btn.textContent = 'AUTO: ON';
-    btn.style.background    = 'var(--green)';
-    btn.style.borderColor   = 'var(--green)';
-    btn.style.color         = '#000';
-    panel.style.display     = 'block';
-    // Start auto loop — analyze every 30s
+    _aiAutoUpdateBtn();
+    // Start global background loop — analyze every 30s regardless of active page
+    if (aiAutoTimer) clearInterval(aiAutoTimer);
     aiAutoTimer = setInterval(runAiAnalysis, 30000);
     runAiAnalysis();  // run immediately
     toast('🧠 AI Auto-Trade ENABLED — Max ' + s.maxTrades + ' trades, ' + s.maxDailyLossPct + '% daily loss limit');
   } else {
-    btn.textContent = 'AUTO: OFF';
-    btn.style.background  = 'transparent';
-    btn.style.borderColor = 'var(--border)';
-    btn.style.color       = 'var(--text3)';
-    panel.style.display   = 'none';
+    _aiAutoUpdateBtn();
     clearInterval(aiAutoTimer);
     aiAutoTimer = null;
     toast('AI Auto-Trade disabled');
@@ -5240,7 +5257,7 @@ function startAlgoRefresh() {
 
 function stopAlgoRefresh() {
   if (algoRefreshTimer) { clearInterval(algoRefreshTimer); algoRefreshTimer = null; }
-  if (aiAutoTimer && !aiAutoEnabled) { clearInterval(aiAutoTimer); aiAutoTimer = null; }
+  // aiAutoTimer is NEVER stopped by page navigation — only toggleAiAuto() stops it
 }
 
 // ── BACKTEST ───────────────────────────────────────────────────────────────────
