@@ -97,8 +97,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
 body.tv-mode .topbar{display:none!important}
 body.tv-mode .sidebar{display:none!important}
 body.tv-mode .app-body{height:100vh}
-body.tv-mode .content{padding:0!important;height:100vh;overflow:hidden}
-body.tv-mode #page-tradingview.active{height:100vh;overflow:hidden}
+body.tv-mode .content{padding:0!important;height:100vh;overflow:hidden;display:flex!important;flex-direction:column}
+body.tv-mode #page-tradingview.active{flex:1;display:flex!important;flex-direction:column;overflow:hidden;min-height:0}
 
 /* PAGES */
 .page{display:none}
@@ -636,21 +636,18 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         </div>
       </div>
 
-      <!-- TRADING VIEW PAGE (full-screen) -->
-      <div class="page" id="page-tradingview" style="position:relative;overflow:hidden">
-        <!-- Floating control bar -->
-        <div style="position:absolute;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:8px;padding:7px 12px;background:rgba(10,10,16,0.92);backdrop-filter:blur(12px);border-bottom:1px solid rgba(139,92,246,0.25)">
-          <!-- Back -->
-          <button onclick="tvExitFullPage()" style="padding:4px 10px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text2);font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer;letter-spacing:0.5px;white-space:nowrap">← BACK</button>
+      <!-- TRADING VIEW PAGE (full-screen flex layout) -->
+      <div class="page" id="page-tradingview">
+        <!-- Control bar — normal flow, fixed height, no absolute positioning -->
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 12px;background:#0a0a10;border-bottom:1px solid rgba(139,92,246,0.3);flex-shrink:0;min-height:42px">
+          <button onclick="tvExitFullPage()" style="padding:4px 10px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text2);font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer;letter-spacing:0.5px;white-space:nowrap;flex-shrink:0">← BACK</button>
           <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
-          <!-- Symbol input -->
           <input id="tv-page-symbol" class="sinput" list="jf-symbol-list" autocomplete="off"
             value="XAUUSDc" placeholder="Symbol…"
-            style="width:110px;font-size:11px;padding:4px 8px"
+            style="width:110px;font-size:11px;padding:4px 8px;flex-shrink:0"
             onchange="tvSetSymbol(this.value.trim())"
             onkeydown="if(event.key==='Enter')tvSetSymbol(this.value.trim())"/>
-          <!-- TF buttons -->
-          <div style="display:flex;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;overflow:hidden;flex-shrink:0">
+          <div style="display:flex;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:6px;overflow:hidden;flex-shrink:0">
             <button onclick="tvSetTf('1')"   class="tv-tf-btn" data-tf="1"   style="padding:4px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M1</button>
             <button onclick="tvSetTf('5')"   class="tv-tf-btn" data-tf="5"   style="padding:4px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M5</button>
             <button onclick="tvSetTf('15')"  class="tv-tf-btn" data-tf="15"  style="padding:4px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">M15</button>
@@ -661,10 +658,10 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <button onclick="tvSetTf('W')"   class="tv-tf-btn" data-tf="W"   style="padding:4px 9px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:transparent;color:var(--text2);transition:all 0.15s">W1</button>
           </div>
           <span id="tv-sym-label" style="font-size:11px;color:var(--accent);font-weight:800;letter-spacing:0.5px"></span>
-          <span style="margin-left:auto;font-size:9px;color:var(--text3);white-space:nowrap">ESC to exit</span>
+          <span style="margin-left:auto;font-size:9px;color:var(--text3);white-space:nowrap;flex-shrink:0">ESC — exit</span>
         </div>
-        <!-- Chart fills entire page -->
-        <div id="tv-page-container" style="width:100%;height:100%;padding-top:40px;box-sizing:border-box"></div>
+        <!-- Chart: flex:1 fills all remaining height — iframe gets correct dimensions -->
+        <div id="tv-page-container" style="flex:1;min-height:0;width:100%"></div>
       </div>
 
       <!-- REPORTS PAGE -->
@@ -4465,19 +4462,39 @@ function _tvBuild(tvSym, tf) {
     interval:            tf,
     timezone:            'Etc/UTC',
     theme:               'dark',
-    style:               '1',
+    style:               '1',          // candlestick
     locale:              'en',
     toolbar_bg:          '#0a0a10',
+    // ── Features ─────────────────────────────
     enable_publishing:   false,
-    hide_side_toolbar:   false,
+    hide_side_toolbar:   false,        // drawing tools sidebar
+    hide_top_toolbar:    false,        // symbol search, TF, chart type, indicators
     allow_symbol_change: true,
+    withdateranges:      true,         // 1D 5D 1M 3M 6M YTD 1Y 5Y ALL buttons
+    details:             true,         // instrument details panel
+    calendar:            false,        // economic calendar (disable — clutters)
+    hotlist:             false,        // market hotlist (disable)
+    show_popup_button:   false,        // no "open in new window" button
     save_image:          true,
-    studies:             ['RSI@tv-basicstudies'],
+    // ── Default studies ───────────────────────
+    studies: [
+      'RSI@tv-basicstudies',
+      'MACD@tv-basicstudies',
+    ],
+    // ── Dark theme colours ────────────────────
     overrides: {
-      'paneProperties.background':     '#0a0a10',
-      'paneProperties.backgroundType': 'solid',
-      'scalesProperties.lineColor':    '#2a2a3a',
-      'scalesProperties.textColor':    '#9ca3af',
+      'paneProperties.background':           '#0a0a10',
+      'paneProperties.backgroundType':       'solid',
+      'paneProperties.vertGridProperties.color': '#1a1a26',
+      'paneProperties.horzGridProperties.color': '#1a1a26',
+      'scalesProperties.lineColor':          '#2a2a3a',
+      'scalesProperties.textColor':          '#9ca3af',
+      'mainSeriesProperties.candleStyle.upColor':         '#10b981',
+      'mainSeriesProperties.candleStyle.downColor':       '#ef4444',
+      'mainSeriesProperties.candleStyle.wickUpColor':     '#10b981',
+      'mainSeriesProperties.candleStyle.wickDownColor':   '#ef4444',
+      'mainSeriesProperties.candleStyle.borderUpColor':   '#10b981',
+      'mainSeriesProperties.candleStyle.borderDownColor': '#ef4444',
     },
   });
   _tvWidget.onChartReady(() => { _tvReady = true; });
