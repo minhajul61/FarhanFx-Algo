@@ -2024,33 +2024,49 @@ def get_algo_live_positions():
 def get_algo_history(days: int = 30):
     def fn():
         date_from = datetime.now() - timedelta(days=days)
-        deals = mt5.history_deals_get(date_from, datetime.now())
+        deals  = mt5.history_deals_get(date_from, datetime.now())
         if deals is None:
             return []
-        # Build position_id -> open deal map for entry prices
+
+        # Build order map once for SL/TP lookup (opening order carries sl/tp)
+        orders    = mt5.history_orders_get(date_from, datetime.now()) or []
+        order_map = {o.ticket: o for o in orders}
+
+        REASON = {4: "SL HIT", 5: "TP HIT", 6: "STOP OUT"}
+
         open_map: dict = {}
-        closed = []
+        closed: list   = []
         for d in deals:
             if d.type not in (0, 1):
                 continue
             if not (d.comment or "").startswith("FarhanFX"):
                 continue
-            if d.entry == 0:   # IN (opening)
+            if d.entry == 0:    # opening leg
                 open_map[d.position_id] = d
-            elif d.entry == 1: # OUT (closing)
+            elif d.entry == 1:  # closing leg
                 closed.append(d)
+
         result = []
         for d in closed:
-            open_d = open_map.get(d.position_id)
+            open_d  = open_map.get(d.position_id)
+            sl_val  = tp_val = None
+            if open_d:
+                op_order = order_map.get(open_d.order)
+                if op_order:
+                    sl_val = round(op_order.sl, 5) if op_order.sl else None
+                    tp_val = round(op_order.tp, 5) if op_order.tp else None
             result.append({
                 "ticket":      d.position_id,
                 "symbol":      d.symbol,
                 "type":        "BUY" if (open_d.type if open_d else d.type) == 0 else "SELL",
                 "volume":      d.volume,
-                "entry_price": open_d.price if open_d else None,
-                "exit_price":  d.price,
+                "entry_price": round(open_d.price, 5) if open_d else None,
+                "exit_price":  round(d.price, 5),
+                "sl":          sl_val,
+                "tp":          tp_val,
                 "profit":      round(d.profit + d.commission + d.swap, 2),
                 "comment":     d.comment,
+                "exit_reason": REASON.get(d.reason, "MANUAL"),
                 "time":        datetime.fromtimestamp(d.time).strftime("%Y-%m-%d %H:%M"),
             })
         result.sort(key=lambda x: x["time"], reverse=True)

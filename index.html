@@ -407,7 +407,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       <div class="nav-item" onclick="showPage('reports',this)"><i class="ti ti-chart-bar"></i> REPORTS</div>
       <div class="nav-item" onclick="showPage('wallet',this)"><i class="ti ti-wallet"></i> WALLET</div>
       <div class="nav-item" onclick="showPage('backtest',this)"><i class="ti ti-test-pipe"></i> BACKTEST</div>
-      <div class="nav-item" onclick="showPage('algo',this)"><i class="ti ti-robot"></i> ALGO</div>
+      <div class="nav-item" onclick="showPage('algo',this)"><i class="ti ti-robot"></i> FOREX ALGO</div>
       <div class="nav-item" onclick="showPage('journal',this)"><i class="ti ti-notebook"></i> JOURNAL</div>
       <div class="nav-item" onclick="showPage('risk',this)"><i class="ti ti-shield-check"></i> RISK CALC</div>
       <div class="nav-item" onclick="showPage('crypto',this)"><i class="ti ti-currency-bitcoin"></i> CRYPTO</div>
@@ -1145,7 +1145,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
       <!-- ALGO PAGE -->
       <div class="page" id="page-algo">
-        <div class="page-title">Algo Strategies</div>
+        <div class="page-title">Forex Algo Strategies</div>
 
         <!-- ═══════════════ AI MARKET ANALYSIS PANEL ═══════════════ -->
         <div class="order-panel" style="border-color:var(--amber);margin-bottom:16px;background:linear-gradient(135deg,rgba(245,158,11,0.04),rgba(139,92,246,0.06))">
@@ -5368,9 +5368,10 @@ async function loadStrategies() {
     const curT       = s.open_count  || 0;
     const maxT       = s.max_trades  || 2;
     const atMax      = curT >= maxT;
-    const livePnl    = s.live_pnl != null ? s.live_pnl : null;
-    const pnlVal     = livePnl != null ? livePnl : (s.pnl || 0);
-    const pnlColor   = pnlVal >= 0 ? 'var(--green)' : 'var(--red)';
+    const realizedPnl = s.pnl || 0;
+    const livePnl     = (s.open_count > 0 && s.live_pnl != null) ? s.live_pnl : null;
+    const realColor   = realizedPnl >= 0 ? 'var(--green)' : 'var(--red)';
+    const liveColor   = livePnl != null ? (livePnl >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text3)';
     const barPct     = Math.min(100, (curT / maxT) * 100);
     const barColor   = atMax ? 'var(--red)' : (curT > 0 ? 'var(--amber)' : 'var(--green)');
 
@@ -5399,8 +5400,8 @@ async function loadStrategies() {
                 <td style="font-family:monospace;color:var(--text3)">#${p.ticket}</td>
                 <td style="color:${p.type==='BUY'?'var(--green)':'var(--red)'};font-weight:700">${p.type}</td>
                 <td>${p.volume}</td>
-                <td style="font-family:monospace">${p.price_open}</td>
-                <td style="font-family:monospace">${p.price_current}</td>
+                <td style="font-family:monospace">${p.open}</td>
+                <td style="font-family:monospace">${p.current}</td>
                 <td style="font-family:monospace;color:var(--amber)">${p.sl || '—'}</td>
                 <td style="font-family:monospace;color:var(--cyan)">${p.tp || '—'}</td>
                 <td style="color:${pc};font-weight:700">${p.profit>=0?'+':''}${p.profit.toFixed(2)}</td>
@@ -5442,11 +5443,17 @@ async function loadStrategies() {
           ${!isRunning ? '<span style="font-size:10px;color:var(--text3);background:var(--card2);border:1px solid var(--border);padding:2px 7px;border-radius:8px">STOPPED</span>' : ''}
         </div>
         <div style="display:flex;gap:10px;align-items:center">
-          <!-- Live PnL -->
+          <!-- Realized P&L (always) -->
           <div style="text-align:right">
-            <div style="font-size:9px;color:var(--text3);letter-spacing:0.5px">${livePnl!=null?'LIVE P&L':'TOTAL P&L'}</div>
-            <div style="font-size:15px;font-weight:800;color:${pnlColor}">${pnlVal >= 0 ? '+' : ''}${pnlVal.toFixed(2)}</div>
+            <div style="font-size:9px;color:var(--text3);letter-spacing:0.5px">REALIZED P&L</div>
+            <div style="font-size:15px;font-weight:800;color:${realColor}">${realizedPnl>=0?'+':''}${realizedPnl.toFixed(2)}</div>
           </div>
+          <!-- Live floating P&L (only when positions open) -->
+          ${livePnl != null ? `
+          <div style="text-align:right">
+            <div style="font-size:9px;color:var(--amber);letter-spacing:0.5px;animation:pulse 2s infinite">LIVE FLOAT</div>
+            <div style="font-size:13px;font-weight:800;color:${liveColor}">${livePnl>=0?'+':''}${livePnl.toFixed(2)}</div>
+          </div>` : ''}
           <div style="text-align:right">
             <div style="font-size:9px;color:var(--text3);letter-spacing:0.5px">TRADES</div>
             <div style="font-size:15px;font-weight:800;color:var(--text1)">${s.trades}</div>
@@ -5499,24 +5506,35 @@ function _renderAlgoHistory() {
     return;
   }
   tbody.innerHTML = rows.map(d => {
-    const isOpen    = !d.exit_price;
-    const pnlColor  = (d.profit || 0) >= 0 ? 'var(--green)' : 'var(--red)';
-    const typeColor = d.type === 'BUY' ? 'var(--green)' : 'var(--red)';
+    const isOpen     = !d.exit_price;
+    const pnlColor   = (d.profit || 0) >= 0 ? 'var(--green)' : 'var(--red)';
+    const typeColor  = d.type === 'BUY' ? 'var(--green)' : 'var(--red)';
     const stratLabel = d.comment ? d.comment.replace('FarhanFX-','') : '—';
-    const rowBg     = isOpen ? 'rgba(139,92,246,0.07)' : 'transparent';
-    const rowBorder = isOpen ? 'border-left:2px solid var(--accent)' : '';
+    const rowBg      = isOpen ? 'rgba(139,92,246,0.07)' : 'transparent';
+    const rowBorder  = isOpen ? 'border-left:2px solid var(--accent)' : '';
+    const reason     = d.exit_reason || (isOpen ? 'OPEN' : '—');
+    const reasonColor = reason === 'TP HIT'   ? 'var(--green)'
+                      : reason === 'SL HIT'   ? 'var(--red)'
+                      : reason === 'STOP OUT' ? 'var(--red)'
+                      : reason === 'OPEN'     ? 'var(--accent)'
+                      : 'var(--text3)';
+    const reasonBg   = reason === 'TP HIT'   ? 'rgba(16,185,129,0.12)'
+                      : reason === 'SL HIT'   ? 'rgba(239,68,68,0.12)'
+                      : reason === 'STOP OUT' ? 'rgba(239,68,68,0.12)'
+                      : reason === 'OPEN'     ? 'rgba(139,92,246,0.15)'
+                      : 'transparent';
     return `<tr style="background:${rowBg};${rowBorder}">
       <td style="font-family:monospace;color:var(--text3)">#${d.ticket}</td>
-      <td><span style="color:var(--cyan);font-size:11px">${stratLabel}</span></td>
+      <td><span style="color:var(--cyan);font-size:11px;font-weight:700">${stratLabel}</span></td>
       <td style="font-weight:700">${d.symbol}</td>
       <td style="color:${typeColor};font-weight:700">${d.type}</td>
       <td>${d.volume}</td>
-      <td style="font-family:monospace">${d.entry_price}</td>
+      <td style="font-family:monospace">${d.entry_price ?? '—'}</td>
       <td style="font-family:monospace">${d.exit_price ?? '—'}</td>
-      <td style="font-family:monospace;color:var(--amber)">${d.sl || '—'}</td>
-      <td style="font-family:monospace;color:var(--cyan)">${d.tp || '—'}</td>
-      <td style="color:${pnlColor};font-weight:700">${d.profit != null ? (d.profit>=0?'+':'') + d.profit.toFixed(2) : isOpen ? '<span style="color:var(--accent);animation:pulse 2s infinite">●OPEN</span>' : '—'}</td>
-      <td style="font-size:10px;color:var(--text3)">${d.exit_reason || (isOpen ? '—' : '—')}</td>
+      <td style="font-family:monospace;color:var(--amber)">${d.sl ?? '—'}</td>
+      <td style="font-family:monospace;color:var(--cyan)">${d.tp ?? '—'}</td>
+      <td style="color:${pnlColor};font-weight:800">${d.profit != null ? (d.profit>=0?'+':'') + d.profit.toFixed(2) : isOpen ? '<span style="color:var(--accent)">● OPEN</span>' : '—'}</td>
+      <td><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:${reasonBg};color:${reasonColor}">${reason}</span></td>
       <td style="font-size:10px;color:var(--text3)">${d.time}</td>
     </tr>`;
   }).join('');
@@ -5540,8 +5558,8 @@ async function loadAlgoHistory() {
         <td style="font-weight:700">${p.symbol}</td>
         <td style="color:${p.type==='BUY'?'var(--green)':'var(--red)'};font-weight:700">${p.type}</td>
         <td>${p.volume}</td>
-        <td style="font-family:monospace">${p.price_open}</td>
-        <td style="font-family:monospace">${p.price_current}</td>
+        <td style="font-family:monospace">${p.open}</td>
+        <td style="font-family:monospace">${p.current}</td>
         <td style="font-family:monospace;color:var(--amber)">${p.sl || '—'}</td>
         <td style="font-family:monospace;color:var(--cyan)">${p.tp || '—'}</td>
         <td style="color:${pc};font-weight:700;animation:${p.profit>=0?'':''}pulse 2s infinite">${p.profit>=0?'+':''}${p.profit.toFixed(2)}</td>
