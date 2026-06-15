@@ -2476,6 +2476,74 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             </div>
           </div>
 
+          <!-- ── TELEGRAM SIGNAL BOT ───────────────────────────────────────── -->
+          <div class="panel" style="margin-top:14px;border-color:var(--cyan)">
+            <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;color:var(--cyan)">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span>📨 Telegram Signal Bot</span>
+                <span id="tg-status-badge" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--card2);color:var(--text3);border:1px solid var(--border)">OFFLINE</span>
+              </div>
+              <button class="sbtn" onclick="tgLoadSignals()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
+            </div>
+
+            <!-- Config row -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px">
+              <!-- Left: bot settings -->
+              <div>
+                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:8px">BOT CONFIGURATION</div>
+                <div class="field" style="margin-bottom:8px">
+                  <label>Bot Token <span style="color:var(--text3);font-size:9px">(from @BotFather)</span></label>
+                  <div style="display:flex;gap:6px">
+                    <input id="tg-token" class="sinput" style="flex:1;font-family:monospace;font-size:11px" type="password" placeholder="123456789:ABCDefgh..."/>
+                    <button onclick="tgTestToken()" style="padding:5px 10px;background:transparent;border:1px solid var(--cyan);color:var(--cyan);border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">TEST</button>
+                  </div>
+                </div>
+                <div class="field" style="margin-bottom:8px">
+                  <label>Allowed Chat ID <span style="color:var(--text3);font-size:9px">(blank = accept all)</span></label>
+                  <input id="tg-chat-id" class="sinput" style="width:100%;font-family:monospace" placeholder="-1001234567890"/>
+                </div>
+                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:6px;margin-top:10px">TRADE SETTINGS</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                  <div class="field" style="margin-bottom:0"><label>Amount (contracts)</label><input id="tg-amount" class="sinput" style="width:100%" type="number" value="0.01" step="0.001" min="0.001"/></div>
+                  <div class="field" style="margin-bottom:0"><label>Leverage</label><input id="tg-leverage" class="sinput" style="width:100%" type="number" value="10" min="1" max="125"/></div>
+                </div>
+                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">EXECUTE ON EXCHANGES</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+                  <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer">
+                    <input type="checkbox" id="tg-ex-binance" style="accent-color:var(--accent)"/> <span style="color:#f0b90b;font-weight:700">Binance</span>
+                  </label>
+                  <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer">
+                    <input type="checkbox" id="tg-ex-bybit" style="accent-color:var(--accent)"/> <span style="color:#ff6a00;font-weight:700">Bybit</span>
+                  </label>
+                  <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer">
+                    <input type="checkbox" id="tg-ex-coinswitch" style="accent-color:var(--accent)"/> <span style="color:var(--accent);font-weight:700">CoinSwitch</span>
+                  </label>
+                </div>
+                <!-- Auto trade toggle -->
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px">
+                    <input type="checkbox" id="tg-auto-trade" style="accent-color:var(--accent);width:16px;height:16px"/>
+                    <span style="color:var(--accent);font-weight:700">AUTO TRADE</span>
+                    <span style="color:var(--text3);font-size:10px">— execute immediately on signal</span>
+                  </label>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button onclick="tgSaveConfig(true)" style="flex:1;padding:8px;background:linear-gradient(135deg,var(--cyan),#0ea5e9);border:none;color:#000;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font)">▶ START BOT</button>
+                  <button onclick="tgSaveConfig(false)" style="padding:8px 14px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font)">■ STOP</button>
+                </div>
+                <div id="tg-config-err" style="font-size:11px;color:var(--red);margin-top:8px;display:none"></div>
+              </div>
+
+              <!-- Right: signal log -->
+              <div>
+                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:8px">SIGNAL LOG <span id="tg-sig-count" style="color:var(--accent)"></span></div>
+                <div id="tg-signal-log" style="background:#0a0c13;border-radius:8px;min-height:220px;max-height:360px;overflow-y:auto;padding:8px">
+                  <div style="color:var(--text3);font-size:11px;text-align:center;padding:40px">No signals yet. Start the bot and wait for signals from your channel.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -5260,6 +5328,128 @@ function stopAlgoRefresh() {
   // aiAutoTimer is NEVER stopped by page navigation — only toggleAiAuto() stops it
 }
 
+// ── TELEGRAM SIGNAL BOT ────────────────────────────────────────────────────────
+let _tgRefTimer = null;
+
+async function tgTestToken() {
+  const token = document.getElementById('tg-token').value.trim();
+  if (!token) { toastErr('Enter bot token first'); return; }
+  const r = await apiFetch('/api/telegram/test', {
+    method: 'POST', body: JSON.stringify({
+      token, chat_id:'', exchanges:[], auto_trade:false, amount:0.01, leverage:10, enabled:false
+    })
+  });
+  if (r.error) { toastErr('❌ Invalid token: ' + r.error); return; }
+  toast(`✅ Bot verified: @${r.bot_name}`);
+}
+
+async function tgSaveConfig(enable) {
+  const token    = document.getElementById('tg-token').value.trim();
+  const chatId   = document.getElementById('tg-chat-id').value.trim();
+  const amount   = parseFloat(document.getElementById('tg-amount').value)   || 0.01;
+  const leverage = parseInt(document.getElementById('tg-leverage').value)   || 10;
+  const autoT    = document.getElementById('tg-auto-trade').checked;
+  const errEl    = document.getElementById('tg-config-err');
+  errEl.style.display = 'none';
+
+  if (enable && !token) { errEl.textContent = 'Bot token required'; errEl.style.display='block'; return; }
+
+  const exchanges = [];
+  if (document.getElementById('tg-ex-binance').checked)    exchanges.push('binance');
+  if (document.getElementById('tg-ex-bybit').checked)      exchanges.push('bybit');
+  if (document.getElementById('tg-ex-coinswitch').checked) exchanges.push('coinswitch');
+
+  if (enable && exchanges.length === 0) { errEl.textContent = 'Select at least one exchange'; errEl.style.display='block'; return; }
+
+  const r = await apiFetch('/api/telegram/config', {
+    method: 'POST',
+    body: JSON.stringify({ token, chat_id: chatId, exchanges, auto_trade: autoT, amount, leverage, enabled: enable })
+  });
+  if (r.error) { toastErr('Config failed: ' + r.error); return; }
+  toast(enable ? '📨 Telegram bot started!' : '📨 Telegram bot stopped');
+  tgLoadStatus();
+}
+
+async function tgLoadStatus() {
+  const r = await apiFetch('/api/telegram/status');
+  if (r.error) return;
+  const badge = document.getElementById('tg-status-badge');
+  if (badge) {
+    if (r.running && r.enabled) {
+      badge.textContent = '● LIVE';
+      badge.style.background = 'rgba(16,185,129,0.15)';
+      badge.style.color      = 'var(--green)';
+      badge.style.borderColor= 'var(--green)';
+    } else {
+      badge.textContent = 'OFFLINE';
+      badge.style.background = 'var(--card2)';
+      badge.style.color      = 'var(--text3)';
+      badge.style.borderColor= 'var(--border)';
+    }
+  }
+  // Restore exchanges checkboxes
+  const exs = r.exchanges || [];
+  const binEl = document.getElementById('tg-ex-binance');
+  const bybEl = document.getElementById('tg-ex-bybit');
+  const csEl  = document.getElementById('tg-ex-coinswitch');
+  if (binEl) binEl.checked = exs.includes('binance');
+  if (bybEl) bybEl.checked = exs.includes('bybit');
+  if (csEl)  csEl.checked  = exs.includes('coinswitch');
+  const atEl = document.getElementById('tg-auto-trade');
+  if (atEl) atEl.checked = r.auto_trade;
+}
+
+async function tgLoadSignals() {
+  const data = await apiFetch('/api/telegram/signals');
+  const log  = document.getElementById('tg-signal-log');
+  const cnt  = document.getElementById('tg-sig-count');
+  if (!log) return;
+  if (!Array.isArray(data) || data.length === 0) {
+    log.innerHTML = '<div style="color:var(--text3);font-size:11px;text-align:center;padding:40px">No signals yet.</div>';
+    if (cnt) cnt.textContent = '';
+    return;
+  }
+  if (cnt) cnt.textContent = `(${data.length})`;
+  log.innerHTML = data.map((s, i) => {
+    const sideColor  = s.side === 'buy'  ? 'var(--green)' : 'var(--red)';
+    const sideLabel  = s.side === 'buy'  ? '▲ LONG' : '▼ SHORT';
+    const statusColor= s.status === 'executed' ? 'var(--green)'
+                     : s.status === 'failed'   ? 'var(--red)'
+                     : s.status === 'signal'   ? 'var(--amber)' : 'var(--text3)';
+    const resHtml = (s.results || []).map(r =>
+      `<span style="font-size:9px;color:${r.ok?'var(--green)':'var(--red)'}">${r.exchange}:${r.ok?'✓':'✗'}</span>`
+    ).join(' ');
+    return `
+    <div style="padding:8px 10px;border-bottom:1px solid var(--border);position:relative">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:${sideColor};font-weight:800;font-size:12px">${sideLabel}</span>
+          <span style="color:var(--cyan);font-weight:700;font-size:12px">${s.symbol}</span>
+          ${s.leverage ? `<span style="font-size:10px;color:var(--text3)">${s.leverage}x</span>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:10px;font-weight:700;color:${statusColor};text-transform:uppercase">${s.status}</span>
+          ${s.status === 'signal' ? `<button onclick="tgExecuteManual(${i})" style="padding:2px 8px;background:var(--accent);border:none;color:#fff;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer">TRADE</button>` : ''}
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;font-size:10px;color:var(--text3);margin-bottom:3px">
+        ${s.entry ? `<span>Entry: <b style="color:var(--text2)">${s.entry}</b></span>` : ''}
+        ${s.tp    ? `<span>TP: <b style="color:var(--green)">${s.tp}</b></span>` : ''}
+        ${s.sl    ? `<span>SL: <b style="color:var(--red)">${s.sl}</b></span>` : ''}
+      </div>
+      ${resHtml ? `<div style="margin-top:3px">${resHtml}</div>` : ''}
+      <div style="font-size:9px;color:var(--text3);margin-top:3px">${s.time}</div>
+    </div>`;
+  }).join('');
+}
+
+async function tgExecuteManual(idx) {
+  const r = await apiFetch(`/api/telegram/execute/${idx}`, { method: 'POST' });
+  if (r.error) { toastErr('Trade failed: ' + r.error); return; }
+  toast('✅ Signal executed!');
+  tgLoadSignals();
+}
+
 // ── BACKTEST ───────────────────────────────────────────────────────────────────
 let btEqChart = null, btDdChart = null;
 
@@ -5747,6 +5937,11 @@ async function cryptoInit() {
   await cryptoCheckStatus();
   cryptoLoadMarkets();   // don't await — markets can load in background
   showCryptoTab('dashboard', document.getElementById('cst-dashboard'));
+  // Telegram bot status + signals
+  tgLoadStatus();
+  tgLoadSignals();
+  clearInterval(_tgRefTimer);
+  _tgRefTimer = setInterval(() => { tgLoadSignals(); tgLoadStatus(); }, 8000);
 }
 
 // ── Exchange status dots ──
@@ -6356,6 +6551,7 @@ function _clearCryptoTimers() {
   if (_dashRefTimer) { clearInterval(_dashRefTimer); _dashRefTimer = null; }
   if (_algoRefTimer) { clearInterval(_algoRefTimer); _algoRefTimer = null; }
   if (_rptRefTimer)  { clearInterval(_rptRefTimer);  _rptRefTimer  = null; }
+  if (_tgRefTimer)   { clearInterval(_tgRefTimer);   _tgRefTimer   = null; }
   if (_labAutoTimer) { clearInterval(_labAutoTimer); _labAutoTimer = null;
     const btn = document.getElementById('lab-auto-btn');
     if (btn) { btn.textContent = '⏵ AUTO'; btn.style.background = ''; btn.style.color = ''; }

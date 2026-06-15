@@ -4005,5 +4005,360 @@ def serve_index():
         "Expires": "0"
     })
 
+
+# ── TELEGRAM SIGNAL BOT ─────────────────────────────────────────────────────────
+import re as _re
+import urllib.request as _urllib_req
+import urllib.error   as _urllib_err
+
+_TG_FILE     = "telegram_cfg.json"
+_TG_SIGNALS  : list = []          # last 100 parsed signals
+_TG_RUNNING  = False
+_TG_THREAD   : threading.Thread | None = None
+_TG_OFFSET   = 0
+
+_TG_CFG_DEF = {
+    "token":       "",
+    "chat_id":     "",            # accept signals only from this chat (blank = any)
+    "exchanges":   ["binance"],   # which exchanges to place on
+    "auto_trade":  False,
+    "amount":      0.01,          # contracts per trade
+    "leverage":    10,
+    "enabled":     False,
+}
+
+
+def _load_tg_cfg() -> dict:
+    try:
+        with open(_TG_FILE) as f:
+            cfg = json.load(f)
+        for k, v in _TG_CFG_DEF.items():
+            cfg.setdefault(k, v)
+        return cfg
+    except Exception:
+        return dict(_TG_CFG_DEF)
+
+
+def _save_tg_cfg(cfg: dict):
+    with open(_TG_FILE, "w") as f:
+        json.dump(cfg, f, indent=2)
+
+
+def _tg_api(token: str, method: str, params: dict | None = None) -> dict:
+    url  = f"https://api.telegram.org/bot{token}/{method}"
+    body = json.dumps(params or {}).encode()
+    req  = _urllib_req.Request(url, data=body,
+                               headers={"Content-Type": "application/json"})
+    try:
+        with _urllib_req.urlopen(req, timeout=30) as r:
+            return json.loads(r.read())
+    except _urllib_err.HTTPError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _normalise_symbol(raw: str) -> str:
+    """Convert 'BTC', 'BTCUSDT', 'BTC/USDT', 'BTC-USDT' → 'BTC/USDT:USDT'"""
+    raw = raw.upper().replace("-", "/").replace("_", "/")
+    if "/" not in raw:
+        # strip trailing USDT/BUSD/USDC
+        for q in ("USDT", "BUSD", "USDC"):
+            if raw.endswith(q) and len(raw) > len(q):
+                raw = raw[:-len(q)] + "/" + q
+                break
+        else:
+            raw = raw + "/USDT"
+    if ":" not in raw:
+        quote = raw.split("/")[1] if "/" in raw else "USDT"
+        raw = raw + ":" + quote
+    return raw
+
+
+def _parse_tg_signal(text: str) -> dict | None:
+    """
+    Parse common Telegram signal formats. Returns dict or None.
+    Handles formats like:
+        🟢 LONG BTC/USDT  /  BUY BTCUSDT  /  #BTC LONG
+    Entry: 63500 / Entry: 63000-63500
+    TP1: 64000   TP: 64000, 65000
+    SL: 62000
+    Leverage: 10x
+    """
+    t = text.strip()
+
+    # Direction
+    side = None
+    if _re.search(r'\b(LONG|BUY)\b', t, _re.I):
+        side = "buy"
+    elif _re.search(r'\b(SHORT|SELL)\b', t, _re.I):
+        side = "sell"
+    if side is None:
+        return None   # not a signal
+
+    # Symbol — look for coin name patterns
+    sym_raw = None
+    # Pattern: BTC/USDT, BTC-USDT, BTCUSDT, BTC/USDT:USDT
+    m = _re.search(r'#?([A-Z]{2,10})[/-]?(USDT|BUSD|USDC|BTC)\b', t, _re.I)
+    if m:
+        sym_raw = m.group(1).upper() + "/" + m.group(2).upper()
+    else:
+        # Try: "#BTCUSDT" or "BTC" standalone near LONG/SHORT
+        m = _re.search(r'#([A-Z]{2,10})', t, _re.I)
+        if m:
+            sym_raw = m.group(1).upper()
+    if not sym_raw:
+        return None
+
+    symbol = _normalise_symbol(sym_raw)
+
+    # Entry — take first number in entry range
+    entry = None
+    m = _re.search(r'entry\s*[:\-–]?\s*([\d,.]+)', t, _re.I)
+    if m:
+        entry = float(m.group(1).replace(",", ""))
+    else:
+        # Try "@ 63500"
+        m = _re.search(r'@\s*([\d,.]+)', t, _re.I)
+        if m:
+            entry = float(m.group(1).replace(",", ""))
+
+    # TP — collect all TP values, use first
+    tps = _re.findall(r'(?:tp\d*|take\s*profit)\s*[:\-–]?\s*([\d,.]+)', t, _re.I)
+    tp = float(tps[0].replace(",", "")) if tps else None
+
+    # SL
+    sl = None
+    m = _re.search(r'(?:sl|stop\s*loss)\s*[:\-–]?\s*([\d,.]+)', t, _re.I)
+    if m:
+        sl = float(m.group(1).replace(",", ""))
+
+    # Leverage
+    leverage = 10
+    m = _re.search(r'(?:leverage|lev)\s*[:\-–]?\s*(\d+)\s*[xX]?', t, _re.I)
+    if not m:
+        m = _re.search(r'(\d+)\s*[xX]', t)
+    if m:
+        leverage = int(m.group(1))
+
+    return {
+        "symbol":   symbol,
+        "side":     side,
+        "entry":    entry,
+        "tp":       tp,
+        "tps":      [float(x.replace(",","")) for x in tps],
+        "sl":       sl,
+        "leverage": leverage,
+        "raw":      t[:400],
+    }
+
+
+def _tg_execute_signal(sig: dict, cfg: dict) -> list:
+    """Place orders on all configured exchanges. Returns list of results."""
+    results = []
+    for exname in cfg.get("exchanges", []):
+        ex = _active_ex.get(exname.lower())
+        if not ex:
+            results.append({"exchange": exname, "ok": False, "error": "not connected"})
+            continue
+        try:
+            lev = sig.get("leverage") or cfg.get("leverage", 10)
+            amt = cfg.get("amount", 0.01)
+            try:
+                ex.set_leverage(lev, sig["symbol"])
+            except Exception:
+                pass
+            order = ex.create_order(
+                symbol=sig["symbol"],
+                type="market",
+                side=sig["side"],
+                amount=amt,
+            )
+            results.append({
+                "exchange": exname,
+                "ok":       True,
+                "order_id": order.get("id"),
+                "side":     sig["side"],
+                "amount":   amt,
+            })
+        except Exception as e:
+            results.append({"exchange": exname, "ok": False, "error": str(e)[:150]})
+    return results
+
+
+def _tg_poll_loop():
+    global _TG_OFFSET, _TG_RUNNING
+    print("Telegram bot: polling started")
+    while _TG_RUNNING:
+        cfg = _load_tg_cfg()
+        token = cfg.get("token", "")
+        if not token:
+            _time.sleep(5)
+            continue
+        try:
+            resp = _tg_api(token, "getUpdates", {
+                "offset":          _TG_OFFSET,
+                "timeout":         20,
+                "allowed_updates": ["message", "channel_post"],
+            })
+        except Exception:
+            _time.sleep(5)
+            continue
+
+        if not resp.get("ok"):
+            _time.sleep(10)
+            continue
+
+        for upd in resp.get("result", []):
+            _TG_OFFSET = upd["update_id"] + 1
+            # Get message from either personal chat or channel
+            msg = upd.get("message") or upd.get("channel_post") or {}
+            text = msg.get("text") or msg.get("caption") or ""
+            chat_id = str(msg.get("chat", {}).get("id", ""))
+
+            # Filter by allowed chat_id if configured
+            allowed = cfg.get("chat_id", "").strip()
+            if allowed and chat_id != allowed:
+                continue
+
+            if not text:
+                continue
+
+            sig = _parse_tg_signal(text)
+            if not sig:
+                continue
+
+            # Build record
+            ts   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            rec  = {
+                "time":     ts,
+                "symbol":   sig["symbol"],
+                "side":     sig["side"],
+                "entry":    sig.get("entry"),
+                "tp":       sig.get("tp"),
+                "sl":       sig.get("sl"),
+                "leverage": sig.get("leverage"),
+                "raw":      sig.get("raw", "")[:200],
+                "status":   "received",
+                "results":  [],
+                "chat_id":  chat_id,
+            }
+
+            if cfg.get("auto_trade") and cfg.get("enabled"):
+                results = _tg_execute_signal(sig, cfg)
+                rec["results"] = results
+                rec["status"]  = "executed" if any(r["ok"] for r in results) else "failed"
+            else:
+                rec["status"] = "signal"   # received but not auto-traded
+
+            _TG_SIGNALS.insert(0, rec)
+            if len(_TG_SIGNALS) > 100:
+                _TG_SIGNALS.pop()
+
+            print(f"Telegram signal: {sig['side'].upper()} {sig['symbol']} → {rec['status']}")
+
+    print("Telegram bot: polling stopped")
+
+
+def _start_tg_bot():
+    global _TG_RUNNING, _TG_THREAD
+    if _TG_RUNNING:
+        return
+    _TG_RUNNING = True
+    _TG_THREAD  = threading.Thread(target=_tg_poll_loop, daemon=True)
+    _TG_THREAD.start()
+
+
+def _stop_tg_bot():
+    global _TG_RUNNING
+    _TG_RUNNING = False
+
+
+# Auto-start if config exists and enabled
+try:
+    _tg_startup_cfg = _load_tg_cfg()
+    if _tg_startup_cfg.get("token") and _tg_startup_cfg.get("enabled"):
+        _start_tg_bot()
+except Exception:
+    pass
+
+
+class TgConfigReq(BaseModel):
+    token:       str
+    chat_id:     str  = ""
+    exchanges:   list = ["binance"]
+    auto_trade:  bool = False
+    amount:      float = 0.01
+    leverage:    int   = 10
+    enabled:     bool  = True
+
+
+@app.post("/api/telegram/config")
+def tg_config_save(req: TgConfigReq):
+    cfg = req.model_dump()
+    _save_tg_cfg(cfg)
+    if cfg["enabled"] and cfg["token"]:
+        _stop_tg_bot()
+        _time.sleep(0.5)
+        _start_tg_bot()
+        return {"ok": True, "status": "Bot started"}
+    else:
+        _stop_tg_bot()
+        return {"ok": True, "status": "Bot stopped"}
+
+
+@app.get("/api/telegram/config")
+def tg_config_get():
+    cfg = _load_tg_cfg()
+    cfg.pop("token", None)   # don't expose token via GET
+    cfg["running"] = _TG_RUNNING
+    return cfg
+
+
+@app.get("/api/telegram/status")
+def tg_status():
+    cfg = _load_tg_cfg()
+    return {
+        "running":    _TG_RUNNING,
+        "enabled":    cfg.get("enabled", False),
+        "auto_trade": cfg.get("auto_trade", False),
+        "exchanges":  cfg.get("exchanges", []),
+        "chat_id":    cfg.get("chat_id", ""),
+        "has_token":  bool(cfg.get("token")),
+    }
+
+
+@app.get("/api/telegram/signals")
+def tg_signals_list():
+    return _TG_SIGNALS[:50]
+
+
+@app.post("/api/telegram/test")
+def tg_test(req: TgConfigReq):
+    """Verify the bot token is valid."""
+    r = _tg_api(req.token, "getMe")
+    if r.get("ok"):
+        return {"ok": True, "bot_name": r["result"].get("username")}
+    return JSONResponse(status_code=400, content={"error": r.get("error", "Invalid token")})
+
+
+@app.post("/api/telegram/execute/{idx}")
+def tg_execute_manual(idx: int):
+    """Manually execute a received signal by index."""
+    if idx < 0 or idx >= len(_TG_SIGNALS):
+        return JSONResponse(status_code=404, content={"error": "Signal not found"})
+    rec = _TG_SIGNALS[idx]
+    cfg = _load_tg_cfg()
+    sig = {
+        "symbol":   rec["symbol"],
+        "side":     rec["side"],
+        "leverage": rec.get("leverage", 10),
+    }
+    results = _tg_execute_signal(sig, cfg)
+    rec["results"] = results
+    rec["status"]  = "executed" if any(r["ok"] for r in results) else "failed"
+    return {"ok": True, "results": results}
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
