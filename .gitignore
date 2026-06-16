@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 *.pyo
 .env
+exchanges.json
+server_out.txt
+server_err.txt
+Trading Meterial/

@@ -403,6 +403,61 @@ def get_deals(days: int = 30):
     return _mt5_call(fn)
 
 
+@app.get("/api/account/funding")
+def get_account_funding(date_from: str = "", date_to: str = ""):
+    """Returns deposit/withdrawal history (MT5 deal type 2 = BALANCE) + current balance."""
+    def fn():
+        info = mt5.account_info()
+        if info is None:
+            return {"error": "No account info"}
+        now = datetime.now()
+        if date_from and date_to:
+            _df = datetime.strptime(date_from, "%Y-%m-%d")
+            _dt = datetime.strptime(date_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+        elif date_from:
+            _df = datetime.strptime(date_from, "%Y-%m-%d")
+            _dt = now
+        elif date_to:
+            _df = datetime(2010, 1, 1)
+            _dt = datetime.strptime(date_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+        else:
+            _df = datetime(2010, 1, 1)
+            _dt = now
+        deals = mt5.history_deals_get(_df, _dt + timedelta(seconds=60))
+        if deals is None:
+            deals = []
+        entries = []
+        total_deposit = 0.0
+        total_withdrawal = 0.0
+        for d in deals:
+            if d.type != 2:  # DEAL_TYPE_BALANCE only
+                continue
+            amount = round(d.profit, 2)
+            kind = "deposit" if amount >= 0 else "withdrawal"
+            if kind == "deposit":
+                total_deposit += amount
+            else:
+                total_withdrawal += abs(amount)
+            entries.append({
+                "ticket": d.ticket,
+                "time": datetime.fromtimestamp(d.time).strftime("%Y-%m-%d %H:%M:%S"),
+                "amount": amount,
+                "kind": kind,
+                "comment": d.comment or "",
+            })
+        entries.sort(key=lambda x: x["time"], reverse=True)
+        return {
+            "balance": round(info.balance, 2),
+            "equity": round(info.equity, 2),
+            "currency": info.currency,
+            "total_deposit": round(total_deposit, 2),
+            "total_withdrawal": round(total_withdrawal, 2),
+            "net_funded": round(total_deposit - total_withdrawal, 2),
+            "entries": entries,
+        }
+    return _mt5_call(fn)
+
+
 @app.get("/api/deals/today")
 def get_deals_today():
     """Raw today's deals for debugging TODAY REALIZED discrepancies."""
@@ -519,11 +574,30 @@ def _session_name(utc_hour: int) -> str:
     return "Off-Hours"
 
 @app.get("/api/reports")
-def get_reports(months: int = 12):
-    """Full analytics: monthly, daily, symbol, day-of-week, session breakdown."""
+def get_reports(months: int = 12, filter: str = "all", date_from: str = "", date_to: str = ""):
+    """Full analytics: monthly, daily, symbol, day-of-week, session breakdown.
+    filter: all | manual_forex | manual_crypto
+    date_from/date_to: YYYY-MM-DD (overrides months when provided)
+    """
+    _CRYPTO_SYMS = ("BTC","ETH","LTC","XRP","BNB","SOL","ADA","DOGE","XMR","DOT","AVAX","MATIC")
+    def _is_crypto(sym): return any(c in (sym or "").upper() for c in _CRYPTO_SYMS)
+    def _is_algo(comment): return (comment or "").startswith("FarhanFX-")
+
     def fn():
-        now        = datetime.now()
-        date_from  = now - timedelta(days=months * 31)
+        now = datetime.now()
+        # Custom date range overrides months preset
+        if date_from and date_to:
+            _date_from = datetime.strptime(date_from, "%Y-%m-%d")
+            _date_to   = datetime.strptime(date_to,   "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+        elif date_from:
+            _date_from = datetime.strptime(date_from, "%Y-%m-%d")
+            _date_to   = now
+        elif date_to:
+            _date_from = datetime(2010, 1, 1)
+            _date_to   = datetime.strptime(date_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+        else:
+            _date_from = now - timedelta(days=months * 31)
+            _date_to   = now
         # Fetch full history for monthly chart (up to 10 years back)
         date_wide  = datetime(max(now.year - 10, 2010), 1, 1)
         deals_all  = mt5.history_deals_get(date_wide, now + timedelta(seconds=60))
@@ -531,7 +605,8 @@ def get_reports(months: int = 12):
             return {"monthly": [], "monthly_chart": [], "by_symbol": [], "by_session": [],
                     "daily_pnl": [], "summary": {}}
 
-        cutoff_ts = date_from.timestamp()
+        cutoff_ts = _date_from.timestamp()
+        ceil_ts   = _date_to.timestamp()
 
         in_map   = {}
         out_list = []
@@ -544,6 +619,11 @@ def get_reports(months: int = 12):
             if not is_close:
                 in_map[d.position_id] = d
             else:
+                # Apply filter
+                if filter == "manual_forex":
+                    if _is_algo(d.comment) or _is_crypto(d.symbol): continue
+                elif filter == "manual_crypto":
+                    if _is_algo(d.comment) or not _is_crypto(d.symbol): continue
                 # Build monthly_chart from ALL closing deals (no cutoff)
                 net_c = round(d.profit + d.commission + d.swap, 2)
                 dt_c  = datetime.fromtimestamp(d.time)
@@ -556,7 +636,7 @@ def get_reports(months: int = 12):
                 if net_c > 0: monthly_chart[mkey]["wins"]   += 1
                 else:         monthly_chart[mkey]["losses"] += 1
 
-                if d.time >= cutoff_ts:
+                if cutoff_ts <= d.time <= ceil_ts:
                     out_list.append(d)
 
         # ── Accumulators ──────────────────────────────────────────────────────
@@ -1823,6 +1903,114 @@ def _check_nr7(highs, lows):
     return ranges[-1] == min(ranges) and ranges[-1] > 0
 
 
+def _detect_three_bar_reversal(opens, closes, highs, lows):
+    """3-Bar Reversal: bar1 bearish → bar2 makes lower low (no outside bar) → bar3 closes above bar1/2 high.
+    Reverse for bearish 3BR. High-probability trapped-trader reversal from PA Trading book."""
+    if len(closes) < 4: return "NEUTRAL", "Not enough data"
+    o3,c3,h3,l3 = opens[-4],closes[-4],highs[-4],lows[-4]  # oldest
+    o2,c2,h2,l2 = opens[-3],closes[-3],highs[-3],lows[-3]
+    o1,c1,h1,l1 = opens[-2],closes[-2],highs[-2],lows[-2]
+    o0,c0       = opens[-1],closes[-1]
+
+    # Bullish 3BR: bar3 bearish → bar2 lower low (not outside) → bar1 closes above bar3 high
+    if c3 < o3 and l2 < l3:
+        is_outside = h2 > h3 and l2 < l3
+        if not is_outside and c1 > h3:
+            return "BUY", f"3-Bar Reversal bullish — trapped sellers, close {c1:.4f} > high {h3:.4f}"
+    # Bearish 3BR: bar3 bullish → bar2 higher high (not outside) → bar1 closes below bar3 low
+    if c3 > o3 and h2 > h3:
+        is_outside = h2 > h3 and l2 < l3
+        if not is_outside and c1 < l3:
+            return "SELL", f"3-Bar Reversal bearish — trapped buyers, close {c1:.4f} < low {l3:.4f}"
+    return "NEUTRAL", "No 3-bar reversal"
+
+
+def _detect_m2b_m2s(closes, highs, lows, atr):
+    """M2B/M2S: Two-legged pullback to rising/falling 20 EMA.
+    Highest-probability setup from PA Trading book — price bounces EMA after 2 distinct pullback legs."""
+    if len(closes) < 30: return "NEUTRAL", "Not enough data"
+    ema20v = _ema(closes, 20)
+    ema20  = ema20v[-1]
+    price  = closes[-1]
+    tol    = atr * 1.0
+    ema_rising  = ema20 > ema20v[-8]
+    ema_falling = ema20 < ema20v[-8]
+
+    if ema_rising and price > ema20:
+        # Look in last 15 bars for two-leg pullback touching EMA zone
+        window_l = lows[-15:]
+        window_e = ema20v[-15:]
+        leg_count = 0
+        touched_ema = False
+        for i in range(1, len(window_l)-1):
+            if window_l[i] < window_l[i-1] and (i+1 >= len(window_l) or window_l[i] < window_l[i+1]):
+                leg_count += 1
+                if window_l[i] <= window_e[i] + tol:
+                    touched_ema = True
+        if leg_count >= 2 and touched_ema:
+            return "BUY", f"M2B: 2-leg pullback touched 20 EMA [{ema20:.4f}] — trend resumption"
+
+    if ema_falling and price < ema20:
+        window_h = highs[-15:]
+        window_e = ema20v[-15:]
+        leg_count = 0
+        touched_ema = False
+        for i in range(1, len(window_h)-1):
+            if window_h[i] > window_h[i-1] and (i+1 >= len(window_h) or window_h[i] > window_h[i+1]):
+                leg_count += 1
+                if window_h[i] >= window_e[i] - tol:
+                    touched_ema = True
+        if leg_count >= 2 and touched_ema:
+            return "SELL", f"M2S: 2-leg pullback touched 20 EMA [{ema20:.4f}] — trend resumption"
+
+    return "NEUTRAL", f"No M2B/M2S (EMA20={ema20:.4f})"
+
+
+def _check_pivot_points(highs, lows, closes, price, atr, lookback=20):
+    """Daily pivot points (PP, R1/R2, S1/S2) as key S/R levels.
+    Uses last `lookback` bars to compute previous session's range."""
+    if len(highs) < lookback + 5: return "NEUTRAL", "Not enough data"
+    prev_h = max(highs[-lookback-1:-1])
+    prev_l = min(lows[-lookback-1:-1])
+    prev_c = closes[-lookback-1]
+    pp  = (prev_h + prev_l + prev_c) / 3
+    r1  = pp * 2 - prev_l
+    r2  = pp + (prev_h - prev_l)
+    s1  = pp * 2 - prev_h
+    s2  = pp - (prev_h - prev_l)
+    tol = atr * 0.7
+    levels = [("S2",s2,"BUY"),("S1",s1,"BUY"),("PP",pp,"NEUTRAL"),("R1",r1,"SELL"),("R2",r2,"SELL")]
+    for name, lvl, bias in levels:
+        if abs(price - lvl) < tol:
+            if bias == "BUY":
+                return "BUY",  f"At {name}={lvl:.4f} (pivot support)"
+            if bias == "SELL":
+                return "SELL", f"At {name}={lvl:.4f} (pivot resistance)"
+            # PP: direction depends on whether price is bouncing up or down
+            if len(closes) >= 3:
+                if closes[-1] > closes[-2]: return "BUY",  f"Bounce at PP={lvl:.4f}"
+                if closes[-1] < closes[-2]: return "SELL", f"Rejection at PP={lvl:.4f}"
+    return "NEUTRAL", f"PP={pp:.4f}  R1={r1:.4f}  S1={s1:.4f}"
+
+
+def _detect_consecutive_bars_fade(opens, closes, atr):
+    """Fade signal: 4+ consecutive bars in same direction — exhaustion likely.
+    Counter-signal from PA book: market tends to reverse after 4+ consecutive bars."""
+    if len(closes) < 6: return "NEUTRAL", "Not enough data"
+    bull_count = 0
+    bear_count = 0
+    for i in range(-5, 0):
+        if closes[i] > opens[i]: bull_count += 1
+        else: bull_count = 0
+        if closes[i] < opens[i]: bear_count += 1
+        else: bear_count = 0
+    if bull_count >= 4:
+        return "SELL", f"Exhaustion: {bull_count} consecutive bullish bars — fade signal"
+    if bear_count >= 4:
+        return "BUY",  f"Exhaustion: {bear_count} consecutive bearish bars — fade signal"
+    return "NEUTRAL", f"Bull streak: {bull_count}  Bear streak: {bear_count}"
+
+
 def _get_ict_killzone():
     """Returns (zone_name, level: HIGH/MEDIUM/LOW). All UTC."""
     hm = datetime.now(timezone.utc).hour * 60 + datetime.now(timezone.utc).minute
@@ -1907,18 +2095,29 @@ def _check_liq_sweep(highs, lows, closes, atr):
             return "SELL", f"Liq Sweep above {wh:.2f} → reversal DOWN"
     return "NEUTRAL","No recent sweep"
 
-def _has_open_position(symbol, magic):
+def _match_position(p, magic, strategy=""):
+    """True if position belongs to this strategy — by magic (same session) OR comment (cross-restart).
+    hash() is non-deterministic in Python 3.3+, so magic changes each restart.
+    Comment prefix survives restarts; broker truncates to 16 chars so we match on [:16]."""
+    if p.magic == magic:
+        return True
+    if strategy:
+        prefix = f"FarhanFX-{strategy}"[:16]
+        return (p.comment or "").startswith(prefix) and "Close" not in (p.comment or "")
+    return False
+
+def _has_open_position(symbol, magic, strategy=""):
     positions = mt5.positions_get(symbol=symbol)
     if not positions:
         return False
-    return any(p.magic == magic for p in positions)
+    return any(_match_position(p, magic, strategy) for p in positions)
 
-def _count_open_positions(symbol, magic):
-    """Return number of open positions for a given symbol+magic."""
+def _count_open_positions(symbol, magic, strategy=""):
+    """Count open positions matching by magic OR comment prefix (survives server restarts)."""
     positions = mt5.positions_get(symbol=symbol)
     if not positions:
         return 0
-    return sum(1 for p in positions if p.magic == magic)
+    return sum(1 for p in positions if _match_position(p, magic, strategy))
 
 def _get_open_positions_detail(symbol, magic):
     """Return list of dicts for open positions of a strategy."""
@@ -1971,6 +2170,114 @@ def _send_order(symbol, side, volume, sl, tp, magic, comment):
     return result
 
 
+# ── AI SIGNAL GATE ─────────────────────────────────────────────────────────────
+# Shared cache: refreshed every 5 min per symbol to avoid repeated MT5 calls
+_ai_gate_cache: dict = {}  # symbol → {time, buy_score, sell_score, reason}
+
+def _refresh_ai_gate(symbol: str) -> dict:
+    """Fetch H4+D1+H1 data and compute directional AI scores (0-100)."""
+    try:
+        h4_r, _ = _get_rates(symbol, "H4", 200)
+        d1_r, _ = _get_rates(symbol, "D1",  60)
+        h1_r, _ = _get_rates(symbol, "H1", 100)
+
+        def _score(direction):
+            s = 0
+            reasons = []
+
+            # D1 trend (30 pts)
+            if d1_r is not None and len(d1_r) >= 30:
+                d1c = [float(r["close"]) for r in d1_r]
+                d1e50  = _ema(d1c, min(50,  len(d1c)-1))
+                d1e200 = _ema(d1c, min(200, len(d1c)-1))
+                if d1c[-1] > d1e50[-1] > d1e200[-1]:   d1_dir = "BUY"
+                elif d1c[-1] < d1e50[-1] < d1e200[-1]: d1_dir = "SELL"
+                else:                                   d1_dir = "NEUTRAL"
+                if d1_dir == direction:  s += 30; reasons.append("D1✓")
+                elif d1_dir == "NEUTRAL": s += 10; reasons.append("D1~")
+                else: reasons.append("D1✗")
+
+            # H4 trend (25 pts)
+            if h4_r is not None and len(h4_r) >= 50:
+                h4c = [float(r["close"]) for r in h4_r]
+                h4e50  = _ema(h4c, 50)
+                h4e200 = _ema(h4c, min(200, len(h4c)-1))
+                if h4c[-1] > h4e50[-1] > h4e200[-1]:   h4_dir = "BUY"
+                elif h4c[-1] < h4e50[-1] < h4e200[-1]: h4_dir = "SELL"
+                else:                                   h4_dir = "NEUTRAL"
+                if h4_dir == direction:  s += 25; reasons.append("H4✓")
+                elif h4_dir == "NEUTRAL": s += 8;  reasons.append("H4~")
+                else: reasons.append("H4✗")
+
+            # H1 EMA + RSI (25 pts)
+            if h1_r is not None and len(h1_r) >= 50:
+                h1c = [float(r["close"]) for r in h1_r]
+                h1h = [float(r["high"])  for r in h1_r]
+                h1l = [float(r["low"])   for r in h1_r]
+                e20 = _ema(h1c, 20); e50 = _ema(h1c, 50)
+                rsi = _rsi(h1c, 14)
+                atr = _atr(h1h, h1l, h1c, 14)
+                price = h1c[-1]
+
+                # EMA alignment (15 pts)
+                if direction == "BUY"  and price > e20[-1] > e50[-1]: s += 15; reasons.append("H1EMA✓")
+                elif direction == "SELL" and price < e20[-1] < e50[-1]: s += 15; reasons.append("H1EMA✓")
+                else: reasons.append("H1EMA✗")
+
+                # RSI not extreme (10 pts)
+                if direction == "BUY"  and 35 <= rsi <= 65: s += 10; reasons.append(f"RSI{rsi:.0f}✓")
+                elif direction == "SELL" and 35 <= rsi <= 65: s += 10; reasons.append(f"RSI{rsi:.0f}✓")
+                elif direction == "BUY"  and rsi > 72: reasons.append(f"RSI{rsi:.0f}OB✗")
+                elif direction == "SELL" and rsi < 28: reasons.append(f"RSI{rsi:.0f}OS✗")
+                else: s += 5; reasons.append(f"RSI{rsi:.0f}~")
+
+            # Price action patterns (20 pts)
+            if h1_r is not None and len(h1_r) >= 10:
+                h1o = [float(r["open"])  for r in h1_r]
+                h1c2= [float(r["close"]) for r in h1_r]
+                h1h2= [float(r["high"])  for r in h1_r]
+                h1l2= [float(r["low"])   for r in h1_r]
+                pa = _detect_price_action(h1o, h1c2, h1h2, h1l2)
+                if pa:
+                    best = max(pa, key=lambda x: x[2])
+                    if best[1] == direction and best[2] >= 0.6:
+                        s += 20; reasons.append(f"PA:{best[0]}✓")
+                    elif best[1] == direction:
+                        s += 10; reasons.append(f"PA:{best[0]}~")
+                    else:
+                        reasons.append("PA✗")
+
+            return min(s, 100), " | ".join(reasons)
+
+        buy_score,  buy_reason  = _score("BUY")
+        sell_score, sell_reason = _score("SELL")
+        result = {
+            "time":          datetime.now(),
+            "buy_score":     buy_score,
+            "sell_score":    sell_score,
+            "buy_reason":    buy_reason,
+            "sell_reason":   sell_reason,
+        }
+        _ai_gate_cache[symbol] = result
+        return result
+    except Exception:
+        return {"time": datetime.now(), "buy_score": 50, "sell_score": 50,
+                "buy_reason": "error", "sell_reason": "error"}
+
+def _check_ai_gate(symbol: str, direction: str, threshold: int = 55) -> tuple:
+    """Return (approved: bool, score: int, reason: str). Cache valid 5 min."""
+    cached = _ai_gate_cache.get(symbol)
+    age = (datetime.now() - cached["time"]).seconds if cached else 999
+    if age > 300:  # refresh every 5 min
+        cached = _mt5_call(lambda: _refresh_ai_gate(symbol))
+        if isinstance(cached, dict) and "error" in cached:
+            return True, 50, "gate-error"
+    if not cached:
+        return True, 50, "no-cache"
+    score  = cached["buy_score"]  if direction == "BUY"  else cached["sell_score"]
+    reason = cached["buy_reason"] if direction == "BUY"  else cached["sell_reason"]
+    return score >= threshold, score, reason
+
 def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
     symbol   = cfg["symbol"]
     tf       = cfg["timeframe"]
@@ -2001,7 +2308,7 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
 
     def do_trade(side, entry, sl_val, tp_val):
         def fn():
-            cur_count = _count_open_positions(symbol, magic)
+            cur_count = _count_open_positions(symbol, magic, strategy)
             if cur_count >= max_trades:
                 return {"skip": True, "reason": f"max_trades({max_trades})"}
             return _send_order(symbol, side, volume, sl_val, tp_val, magic, f"FarhanFX-{strategy}")
@@ -2054,14 +2361,14 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 news_now = _get_upcoming_news(symbol, minutes_ahead=5, minutes_past=0)
                 high_news = [e for e in news_now if e["impact"]=="High" and 0<=e["mins_from_now"]<=5]
                 if high_news:
-                    cur_pos = _mt5_call(lambda: _count_open_positions(symbol, magic)) or 0
+                    cur_pos = _mt5_call(lambda: _count_open_positions(symbol, magic, strategy)) or 0
                     if cur_pos > 0:
                         def _close_all_news():
                             positions = mt5.positions_get(symbol=symbol)
                             if not positions: return 0
                             closed = 0
                             for pos in positions:
-                                if pos.magic != magic: continue
+                                if not _match_position(pos, magic, strategy): continue
                                 rtype = mt5.ORDER_TYPE_SELL if pos.type==0 else mt5.ORDER_TYPE_BUY
                                 t = mt5.symbol_info_tick(symbol)
                                 pclose = t.bid if pos.type==0 else t.ask
@@ -2082,9 +2389,11 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
             except Exception as _ne:
                 add_log(f"⚠️ News-close error: {_ne}")
 
-            # ── Session filter: avoid 12:00-12:59 UTC (data shows 44% WR, losing) ─
+            # ── Session filter: block known low-WR hours (data-driven) ──────────
             _utc_hour = datetime.now(timezone.utc).hour
-            _session_block = (_utc_hour == 12)
+            # 12 UTC: pre-NY dead zone (historical 44% WR)
+            # 20 UTC: Sydney open choppy period (live data shows 22% WR, -$18)
+            _session_block = _utc_hour in (12, 20)
 
             # ── Minimum TP enforcement: require TP >= 1.5 × SL (data-driven R:R fix) ─
             if tp_pips < sl_pips * 1.5:
@@ -2125,21 +2434,6 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 elif price < ema20[-1] < ema100[-1] and rsi_v < 50:
                     signal = "SELL"
 
-            elif strategy == "SMC Liquidity":
-                # Liquidity Sweep + BOS confirmation
-                n = len(closes)
-                liq_sigs = _compute_smc_liquidity_signals(opens, closes, highs, lows, n)
-                bos_dir, bos_detail = _detect_bos(closes, highs, lows)
-                atr_v = _atr(highs, lows, closes, 14)
-                liq_dir, liq_detail = _check_liq_sweep(highs, lows, closes, atr_v)
-                price = closes[-1]
-                _strategies[sid]["indicator"] = f"Liq:{liq_dir} | BOS:{bos_dir} | {liq_detail}"
-                # Entry: recent liquidity sweep signal + BOS agrees
-                if liq_sigs[-1]=="BUY" or (liq_dir=="BUY" and bos_dir=="BUY"):
-                    signal = "BUY"
-                elif liq_sigs[-1]=="SELL" or (liq_dir=="SELL" and bos_dir=="SELL"):
-                    signal = "SELL"
-
             elif strategy == "Scalper":
                 fast = _ema(closes, 5)
                 slow = _ema(closes, 13)
@@ -2159,6 +2453,32 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                     signal = "BUY"
                 elif direction[-2] == 1 and direction[-1] == -1:
                     signal = "SELL"
+
+            elif strategy == "Triple Filter":
+                # 200 EMA (trend) + SuperTrend flip (trigger) + RSI range (momentum) + US session
+                from datetime import datetime as _dt
+                ema200    = _ema(closes, 200)
+                direction = _supertrend(highs, lows, closes, period=10, mult=3.0)
+                rsi       = _rsi(closes, 14)
+                price     = closes[-1]
+                utc_hour  = _dt.utcnow().hour
+                in_us     = 12 <= utc_hour < 16   # 12–16 UTC = 18–22 BDT
+                st_txt    = "▲" if direction[-1] == 1 else "▼"
+                sess_txt  = "🟢US" if in_us else "⏸Off"
+                _strategies[sid]["indicator"] = (
+                    f"EMA200:{ema200[-1]:.2f} ST:{st_txt} RSI:{rsi:.1f} {sess_txt}"
+                )
+                if in_us:
+                    # BUY: ST flips bullish + price above 200 EMA + RSI 50–65
+                    if (direction[-2] == -1 and direction[-1] == 1
+                            and price > ema200[-1]
+                            and 50 <= rsi <= 65):
+                        signal = "BUY"
+                    # SELL: ST flips bearish + price below 200 EMA + RSI 35–50
+                    elif (direction[-2] == 1 and direction[-1] == -1
+                            and price < ema200[-1]
+                            and 35 <= rsi <= 50):
+                        signal = "SELL"
 
             elif strategy == "Ichimoku":
                 tk, kj, sa, sb = _ichimoku(highs, lows)
@@ -2504,24 +2824,210 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 if buy_pillars == 3:  signal = "BUY"
                 elif sell_pillars == 3: signal = "SELL"
 
+            elif strategy == "AI Signal Engine":
+                # Primary AI trading system — calls the full _do_ai_analyze engine.
+                # W1+D1+H4+H1 top-down analysis, 22 components, 3-Factor Gate.
+                # Only trades when confidence >= ai_min_confidence AND all 3 factors align.
+                ai_min_conf = int(cfg.get("ai_min_confidence", 62))
+                try:
+                    ai_result = _do_ai_analyze(symbol, tf)
+                except Exception as _ae:
+                    ai_result = {"error": str(_ae)}
+
+                if isinstance(ai_result, dict) and "error" not in ai_result:
+                    ai_sig    = ai_result.get("signal", "HOLD")
+                    ai_conf   = ai_result.get("confidence", 0)
+                    ai_3f     = ai_result.get("three_factor_pass", False)
+                    ai_ct     = ai_result.get("counter_trend_block", False)
+                    ai_3fd    = ai_result.get("three_factor_detail", "")
+                    ai_w1     = ai_result.get("w1_bias", "?")
+                    ai_d1     = ai_result.get("d1_bias", "?")
+                    ai_h4     = ai_result.get("h4_bias", "?")
+                    ai_bos    = ai_result.get("bos", "?")
+                    ai_kz     = ai_result.get("killzone", "?")
+                    ai_rsi    = ai_result.get("rsi", 0)
+                    ai_nr7    = ai_result.get("nr7", False)
+                    w1_icon   = "▲" if ai_w1=="BULLISH" else "▼" if ai_w1=="BEARISH" else "—"
+                    d1_icon   = "▲" if ai_d1=="BULLISH" else "▼" if ai_d1=="BEARISH" else "—"
+                    h4_icon   = "▲" if ai_h4=="BULLISH" else "▼" if ai_h4=="BEARISH" else "—"
+                    _strategies[sid]["indicator"] = (
+                        f"🧠 AIEngine {ai_sig} {ai_conf}% | "
+                        f"W1:{w1_icon} D1:{d1_icon} H4:{h4_icon} | "
+                        f"3F:{'✅' if ai_3f else '❌'} CT:{'🚫' if ai_ct else '—'} | "
+                        f"BOS:{ai_bos} KZ:{ai_kz} RSI:{ai_rsi:.0f}"
+                        f"{' NR7⚡' if ai_nr7 else ''}"
+                    )
+                    if ai_ct:
+                        add_log(f"🚫 Counter-trend BLOCK (W1+D1 against signal) — skipped")
+                    elif not ai_3f:
+                        add_log(f"❌ 3-Factor Gate FAILED: {ai_3fd} — skipped ({ai_conf}%)")
+                    elif ai_sig in ("BUY","SELL") and ai_conf >= ai_min_conf:
+                        add_log(f"🧠 AI Signal Engine: {ai_sig} {ai_conf}% ✅ {ai_3fd}")
+                        signal = ai_sig
+                    else:
+                        add_log(f"⏸ AI score {ai_conf}% < threshold {ai_min_conf}% — waiting")
+                else:
+                    _strategies[sid]["indicator"] = f"🧠 AIEngine — error: {ai_result.get('error','?')}"
+
+            elif strategy == "M2B/M2S":
+                # Two-legged pullback to rising/falling 20 EMA (PA Trading book)
+                # Optimized filters: RSI 45-62 + EMA20>EMA50 → 59.3% WR, PF 1.91 (81 trades BT)
+                ema20_v = _ema(closes, 20)
+                ema50_v = _ema(closes, 50)
+                rsi_c   = _rsi(closes, 14)
+                atr_v   = _atr(highs, lows, closes, 14)
+
+                ema_rising  = ema20_v[-1] > ema20_v[-9] > ema20_v[-17]
+                ema_falling = ema20_v[-1] < ema20_v[-9] < ema20_v[-17]
+
+                touched_bull = min(lows[-11:-1])   <= ema20_v[-6] + atr_v * 0.6
+                touched_bear = max(highs[-11:-1])  >= ema20_v[-6] - atr_v * 0.6
+
+                trend_bull = ema20_v[-1] > ema50_v[-1]
+                trend_bear = ema20_v[-1] < ema50_v[-1]
+
+                # D1 + H4 multi-TF trend filter (same as backtest)
+                try:
+                    _d1r = _mt5_call(lambda: mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_D1, 0, 250))
+                    _h4r = _mt5_call(lambda: mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_H4, 0, 300))
+                    _d1c = [float(r["close"]) for r in _d1r] if _d1r is not None and len(_d1r)>=52 else []
+                    _h4c = [float(r["close"]) for r in _h4r] if _h4r is not None and len(_h4r)>=52 else []
+                    _d1_bull = _d1_bear = _h4_bull = _h4_bear = False
+                    if _d1c:
+                        _e50d = _ema(_d1c, 50)[-1]; _e200d = _ema(_d1c, min(200,len(_d1c)-1))[-1]
+                        _d1_bull = _d1c[-1] > _e50d > _e200d
+                        _d1_bear = _d1c[-1] < _e50d < _e200d
+                    if _h4c:
+                        _e50h = _ema(_h4c, 50)[-1]; _e200h = _ema(_h4c, min(200,len(_h4c)-1))[-1]
+                        _h4_bull = _h4c[-1] > _e50h > _e200h
+                        _h4_bear = _h4c[-1] < _e50h < _e200h
+                except Exception:
+                    _d1_bull = _d1_bear = _h4_bull = _h4_bear = False
+
+                _m2_hr    = datetime.now(timezone.utc).hour
+                _in_sess  = (7 <= _m2_hr < 11) or (13 <= _m2_hr < 16)
+
+                _m2b = (ema_rising  and closes[-1] > ema20_v[-1] and closes[-1] > closes[-2]
+                        and touched_bull and closes[-1] > opens[-1]
+                        and 45 < rsi_c < 62 and trend_bull
+                        and _d1_bull and _h4_bull and _in_sess)
+                _m2s = (ema_falling and closes[-1] < ema20_v[-1] and closes[-1] < closes[-2]
+                        and touched_bear and closes[-1] < opens[-1]
+                        and 38 < rsi_c < 55 and trend_bear
+                        and _d1_bear and _h4_bear and _in_sess)
+
+                _strategies[sid]["indicator"] = (
+                    f"EMA20:{ema20_v[-1]:.2f} E50:{ema50_v[-1]:.2f} RSI:{rsi_c:.0f} | "
+                    f"D1:{'▲' if _d1_bull else '▼' if _d1_bear else '—'} "
+                    f"H4:{'▲' if _h4_bull else '▼' if _h4_bear else '—'} | "
+                    f"Trend:{'▲' if ema_rising else '▼' if ema_falling else '—'} "
+                    f"Touch:{'B✓' if touched_bull else '—'}/{'S✓' if touched_bear else '—'} "
+                    f"Sess:{'✓' if _in_sess else '✗'}"
+                )
+                if _m2b:
+                    signal = "BUY"
+                    add_log(f"M2B: EMA bounce BUY | RSI:{rsi_c:.0f} D1▲ H4▲")
+                elif _m2s:
+                    signal = "SELL"
+                    add_log(f"M2S: EMA bounce SELL | RSI:{rsi_c:.0f} D1▼ H4▼")
+
+            elif strategy == "Trend Continuation":
+                # EMA200 + Supertrend + pullback to EMA50 — 63.6% WR on H1 (backtest)
+                # Fetch 250 bars for EMA200 warm-up (default loop only gets 100)
+                try:
+                    _tcr = _mt5_call(lambda: mt5.copy_rates_from_pos(
+                        symbol, TF_MAP.get(tf, mt5.TIMEFRAME_H1), 0, 250))
+                    _tc_c = [float(r['close']) for r in _tcr] if _tcr and len(_tcr)>=220 else closes
+                    _tc_h = [float(r['high'])  for r in _tcr] if _tcr and len(_tcr)>=220 else highs
+                    _tc_l = [float(r['low'])   for r in _tcr] if _tcr and len(_tcr)>=220 else lows
+                    _tc_o = [float(r['open'])  for r in _tcr] if _tcr and len(_tcr)>=220 else opens
+                except Exception:
+                    _tc_c = closes; _tc_h = highs; _tc_l = lows; _tc_o = opens
+
+                _tc_e50  = _ema(_tc_c, 50)
+                _tc_e200 = _ema(_tc_c, min(200, len(_tc_c)-1))
+                _tc_rsi  = _rsi(_tc_c, 14)
+                _tc_atr  = _atr(_tc_h, _tc_l, _tc_c, 14)
+                _tc_st   = _supertrend(_tc_h, _tc_l, _tc_c, period=10, mult=3.0)
+
+                # D1 + H4 multi-TF trend filter
+                try:
+                    _tc_d1r = _mt5_call(lambda: mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_D1, 0, 250))
+                    _tc_h4r = _mt5_call(lambda: mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_H4, 0, 300))
+                    _tc_d1b = _tc_d1be = _tc_h4b = _tc_h4be = False
+                    if _tc_d1r is not None and len(_tc_d1r)>=52:
+                        _d1c2=[float(r['close']) for r in _tc_d1r]
+                        _d1e50=_ema(_d1c2,50)[-1]; _d1e200=_ema(_d1c2,min(200,len(_d1c2)-1))[-1]
+                        _tc_d1b  = _d1c2[-1]>_d1e50>_d1e200
+                        _tc_d1be = _d1c2[-1]<_d1e50<_d1e200
+                    if _tc_h4r is not None and len(_tc_h4r)>=52:
+                        _h4c2=[float(r['close']) for r in _tc_h4r]
+                        _h4e50=_ema(_h4c2,50)[-1]; _h4e200=_ema(_h4c2,min(200,len(_h4c2)-1))[-1]
+                        _tc_h4b  = _h4c2[-1]>_h4e50>_h4e200
+                        _tc_h4be = _h4c2[-1]<_h4e50<_h4e200
+                except Exception:
+                    _tc_d1b=_tc_d1be=_tc_h4b=_tc_h4be=False
+
+                _tc_price  = _tc_c[-1]
+                _tc_near50 = abs(_tc_price - _tc_e50[-1]) < _tc_atr * 0.8
+                _tc_rsi_v  = _tc_rsi
+                _tc_bull_c = _tc_c[-1] > _tc_o[-1]
+                _tc_bear_c = _tc_c[-1] < _tc_o[-1]
+                _tc_hr     = datetime.now(timezone.utc).hour
+                _tc_sess   = (7 <= _tc_hr < 11) or (12 <= _tc_hr < 16)
+
+                _strategies[sid]["indicator"] = (
+                    f"E50:{_tc_e50[-1]:.2f} E200:{_tc_e200[-1]:.2f} RSI:{_tc_rsi_v:.0f} "
+                    f"ST:{'▲' if _tc_st[-1]==1 else '▼'} Near50:{'✓' if _tc_near50 else '✗'} | "
+                    f"D1:{'▲' if _tc_d1b else '▼' if _tc_d1be else '—'} "
+                    f"H4:{'▲' if _tc_h4b else '▼' if _tc_h4be else '—'} "
+                    f"Sess:{'✓' if _tc_sess else '✗'}"
+                )
+                if (_tc_price > _tc_e200[-1] and _tc_st[-1]==1 and _tc_near50
+                        and _tc_bull_c and 45 < _tc_rsi_v < 65
+                        and _tc_d1b and _tc_h4b and _tc_sess):
+                    signal = "BUY"
+                    add_log(f"TrendCont BUY: near EMA50 in uptrend RSI:{_tc_rsi_v:.0f}")
+                elif (_tc_price < _tc_e200[-1] and _tc_st[-1]==-1 and _tc_near50
+                        and _tc_bear_c and 35 < _tc_rsi_v < 55
+                        and _tc_d1be and _tc_h4be and _tc_sess):
+                    signal = "SELL"
+                    add_log(f"TrendCont SELL: near EMA50 in downtrend RSI:{_tc_rsi_v:.0f}")
+
             # Block trades during bad sessions or news
             if signal and (_session_block or _news_block):
-                reason = "12:00 UTC dead zone" if _session_block else "high-impact news"
+                reason = "20:00/12:00 UTC dead zone" if _session_block else "high-impact news"
                 add_log(f"⛔ Signal {signal} blocked — {reason}")
                 signal = None
+
+            # ── AI Gate: multi-TF analysis must confirm signal direction ─────────
+            if signal:
+                _ai_approved, _ai_score, _ai_reason = _check_ai_gate(symbol, signal)
+                _strategies[sid]["indicator"] = (_strategies[sid].get("indicator","") +
+                    f" | AI:{_ai_score}/100")
+                if not _ai_approved:
+                    add_log(f"🤖 AI Gate BLOCKED {signal} (score {_ai_score}/100) — {_ai_reason}")
+                    signal = None
+                else:
+                    add_log(f"🤖 AI Gate OK {signal} (score {_ai_score}/100) — {_ai_reason}")
 
             if signal:
                 is_buy    = signal == "BUY"
                 entry     = tick.ask if is_buy else tick.bid
-                # SL/TP reference from BID (buy closes at bid) or ASK (sell closes at ask)
                 sl_tp_ref = tick.bid if is_buy else tick.ask
-                sl_dist   = max(sl_pips * pip, min_dist + sym_info.point)
-                tp_dist   = max(tp_pips * pip, min_dist + sym_info.point)
+                # ATR-based SL: use 1.5×ATR if it's larger than fixed pips (adaptive)
+                _atr_val  = _atr(highs, lows, closes, 14)
+                _atr_sl   = _atr_val * 1.5
+                _atr_tp   = _atr_val * 3.0
+                _fixed_sl = sl_pips * pip
+                _fixed_tp = tp_pips * pip
+                sl_dist   = max(_atr_sl, _fixed_sl, min_dist + sym_info.point)
+                tp_dist   = max(_atr_tp, _fixed_tp, min_dist + sym_info.point)
                 sl_val    = round(sl_tp_ref - sl_dist, sym_info.digits) if is_buy \
                             else round(sl_tp_ref + sl_dist, sym_info.digits)
                 tp_val    = round(sl_tp_ref + tp_dist, sym_info.digits) if is_buy \
                             else round(sl_tp_ref - tp_dist, sym_info.digits)
-                add_log(f"📊 Signal: {signal} @ {entry}  SL:{sl_val}  TP:{tp_val}  (pip={pip})")
+                add_log(f"📊 Signal: {signal} @ {entry}  SL:{sl_val}({sl_dist/pip:.1f}p)  TP:{tp_val}({tp_dist/pip:.1f}p)")
                 do_trade(signal, entry, sl_val, tp_val)
 
             # Breakeven trail: when profit distance >= risk distance (1:1 R:R), move SL to entry
@@ -2536,7 +3042,7 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 if not positions: return 0, 0
                 be_moved = trail_moved = 0
                 for pos in positions:
-                    if pos.magic != magic: continue
+                    if not _match_position(pos, magic, strategy): continue
                     if not pos.sl: continue
                     risk = abs(pos.price_open - pos.sl)
                     if risk <= 0: continue
@@ -2589,7 +3095,7 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 pass
 
             # Detect position closures (SL/TP hit) and log them
-            def _cur_count(): return _count_open_positions(symbol, magic)
+            def _cur_count(): return _count_open_positions(symbol, magic, strategy)
             try:
                 cur_count = _mt5_call(_cur_count) or 0
                 if prev_count > 0 and cur_count < prev_count:
@@ -2771,51 +3277,129 @@ def get_algo_live_positions():
     return _mt5_call(fn)
 
 
+_REPORT_CUTOFF_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_cutoff.json")
+
+def _get_report_cutoff() -> datetime:
+    """Trades before this timestamp are excluded from performance reports.
+    Lets us start the report clean after a strategy logic change, instead of
+    mixing stats from old/tuning-era trades with the finalized strategy."""
+    try:
+        with open(_REPORT_CUTOFF_FILE) as f:
+            return datetime.fromisoformat(json.load(f)["cutoff"])
+    except Exception:
+        return datetime(2010, 1, 1)
+
+def _set_report_cutoff(dt: datetime = None):
+    dt = dt or datetime.now()
+    with open(_REPORT_CUTOFF_FILE, "w") as f:
+        json.dump({"cutoff": dt.isoformat()}, f)
+    return dt
+
+@app.post("/api/algo/report_cutoff/reset")
+def reset_report_cutoff():
+    """Reset the performance report to start counting from this moment —
+    use after a strategy logic change so old tuning-era trades don't pollute stats."""
+    dt = _set_report_cutoff()
+    return {"success": True, "cutoff": dt.isoformat()}
+
 @app.get("/api/algo/history")
 def get_algo_history(days: int = 30):
     def fn():
-        date_from = datetime.now() - timedelta(days=days)
+        date_from = datetime(2010, 1, 1) if days == 0 else datetime.now() - timedelta(days=days)
+        # NOTE: keep date_from broad for the deals query itself (so open_map
+        # still resolves entry deals for positions opened before the cutoff
+        # but closed after it) — the cutoff is applied later, only to the
+        # CLOSE time of closed_result, so report stats start clean.
+        _report_cutoff = _get_report_cutoff()
+
+        _CRYPTO = ("BTC","ETH","LTC","XRP","BNB","SOL","ADA","DOGE","XMR","DOT","AVAX","MATIC")
+
+        # Fix broker comment truncation (CXM Direct caps comments at 16 chars).
+        # Use magic number → full strategy name as primary; prefix match as fallback.
+        magic_to_name = {234000 + hash(sid) % 1000: s["config"]["strategy"]
+                         for sid, s in _strategies.items()}
+        # Permanently excluded strategies — trades hidden from all reports
+        # (kept set: Trend Continuation, M2B/M2S, Pin Bar SR, Engulfing Trend,
+        #  PA Confluence, AI Signal Engine — everything else backtested <50% WR)
+        _EXCLUDED_STRATS = {
+            "SMC Liquidity", "SMC Liq", "SMC",
+            "Supertrend", "Triple Filter", "Ichimoku", "Scalper",
+            "AI Confluence", "AI Agent", "Order Block",
+            "Inside Bar", "False Breakout", "3-Bar Reversal",
+            "EMA Trend", "EMA Cross", "MA Cross",
+            "Bollinger Bands", "MACD", "RSI Divergence", "Stochastic", "ADX Filter",
+        }
+        # Include currently running + all known historical strategy names for prefix matching
+        _KNOWN_NAMES = [
+            "Supertrend", "Scalper", "Order Block", "Pin Bar SR", "Engulfing Trend",
+            "Inside Bar", "False Breakout", "PA Confluence", "AI Confluence", "AI Agent",
+            "Triple Filter", "EMA Trend", "EMA Cross", "Ichimoku",
+            "Bollinger Bands", "MACD", "RSI Divergence", "Stochastic", "ADX Filter",
+            "M2B/M2S", "Trend Continuation", "AI Signal Engine",
+        ]
+        _all_strat_names = list({s["config"]["strategy"] for s in _strategies.values()} | set(_KNOWN_NAMES))
+
+        def _resolve_name(truncated: str, magic: int) -> str:
+            if magic in magic_to_name:
+                return magic_to_name[magic]
+            t = truncated.strip()
+            for name in _all_strat_names:
+                if name.startswith(t):
+                    return name
+            return t
+
         deals  = mt5.history_deals_get(date_from, datetime.now())
         if deals is None:
             return []
 
-        # Build order map once for SL/TP lookup (opening order carries sl/tp)
         orders    = mt5.history_orders_get(date_from, datetime.now()) or []
         order_map = {o.ticket: o for o in orders}
 
-        REASON = {4: "SL HIT", 5: "TP HIT", 6: "STOP OUT"}
+        def _exit_reason(d):
+            if d.reason == 5: return "TP HIT"
+            if d.reason == 6: return "STOP OUT"
+            if d.reason == 4:
+                open_deal = open_map.get(d.position_id)
+                if open_deal:
+                    is_buy   = (open_deal.type == 0)
+                    is_trail = (d.price >= open_deal.price) if is_buy else (d.price <= open_deal.price)
+                    return "TRAILING SL" if is_trail else "SL HIT"
+                net = d.profit + d.commission + d.swap
+                return "TRAILING SL" if net > 0 else "SL HIT"
+            return "MANUAL"
 
         open_map: dict = {}
         closed: list   = []
         for d in deals:
             if d.type not in (0, 1):
                 continue
-            if d.entry == 0:    # opening leg — only FarhanFX-{Strategy} forex trades
-                c = (d.comment or "")
-                _CRYPTO = ("BTC","ETH","LTC","XRP","BNB","SOL","ADA","DOGE","XMR","DOT","AVAX","MATIC")
-                _is_crypto = any(x in d.symbol.upper() for x in _CRYPTO)
-                _FOREX_STRATS = {"MA Cross","EMA Trend","Scalper","Supertrend","Ichimoku","AI Confluence","AI Agent","Order Block","SMC Liquidity"}
-                _strat = c[len("FarhanFX-"):] if c.startswith("FarhanFX-") else ""
-                if (c.startswith("FarhanFX-") and "Close" not in c and
-                        not _is_crypto and
-                        any(_strat.startswith(s) or s.startswith(_strat) for s in _FOREX_STRATS)):
+            _is_crypto = any(x in d.symbol.upper() for x in _CRYPTO)
+            if _is_crypto:
+                continue
+            c = (d.comment or "")
+            if d.entry == 0:
+                is_algo = (c.startswith("FarhanFX-") and "Close" not in c) or d.magic in magic_to_name
+                if is_algo:
                     open_map[d.position_id] = d
-            elif d.entry == 1:  # closing leg — collect all; match by position_id below
+            elif d.entry == 1:
                 closed.append(d)
 
-        result = []
+        closed_result = []
         for d in closed:
-            open_d  = open_map.get(d.position_id)
-            if not open_d:          # closing deal belongs to non-algo trade — skip
+            if datetime.fromtimestamp(d.time) < _report_cutoff:
                 continue
-            sl_val  = tp_val = None
+            open_d = open_map.get(d.position_id)
+            if not open_d:
+                continue
+            sl_val = tp_val = None
             op_order = order_map.get(open_d.order)
             if op_order:
                 sl_val = round(op_order.sl, 5) if op_order.sl else None
                 tp_val = round(op_order.tp, 5) if op_order.tp else None
-            open_comment = (open_d.comment or "") if open_d else ""
-            strat_name   = open_comment[len("FarhanFX-"):] if open_comment.startswith("FarhanFX-") else open_comment
-            result.append({
+            open_comment = (open_d.comment or "")
+            raw_name  = open_comment[len("FarhanFX-"):] if open_comment.startswith("FarhanFX-") else open_comment
+            strat_name = _resolve_name(raw_name, open_d.magic)
+            closed_result.append({
                 "ticket":      d.position_id,
                 "symbol":      d.symbol,
                 "strategy":    strat_name,
@@ -2827,19 +3411,51 @@ def get_algo_history(days: int = 30):
                 "tp":          tp_val,
                 "profit":      round(d.profit + d.commission + d.swap, 2),
                 "comment":     open_comment,
-                "exit_reason": REASON.get(d.reason, "MANUAL"),
+                "exit_reason": _exit_reason(d),
                 "time":        datetime.fromtimestamp(d.time).strftime("%Y-%m-%d %H:%M"),
             })
-        result.sort(key=lambda x: x["time"], reverse=True)
-        return result[:200]
+        closed_result = [r for r in closed_result if r["strategy"] not in _EXCLUDED_STRATS]
+        closed_result.sort(key=lambda x: x["time"], reverse=True)
+
+        # Include currently OPEN positions so they appear in performance & history table
+        open_rows = []
+        for p in (mt5.positions_get() or []):
+            if any(x in p.symbol.upper() for x in _CRYPTO):
+                continue
+            c = (p.comment or "")
+            is_algo = (c.startswith("FarhanFX-") and "Close" not in c) or p.magic in magic_to_name
+            if not is_algo:
+                continue
+            raw_name  = c[len("FarhanFX-"):] if c.startswith("FarhanFX-") else ""
+            strat_name = _resolve_name(raw_name, p.magic)
+            open_rows.append({
+                "ticket":      p.ticket,
+                "symbol":      p.symbol,
+                "strategy":    strat_name,
+                "type":        "BUY" if p.type == 0 else "SELL",
+                "volume":      p.volume,
+                "entry_price": round(p.price_open, 5),
+                "exit_price":  None,
+                "sl":          round(p.sl, 5) if p.sl else None,
+                "tp":          round(p.tp, 5) if p.tp else None,
+                "profit":      round(p.profit + p.swap, 2),
+                "comment":     c,
+                "exit_reason": None,
+                "time":        datetime.fromtimestamp(p.time).strftime("%Y-%m-%d %H:%M"),
+            })
+
+        open_rows = [r for r in open_rows if r["strategy"] not in _EXCLUDED_STRATS]
+        # Open positions first (live), then closed sorted newest-first
+        return open_rows + closed_result[:200]
     return _mt5_call(fn)
 
-@app.get("/api/ai/analyze/{symbol}")
-def ai_analyze(symbol: str, tf: str = "H1"):
-    """Enhanced multi-timeframe AI analysis: Price Action + SMC + ICT + News."""
+def _do_ai_analyze(symbol: str, tf: str = "H1") -> dict:
+    """Full multi-timeframe AI analysis. Returns structured signal dict.
+    Called by both the API endpoint and the AI Signal Engine strategy runner."""
     primary_rates, sym = _get_rates(symbol, tf, 300)
-    h4_rates,      _   = _get_rates(symbol, "H4", 200)
-    d1_rates,      _   = _get_rates(symbol, "D1", 100)
+    h4_rates, _        = _get_rates(symbol, "H4", 200)
+    d1_rates, _        = _get_rates(symbol, "D1", 100)
+    w1_rates, _        = _get_rates(symbol, "W1",  60)
 
     if primary_rates is None or len(primary_rates) < 50:
         return {"error": f"Not enough data for {symbol}"}
@@ -2866,7 +3482,16 @@ def ai_analyze(symbol: str, tf: str = "H1"):
     atr_v  = _atr(highs, lows, closes, 14)
     kv, dv = _stochastic(highs, lows, closes)
 
-    # H4 trend bias
+    # ── W1 Weekly trend bias (top-level filter)
+    w1_bias = "NEUTRAL"
+    if w1_rates is not None and len(w1_rates) >= 20:
+        w1c = [float(r["close"]) for r in w1_rates]
+        w1e20  = _ema(w1c, min(20, len(w1c)-1))
+        w1e50  = _ema(w1c, min(50, len(w1c)-1))
+        if w1c[-1] > w1e20[-1] > w1e50[-1]:   w1_bias = "BULLISH"
+        elif w1c[-1] < w1e20[-1] < w1e50[-1]: w1_bias = "BEARISH"
+
+    # ── H4 trend bias
     h4_bias = "NEUTRAL"
     if h4_rates is not None and len(h4_rates) >= 50:
         h4c = [float(r["close"]) for r in h4_rates]
@@ -2875,7 +3500,7 @@ def ai_analyze(symbol: str, tf: str = "H1"):
         if h4c[-1]>h4e50[-1]>h4e200[-1]:   h4_bias="BULLISH"
         elif h4c[-1]<h4e50[-1]<h4e200[-1]: h4_bias="BEARISH"
 
-    # D1 trend bias
+    # ── D1 trend bias
     d1_bias = "NEUTRAL"
     if d1_rates is not None and len(d1_rates) >= 30:
         d1c = [float(r["close"]) for r in d1_rates]
@@ -2884,20 +3509,35 @@ def ai_analyze(symbol: str, tf: str = "H1"):
         if d1c[-1]>d1e50[-1] and d1e50[-1]>d1e200[-1]:   d1_bias="BULLISH"
         elif d1c[-1]<d1e50[-1] and d1e50[-1]<d1e200[-1]: d1_bias="BEARISH"
 
-    # SMC / ICT / PA helpers
+    # ── SMC / ICT / PA helpers
     pa_patterns               = _detect_price_action(opens, closes, highs, lows)
     bos_dir, bos_detail       = _detect_bos(closes, highs, lows)
     sr_dir,  sr_detail        = _check_sr_level(closes, highs, lows, price, atr_v)
     fvg_dir, fvg_detail       = _check_fvg_zone(highs, lows, price)
     ob_dir,  ob_detail        = _check_ob_zone(opens, closes, highs, lows, price, atr_v)
     liq_dir, liq_detail       = _check_liq_sweep(highs, lows, closes, atr_v)
+    fib_dir, fib_detail       = _check_fibonacci_level(highs, lows, price, atr_v)
+    ema21_dir, ema21_detail   = _check_21ema_bounce(closes, highs, lows, price, atr_v)
+    dt_dir, dt_detail         = _detect_double_top_bottom(highs, lows, closes, atr_v)
+    tbr_dir, tbr_detail       = _detect_three_bar_reversal(opens, closes, highs, lows)
+    m2_dir, m2_detail         = _detect_m2b_m2s(closes, highs, lows, atr_v)
+    pv_dir, pv_detail         = _check_pivot_points(highs, lows, closes, price, atr_v)
+    has_nr7                   = _check_nr7(highs, lows)
     kz_name, kz_level         = _get_ict_killzone()
     news_events               = _get_upcoming_news(symbol, minutes_ahead=120, minutes_past=30)
 
     # ── SIGNAL SCORING ──────────────────────────────────────────────────────────
     components = []
 
-    # 1. D1 Trend (30 pts) — highest timeframe filter
+    # 1. W1 Weekly Trend (35 pts) — master filter; counter-trend = hard penalty
+    if w1_bias == "BULLISH":
+        components.append({"name":"W1 Trend","dir":"BUY","score":35,"max":35,"detail":"Weekly: bullish (price > EMA20 > EMA50)"})
+    elif w1_bias == "BEARISH":
+        components.append({"name":"W1 Trend","dir":"SELL","score":35,"max":35,"detail":"Weekly: bearish (price < EMA20 < EMA50)"})
+    else:
+        components.append({"name":"W1 Trend","dir":"NEUTRAL","score":0,"max":35,"detail":"Weekly: no clear trend"})
+
+    # 2. D1 Trend (30 pts)
     if d1_bias=="BULLISH":
         components.append({"name":"D1 Trend","dir":"BUY","score":30,"max":30,"detail":"Daily: price > EMA50 > EMA200"})
     elif d1_bias=="BEARISH":
@@ -2905,7 +3545,7 @@ def ai_analyze(symbol: str, tf: str = "H1"):
     else:
         components.append({"name":"D1 Trend","dir":"NEUTRAL","score":0,"max":30,"detail":"Daily: no clear alignment"})
 
-    # 2. H4 Trend (25 pts)
+    # 3. H4 Trend (25 pts)
     if h4_bias=="BULLISH":
         components.append({"name":"H4 Trend","dir":"BUY","score":25,"max":25,"detail":"H4 price > EMA50 > EMA200"})
     elif h4_bias=="BEARISH":
@@ -2913,39 +3553,58 @@ def ai_analyze(symbol: str, tf: str = "H1"):
     else:
         components.append({"name":"H4 Trend","dir":"NEUTRAL","score":0,"max":25,"detail":"No clear H4 alignment"})
 
-    # 3. Price Action patterns (25 pts)
-    if pa_patterns:
-        best = max(pa_patterns, key=lambda x: x[2])
+    # 4. Price Action patterns (25 pts) — best pattern from full detection set
+    # Augment PA list with NR7 if detected (breakout bias follows trend)
+    nr7_extra = []
+    if has_nr7:
+        trend_for_nr7 = "BUY" if (d1_bias=="BULLISH" or h4_bias=="BULLISH") else ("SELL" if (d1_bias=="BEARISH" or h4_bias=="BEARISH") else "NEUTRAL")
+        if trend_for_nr7 != "NEUTRAL":
+            nr7_extra = [("NR7 Breakout Setup", trend_for_nr7, 0.82)]
+    all_pa = (pa_patterns or []) + nr7_extra
+    if all_pa:
+        best = max(all_pa, key=lambda x: x[2])
         pa_sc = round(25 * best[2])
         components.append({"name":"Price Action","dir":best[1],"score":pa_sc,"max":25,"detail":best[0]})
     else:
         components.append({"name":"Price Action","dir":"NEUTRAL","score":0,"max":25,"detail":"No clear PA pattern"})
 
-    # 4. Liquidity Sweep (20 pts)
+    # 5. Liquidity Sweep (20 pts)
     if liq_dir in ("BUY","SELL"):
         components.append({"name":"Liq Sweep","dir":liq_dir,"score":20,"max":20,"detail":liq_detail})
     else:
         components.append({"name":"Liq Sweep","dir":"NEUTRAL","score":0,"max":20,"detail":liq_detail})
 
-    # 5. BOS / CHoCH (20 pts)
+    # 6. BOS / CHoCH (20 pts)
     if bos_dir in ("BUY","SELL"):
         components.append({"name":"BOS/CHoCH","dir":bos_dir,"score":20,"max":20,"detail":bos_detail})
     else:
         components.append({"name":"BOS/CHoCH","dir":"NEUTRAL","score":0,"max":20,"detail":bos_detail})
 
-    # 6. Order Block (20 pts)
+    # 7. Order Block (20 pts)
     if ob_dir in ("BUY","SELL"):
         components.append({"name":"Order Block","dir":ob_dir,"score":20,"max":20,"detail":ob_detail})
     else:
         components.append({"name":"Order Block","dir":"NEUTRAL","score":0,"max":20,"detail":ob_detail})
 
-    # 7. Fair Value Gap (15 pts)
+    # 8. Three-Bar Reversal (18 pts) — trapped trader reversal (PA book)
+    if tbr_dir in ("BUY","SELL"):
+        components.append({"name":"3-Bar Reversal","dir":tbr_dir,"score":18,"max":18,"detail":tbr_detail})
+    else:
+        components.append({"name":"3-Bar Reversal","dir":"NEUTRAL","score":0,"max":18,"detail":tbr_detail})
+
+    # 9. M2B/M2S Setup (18 pts) — two-legged pullback to 20 EMA (PA book: highest WR setup)
+    if m2_dir in ("BUY","SELL"):
+        components.append({"name":"M2B/M2S","dir":m2_dir,"score":18,"max":18,"detail":m2_detail})
+    else:
+        components.append({"name":"M2B/M2S","dir":"NEUTRAL","score":0,"max":18,"detail":m2_detail})
+
+    # 10. Fair Value Gap (15 pts)
     if fvg_dir in ("BUY","SELL"):
         components.append({"name":"Fair Value Gap","dir":fvg_dir,"score":15,"max":15,"detail":fvg_detail})
     else:
         components.append({"name":"Fair Value Gap","dir":"NEUTRAL","score":0,"max":15,"detail":fvg_detail})
 
-    # 8. EMA Stack (15 pts)
+    # 11. EMA Stack (15 pts)
     if price>ema20[-1]>ema50[-1]:
         sc2 = 15 if price>ema200[-1] else 9
         components.append({"name":"EMA Stack","dir":"BUY","score":sc2,"max":15,"detail":f"Price>{ema20[-1]:.{digits}f}>{ema50[-1]:.{digits}f}"})
@@ -2955,49 +3614,17 @@ def ai_analyze(symbol: str, tf: str = "H1"):
     else:
         components.append({"name":"EMA Stack","dir":"NEUTRAL","score":0,"max":15,"detail":"EMAs not aligned"})
 
-    # 9. Supertrend (15 pts)
+    # 12. Supertrend (15 pts)
     st_txt = "BULLISH ▲" if st_dir[-1]==1 else "BEARISH ▼"
     components.append({"name":"Supertrend","dir":"BUY" if st_dir[-1]==1 else "SELL","score":15,"max":15,"detail":f"Direction: {st_txt}"})
 
-    # 10. MACD (12 pts)
-    if hist[-1]>0 and hist[-1]>=hist[-2]:
-        components.append({"name":"MACD","dir":"BUY","score":12,"max":12,"detail":f"Histogram rising: {hist[-1]:+.5f}"})
-    elif hist[-1]<0 and hist[-1]<=hist[-2]:
-        components.append({"name":"MACD","dir":"SELL","score":12,"max":12,"detail":f"Histogram falling: {hist[-1]:+.5f}"})
+    # 13. Fibonacci Level (15 pts)
+    if fib_dir in ("BUY","SELL"):
+        components.append({"name":"Fibonacci","dir":fib_dir,"score":15,"max":15,"detail":fib_detail})
     else:
-        components.append({"name":"MACD","dir":"NEUTRAL","score":0,"max":12,"detail":f"Histogram flat: {hist[-1]:+.5f}"})
+        components.append({"name":"Fibonacci","dir":"NEUTRAL","score":0,"max":15,"detail":fib_detail})
 
-    # 11. RSI Zone (10 pts)
-    if 50<=rsi14<=68:
-        components.append({"name":"RSI","dir":"BUY","score":10,"max":10,"detail":f"RSI {rsi14} — bullish zone"})
-    elif 32<=rsi14<=50:
-        components.append({"name":"RSI","dir":"SELL","score":10,"max":10,"detail":f"RSI {rsi14} — bearish zone"})
-    else:
-        components.append({"name":"RSI","dir":"NEUTRAL","score":0,"max":10,"detail":f"RSI {rsi14} — extreme/overbought/oversold"})
-
-    # 12. Support / Resistance (10 pts)
-    if sr_dir in ("BUY","SELL"):
-        components.append({"name":"S/R Level","dir":sr_dir,"score":10,"max":10,"detail":sr_detail})
-    else:
-        components.append({"name":"S/R Level","dir":"NEUTRAL","score":0,"max":10,"detail":sr_detail})
-
-    # 13. Stochastic (8 pts)
-    if kv[-2]<dv[-2] and kv[-1]>dv[-1] and kv[-1]<60:
-        components.append({"name":"Stochastic","dir":"BUY","score":8,"max":8,"detail":f"%K {kv[-1]:.0f} crossed above %D {dv[-1]:.0f}"})
-    elif kv[-2]>dv[-2] and kv[-1]<dv[-1] and kv[-1]>40:
-        components.append({"name":"Stochastic","dir":"SELL","score":8,"max":8,"detail":f"%K {kv[-1]:.0f} crossed below %D {dv[-1]:.0f}"})
-    else:
-        components.append({"name":"Stochastic","dir":"NEUTRAL","score":0,"max":8,"detail":f"%K:{kv[-1]:.0f}  %D:{dv[-1]:.0f}"})
-
-    # 14. ICT Kill Zone (10 pts bonus)
-    if kz_level=="HIGH":
-        components.append({"name":"ICT Kill Zone","dir":"BUY","score":10,"max":10,"detail":f"Active: {kz_name} (HIGH probability)"})
-    elif kz_level=="MEDIUM":
-        components.append({"name":"ICT Kill Zone","dir":"BUY","score":5,"max":10,"detail":f"Active: {kz_name} (MEDIUM probability)"})
-    else:
-        components.append({"name":"ICT Kill Zone","dir":"NEUTRAL","score":0,"max":10,"detail":f"{kz_name} — off-hours"})
-
-    # 15. News Bias (15 pts, only when actual vs forecast available)
+    # 14. News Bias (15 pts)
     news_bias_dir = "NEUTRAL"
     news_bias_detail = "No recent high-impact news"
     for ev in news_events:
@@ -3010,28 +3637,63 @@ def ai_analyze(symbol: str, tf: str = "H1"):
     else:
         components.append({"name":"News Bias","dir":"NEUTRAL","score":0,"max":15,"detail":news_bias_detail})
 
-    # 16. Fibonacci Level (15 pts) — key 38.2/50/61.8% retracement zones
-    fib_dir, fib_detail = _check_fibonacci_level(highs, lows, price, atr_v)
-    if fib_dir in ("BUY","SELL"):
-        components.append({"name":"Fibonacci","dir":fib_dir,"score":15,"max":15,"detail":fib_detail})
+    # 15. MACD (12 pts)
+    if hist[-1]>0 and hist[-1]>=hist[-2]:
+        components.append({"name":"MACD","dir":"BUY","score":12,"max":12,"detail":f"Histogram rising: {hist[-1]:+.5f}"})
+    elif hist[-1]<0 and hist[-1]<=hist[-2]:
+        components.append({"name":"MACD","dir":"SELL","score":12,"max":12,"detail":f"Histogram falling: {hist[-1]:+.5f}"})
     else:
-        components.append({"name":"Fibonacci","dir":"NEUTRAL","score":0,"max":15,"detail":fib_detail})
+        components.append({"name":"MACD","dir":"NEUTRAL","score":0,"max":12,"detail":f"Histogram flat: {hist[-1]:+.5f}"})
 
-    # 17. 21 EMA Bounce (12 pts) — dynamic support/resistance (Candlestick Bible)
-    ema21_dir, ema21_detail = _check_21ema_bounce(closes, highs, lows, price, atr_v)
+    # 16. Daily Pivot Points (12 pts)
+    if pv_dir in ("BUY","SELL"):
+        components.append({"name":"Daily Pivot","dir":pv_dir,"score":12,"max":12,"detail":pv_detail})
+    else:
+        components.append({"name":"Daily Pivot","dir":"NEUTRAL","score":0,"max":12,"detail":pv_detail})
+
+    # 17. 21 EMA Bounce (12 pts)
     if ema21_dir in ("BUY","SELL"):
         components.append({"name":"21 EMA Bounce","dir":ema21_dir,"score":12,"max":12,"detail":ema21_detail})
     else:
         components.append({"name":"21 EMA Bounce","dir":"NEUTRAL","score":0,"max":12,"detail":ema21_detail})
 
-    # 18. Double Top/Bottom (12 pts) — confirmed chart pattern reversal
-    dt_dir, dt_detail = _detect_double_top_bottom(highs, lows, closes, atr_v)
+    # 18. Double Top/Bottom (12 pts)
     if dt_dir in ("BUY","SELL"):
         components.append({"name":"Double T/B","dir":dt_dir,"score":12,"max":12,"detail":dt_detail})
     else:
         components.append({"name":"Double T/B","dir":"NEUTRAL","score":0,"max":12,"detail":dt_detail})
 
-    # ── FINAL SCORE ─────────────────────────────────────────────────────────────
+    # 19. RSI Zone (10 pts)
+    if 50<=rsi14<=68:
+        components.append({"name":"RSI","dir":"BUY","score":10,"max":10,"detail":f"RSI {rsi14} — bullish zone"})
+    elif 32<=rsi14<=50:
+        components.append({"name":"RSI","dir":"SELL","score":10,"max":10,"detail":f"RSI {rsi14} — bearish zone"})
+    else:
+        components.append({"name":"RSI","dir":"NEUTRAL","score":0,"max":10,"detail":f"RSI {rsi14} — extreme zone"})
+
+    # 20. Support / Resistance (10 pts)
+    if sr_dir in ("BUY","SELL"):
+        components.append({"name":"S/R Level","dir":sr_dir,"score":10,"max":10,"detail":sr_detail})
+    else:
+        components.append({"name":"S/R Level","dir":"NEUTRAL","score":0,"max":10,"detail":sr_detail})
+
+    # 21. ICT Kill Zone (10 pts bonus)
+    if kz_level=="HIGH":
+        components.append({"name":"ICT Kill Zone","dir":"BUY","score":10,"max":10,"detail":f"Active: {kz_name} (HIGH probability)"})
+    elif kz_level=="MEDIUM":
+        components.append({"name":"ICT Kill Zone","dir":"BUY","score":5,"max":10,"detail":f"Active: {kz_name} (MEDIUM probability)"})
+    else:
+        components.append({"name":"ICT Kill Zone","dir":"NEUTRAL","score":0,"max":10,"detail":f"{kz_name} — off-hours"})
+
+    # 22. Stochastic (8 pts)
+    if kv[-2]<dv[-2] and kv[-1]>dv[-1] and kv[-1]<60:
+        components.append({"name":"Stochastic","dir":"BUY","score":8,"max":8,"detail":f"%K {kv[-1]:.0f} crossed above %D {dv[-1]:.0f}"})
+    elif kv[-2]>dv[-2] and kv[-1]<dv[-1] and kv[-1]>40:
+        components.append({"name":"Stochastic","dir":"SELL","score":8,"max":8,"detail":f"%K {kv[-1]:.0f} crossed below %D {dv[-1]:.0f}"})
+    else:
+        components.append({"name":"Stochastic","dir":"NEUTRAL","score":0,"max":8,"detail":f"%K:{kv[-1]:.0f}  %D:{dv[-1]:.0f}"})
+
+    # ── PRELIMINARY SCORE ────────────────────────────────────────────────────────
     buy_score  = sum(c["score"] for c in components if c["dir"]=="BUY")
     sell_score = sum(c["score"] for c in components if c["dir"]=="SELL")
     max_total  = sum(c["max"]   for c in components)
@@ -3039,40 +3701,94 @@ def ai_analyze(symbol: str, tf: str = "H1"):
     buy_pct  = round(buy_score  / max_total * 100)
     sell_pct = round(sell_score / max_total * 100)
 
-    # News event within 30 min? Block new trades
     news_block = any(ev["impact"]=="High" and 0<=ev["mins_from_now"]<=30 for ev in news_events)
 
-    if buy_pct>=60 and buy_pct>sell_pct and not news_block:
+    if buy_pct >= sell_pct:
         final_signal = "BUY";  confidence = buy_pct
-    elif sell_pct>=60 and sell_pct>buy_pct and not news_block:
-        final_signal = "SELL"; confidence = sell_pct
-    elif news_block:
-        final_signal = "WAIT"; confidence = max(buy_pct, sell_pct)
     else:
-        final_signal = "HOLD"; confidence = max(buy_pct, sell_pct)
+        final_signal = "SELL"; confidence = sell_pct
+
+    # ── COUNTER-TREND HARD BLOCK — evaluate on raw direction BEFORE gate ─────────
+    # If W1+D1 both oppose the leading signal → never trade, regardless of score
+    raw_dir = "BUY" if buy_pct >= sell_pct else "SELL"
+    counter_trend_block = (
+        (raw_dir == "BUY"  and w1_bias == "BEARISH" and d1_bias == "BEARISH") or
+        (raw_dir == "SELL" and w1_bias == "BULLISH" and d1_bias == "BULLISH")
+    )
+    if counter_trend_block:
+        confidence    = min(max(buy_pct, sell_pct), 28)
+        final_signal  = "HOLD"
+
+    if news_block and not counter_trend_block:
+        final_signal = "WAIT"; confidence = max(buy_pct, sell_pct)
+
+    # ── 3-FACTOR GATE (Candlestick Bible core framework) ─────────────────────────
+    # Use raw_dir as reference direction so the gate makes sense even after "WAIT"
+    _gate_dir = raw_dir
+    # FACTOR 1: TREND — at least one HTF aligned with signal direction
+    _trend_names = {"W1 Trend","D1 Trend","H4 Trend"}
+    trend_ok  = any(c["dir"]==_gate_dir and c["score"]>0 for c in components if c["name"] in _trend_names)
+
+    # FACTOR 2: LEVEL — price at a key level (S/R, EMA, Fib, OB, FVG, Pivot)
+    _level_names = {"S/R Level","21 EMA Bounce","Fibonacci","Order Block","Fair Value Gap","Daily Pivot","Liq Sweep"}
+    level_ok  = any(c["dir"]==_gate_dir and c["score"]>0 for c in components if c["name"] in _level_names)
+
+    # FACTOR 3: SIGNAL — candlestick/pattern confirmation
+    _signal_names = {"Price Action","3-Bar Reversal","M2B/M2S","Double T/B","BOS/CHoCH"}
+    signal_ok = any(c["dir"]==_gate_dir and c["score"]>0 for c in components if c["name"] in _signal_names)
+
+    three_factor_pass = trend_ok and level_ok and signal_ok
+    three_factor_detail = (
+        f"Trend:{'✅' if trend_ok else '❌'}  Level:{'✅' if level_ok else '❌'}  Signal:{'✅' if signal_ok else '❌'}"
+    )
+
+    # If 3-factor gate fails (and not already blocked) → cap confidence and suppress trade
+    if not counter_trend_block and not three_factor_pass and final_signal not in ("WAIT",):
+        confidence   = min(confidence, 48)
+        final_signal = "HOLD"
+
+    # ── FINAL TRADE SIGNAL (only BUY/SELL if confidence >= 60 and all gates pass) ─
+    if final_signal not in ("WAIT","HOLD") and confidence < 60:
+        final_signal = "HOLD"
 
     return {
-        "symbol":      sym,
-        "tf":          tf,
-        "price":       round(price, digits),
-        "bid":         round(tick.bid, digits) if tick else round(price, digits),
-        "ask":         round(tick.ask, digits) if tick else round(price, digits),
-        "signal":      final_signal,
-        "confidence":  confidence,
-        "buy_score":   buy_pct,
-        "sell_score":  sell_pct,
-        "h4_bias":     h4_bias,
-        "d1_bias":     d1_bias,
-        "rsi":         rsi14,
-        "atr":         round(atr_v, digits),
-        "supertrend":  "BULLISH" if st_dir[-1]==1 else "BEARISH",
-        "killzone":    kz_name,
-        "kz_level":    kz_level,
-        "news_block":  news_block,
-        "news":        news_events[:8],
-        "bos":         bos_dir,
-        "components":  components,
+        "symbol":              sym,
+        "tf":                  tf,
+        "price":               round(price, digits),
+        "bid":                 round(tick.bid, digits) if tick else round(price, digits),
+        "ask":                 round(tick.ask, digits) if tick else round(price, digits),
+        "signal":              final_signal,
+        "confidence":          confidence,
+        "buy_score":           buy_pct,
+        "sell_score":          sell_pct,
+        "w1_bias":             w1_bias,
+        "h4_bias":             h4_bias,
+        "d1_bias":             d1_bias,
+        "rsi":                 rsi14,
+        "atr":                 round(atr_v, digits),
+        "supertrend":          "BULLISH" if st_dir[-1]==1 else "BEARISH",
+        "killzone":            kz_name,
+        "kz_level":            kz_level,
+        "news_block":          news_block,
+        "news":                news_events[:8],
+        "bos":                 bos_dir,
+        "three_factor_pass":   three_factor_pass,
+        "three_factor_detail": three_factor_detail,
+        "counter_trend_block": counter_trend_block,
+        "nr7":                 has_nr7,
+        "components":          components,
     }
+
+
+@app.get("/api/ai/analyze/{symbol}")
+def ai_analyze(symbol: str, tf: str = "H1"):
+    """Enhanced multi-timeframe AI analysis: W1+D1+H4+H1, 3-Factor Gate, Price Action + SMC + ICT + News."""
+    # _do_ai_analyze calls _get_rates/_mt5_call internally — do NOT wrap in outer _mt5_call
+    # to avoid nested thread timeouts killing the long multi-TF fetch.
+    try:
+        return _do_ai_analyze(symbol, tf)
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.get("/api/news/calendar")
