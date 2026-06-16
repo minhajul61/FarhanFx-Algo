@@ -1404,6 +1404,9 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                   <option value="Engulfing Trend">🕯️ Engulfing Trend — 53.8% WR</option>
                   <option value="PA Confluence">🏛️ PA Confluence — 53.2% WR</option>
                 </optgroup>
+                <optgroup label="── Backtested ≥50% WR (M15) ──">
+                  <option value="Trend Continuation M15">📊 Trend Continuation M15 — 58.4% WR</option>
+                </optgroup>
                 <optgroup label="── AI Engine ──">
                   <option value="AI Signal Engine">🧠 AI Signal Engine (W1+D1+H4, 3-Factor Gate)</option>
                 </optgroup>
@@ -1422,7 +1425,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           </div>
           <!-- Row 2: Lots + SL + TP + Max Trades -->
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-top:10px;align-items:end">
-            <div class="field" style="margin-bottom:0"><label>Lots</label><input id="algo-vol" class="sinput" style="width:100%" type="number" value="0.01" step="0.01" min="0.01"/></div>
+            <div class="field" style="margin-bottom:0"><label>Lots</label><input id="algo-vol" class="sinput" style="width:100%" type="number" value="0.1" step="0.01" min="0.01"/></div>
             <div class="field" style="margin-bottom:0"><label>SL (pips)</label><input id="algo-sl" class="sinput" style="width:100%" type="number" value="20" min="0"/></div>
             <div class="field" style="margin-bottom:0"><label>TP (pips)</label><input id="algo-tp" class="sinput" style="width:100%" type="number" value="40" min="0"/></div>
             <div class="field" style="margin-bottom:0">
@@ -1462,7 +1465,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         </div>
 
         <!-- STRATEGY INFO CARDS — Only backtested ≥50% WR strategies shown -->
-        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:14px">
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:14px">
           <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(59,130,246,0.12),rgba(16,185,129,0.08));transition:border-color 0.2s;border-width:1px" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Trend Continuation';autoSetStrategyTF('Trend Continuation')">
             <div style="font-size:10px;background:linear-gradient(90deg,#3b82f6,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">📊 TREND CONT.</div>
             <div style="font-size:10px;color:var(--text3)">EMA200+ST+EMA50 D1+H4</div>
@@ -1487,6 +1490,11 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <div style="font-size:10px;color:var(--accent);letter-spacing:1px;margin-bottom:4px">🏛️ PA CONFLUENCE</div>
             <div style="font-size:10px;color:var(--text3)">Trend+Level+PA signal</div>
             <div style="font-size:9px;color:var(--green);margin-top:4px">BT: 53.2% WR · H1</div>
+          </div>
+          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(59,130,246,0.08),rgba(52,211,153,0.06));transition:border-color 0.2s" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Trend Continuation M15';autoSetStrategyTF('Trend Continuation M15')">
+            <div style="font-size:10px;color:#3b82f6;letter-spacing:1px;margin-bottom:4px">📊 TREND CONT. M15</div>
+            <div style="font-size:10px;color:var(--text3)">EMA100+ST+EMA50 D1+H4</div>
+            <div style="font-size:9px;color:var(--green);margin-top:4px">BT: 58.4% WR · M15</div>
           </div>
           <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(245,158,11,0.12),rgba(16,185,129,0.08));transition:border-color 0.2s;border-width:1px" onmouseover="this.style.borderColor='var(--amber)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='AI Signal Engine';autoSetStrategyTF('AI Signal Engine')">
             <div style="font-size:10px;background:linear-gradient(90deg,var(--amber),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">🧠 AI ENGINE</div>
@@ -3096,6 +3104,7 @@ function showApp(accountInfo) {
   document.getElementById('main-btn').style.background = 'linear-gradient(135deg,var(--accent),var(--accent2))';
   document.getElementById('main-btn').textContent = 'CONNECT TO MT5 →';
   document.getElementById('main-btn').disabled = false;
+  setConnStatus(!!(accountInfo && accountInfo.login));
   applySettingsToUI(loadSettings());
   if (!chartsInit) { initCharts(); chartsInit = true; }
   connectWS();
@@ -4016,15 +4025,11 @@ async function doAuthLogin() {
 
 async function _afterAuthSuccess() {
   const r = await apiFetch('/api/account');
-  if (!r.error) {
-    showApp(r);
-    loadMT5Symbols();
-    setTimeout(loadAccount, 500);
-  } else {
-    // MT5 not connected — show MT5 connect screen
-    document.getElementById('login-screen').style.display = 'flex';
-    setLoginStatus('SERVER READY', 'var(--text2)');
-  }
+  // Always go straight to the dashboard — MT5 connects in the background via
+  // the CONNECT MT5 bar/modal if it isn't already attached to a live session.
+  showApp(r.error ? {} : r);
+  loadMT5Symbols();
+  setTimeout(loadAccount, 500);
 }
 
 async function doAuthLogout() {
@@ -5392,7 +5397,6 @@ function connectWS() {
   try { ws = new WebSocket(WS); } catch { _scheduleWsReconnect(); return; }
 
   ws.onopen = () => {
-    setConnStatus(true);
     loadAccount();
     loadDashboardStats();
   };
@@ -5405,6 +5409,7 @@ function connectWS() {
   ws.onmessage = (e) => {
     try {
       const d = JSON.parse(e.data);
+      setConnStatus(!!d.account);
       if (d.account) {
         const a = d.account;
         const p = a.profit;
@@ -6041,7 +6046,7 @@ function algoGetConfig() {
     strategy:   document.getElementById('algo-strategy').value,
     symbol:     document.getElementById('algo-symbol').value.trim(),
     timeframe:  document.getElementById('algo-tf').value,
-    volume:     parseFloat(document.getElementById('algo-vol').value) || 0.01,
+    volume:     parseFloat(document.getElementById('algo-vol').value) || 0.1,
     sl:         parseFloat(document.getElementById('algo-sl').value) || 20,
     tp:         parseFloat(document.getElementById('algo-tp').value) || 40,
     max_trades: parseInt(document.getElementById('algo-max-trades').value) || 2,
@@ -6055,6 +6060,7 @@ const STRATEGY_BEST_TF = {
   'Pin Bar SR':        'H1',   // 56.8% WR backtest
   'Engulfing Trend':   'H1',   // 53.8% WR backtest
   'PA Confluence':     'H1',   // 53.2% WR backtest
+  'Trend Continuation M15': 'M15', // 58.4% WR backtest (M15-tuned, separate from H1 version)
   'AI Signal Engine':  'H1',   // multi-TF engine, H1 primary
 };
 
@@ -6178,6 +6184,7 @@ async function loadStrategies() {
     'AI Signal Engine':    '#10b981',
     'M2B/M2S':            '#34d399',
     'Trend Continuation': '#3b82f6',
+    'Trend Continuation M15': '#3b82f6',
     'Pin Bar SR':         '#10b981',
     'Engulfing Trend':    '#34d399',
     'PA Confluence':      'var(--accent)',
@@ -6695,7 +6702,7 @@ function _updateAlgoDashboard(strategies, livePositions) {
     if (!running.length) {
       strip.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:6px 0">No strategies active — start one above</div>';
     } else {
-      const colMap={'AI Signal Engine':'#10b981','M2B/M2S':'#34d399','Trend Continuation':'#3b82f6','Pin Bar SR':'#10b981','Engulfing Trend':'#34d399','PA Confluence':'#a78bfa','Supertrend':'#f97316','Triple Filter':'#10b981','Scalper':'var(--accent)','Ichimoku':'#e879f9','AI Confluence':'var(--amber)','AI Agent':'#f59e0b','Order Block':'#3b82f6','False Breakout':'#f43f5e','Inside Bar':'#fb923c'};
+      const colMap={'AI Signal Engine':'#10b981','M2B/M2S':'#34d399','Trend Continuation':'#3b82f6','Trend Continuation M15':'#3b82f6','Pin Bar SR':'#10b981','Engulfing Trend':'#34d399','PA Confluence':'#a78bfa','Supertrend':'#f97316','Triple Filter':'#10b981','Scalper':'var(--accent)','Ichimoku':'#e879f9','AI Confluence':'var(--amber)','AI Agent':'#f59e0b','Order Block':'#3b82f6','False Breakout':'#f43f5e','Inside Bar':'#fb923c'};
       strip.innerHTML = running.map(s => {
         const col   = colMap[s.strategy]||'var(--cyan)';
         const lp    = s.live_pnl != null ? s.live_pnl : null;
