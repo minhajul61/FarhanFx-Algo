@@ -2811,6 +2811,20 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                     <span style="color:var(--text3);font-size:10px">— execute immediately on signal</span>
                   </label>
                 </div>
+                <!-- Outgoing notification settings -->
+                <div style="border-top:1px solid var(--border);margin:10px 0 8px"></div>
+                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">OUTGOING ALERTS (TRADE OPEN / CLOSE / ERROR)</div>
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px">
+                    <input type="checkbox" id="tg-notify-enabled" style="accent-color:var(--accent);width:16px;height:16px" checked/>
+                    <span style="color:var(--accent);font-weight:700">SEND ALERTS TO THIS CHAT</span>
+                  </label>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                  <label style="font-size:11px;color:var(--text2);white-space:nowrap">Drawdown alert at</label>
+                  <input id="tg-drawdown-pct" class="sinput" type="number" value="5" min="1" max="50" step="0.5" style="width:70px;text-align:center"/>
+                  <span style="font-size:11px;color:var(--text3)">% from peak equity</span>
+                </div>
                 <div style="display:flex;gap:8px">
                   <button onclick="tgSaveConfig(true)" style="flex:1;padding:8px;background:linear-gradient(135deg,var(--cyan),#0ea5e9);border:none;color:#000;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font)">▶ START BOT</button>
                   <button onclick="tgSaveConfig(false)" style="padding:8px 14px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font)">■ STOP</button>
@@ -5397,6 +5411,7 @@ function connectWS() {
   try { ws = new WebSocket(WS); } catch { _scheduleWsReconnect(); return; }
 
   ws.onopen = () => {
+    setConnStatus(true);
     loadAccount();
     loadDashboardStats();
   };
@@ -6851,13 +6866,15 @@ async function tgTestToken() {
 }
 
 async function tgSaveConfig(enable) {
-  const token    = document.getElementById('tg-token').value.trim();
-  const chatId   = document.getElementById('tg-chat-id').value.trim();
-  const amount   = parseFloat(document.getElementById('tg-amount').value)   || 0.01;
-  const leverage = parseInt(document.getElementById('tg-leverage').value)   || 10;
-  const autoT    = document.getElementById('tg-auto-trade').checked;
-  const errEl    = document.getElementById('tg-config-err');
-  errEl.style.display = 'none';
+  const token          = document.getElementById('tg-token').value.trim();
+  const chatId         = document.getElementById('tg-chat-id').value.trim();
+  const amount         = parseFloat(document.getElementById('tg-amount').value)   || 0.01;
+  const leverage       = parseInt(document.getElementById('tg-leverage').value)   || 10;
+  const autoT          = document.getElementById('tg-auto-trade').checked;
+  const notifyEnabled  = document.getElementById('tg-notify-enabled').checked;
+  const drawdownPct    = parseFloat(document.getElementById('tg-drawdown-pct').value) || 5.0;
+  const errEl          = document.getElementById('tg-config-err');
+  errEl.style.display  = 'none';
 
   if (enable && !token) { errEl.textContent = 'Bot token required'; errEl.style.display='block'; return; }
 
@@ -6870,7 +6887,8 @@ async function tgSaveConfig(enable) {
 
   const r = await apiFetch('/api/telegram/config', {
     method: 'POST',
-    body: JSON.stringify({ token, chat_id: chatId, exchanges, auto_trade: autoT, amount, leverage, enabled: enable })
+    body: JSON.stringify({ token, chat_id: chatId, exchanges, auto_trade: autoT, amount, leverage,
+                           enabled: enable, notify_enabled: notifyEnabled, drawdown_pct: drawdownPct })
   });
   if (r.error) { toastErr('Config failed: ' + r.error); return; }
   toast(enable ? '📨 Telegram bot started!' : '📨 Telegram bot stopped');
@@ -6904,6 +6922,10 @@ async function tgLoadStatus() {
   if (csEl)  csEl.checked  = exs.includes('coinswitch');
   const atEl = document.getElementById('tg-auto-trade');
   if (atEl) atEl.checked = r.auto_trade;
+  const notifyEl = document.getElementById('tg-notify-enabled');
+  if (notifyEl) notifyEl.checked = r.notify_enabled !== false;
+  const ddEl = document.getElementById('tg-drawdown-pct');
+  if (ddEl && r.drawdown_pct != null) ddEl.value = r.drawdown_pct;
 }
 
 async function tgLoadSignals() {
