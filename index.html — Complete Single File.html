@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FarhanFX Algo</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;color:#e6edf3;font-family:'Courier New',monospace;min-height:100vh}
+.bg-grid{position:fixed;inset:0;background-image:linear-gradient(rgba(0,210,106,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,210,106,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
+#login-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:10;background:#0d1117}
+.l-container{width:100%;max-width:400px;padding:24px}
+.logo-wrap{text-align:center;margin-bottom:36px}
+.logo-icon{width:52px;height:52px;background:#00d26a;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;color:#0d1117;margin-bottom:14px}
+.logo-text{font-size:22px;font-weight:700;letter-spacing:3px;color:#e6edf3}
+.logo-sub{font-size:10px;color:#7d8590;letter-spacing:4px;margin-top:4px}
+.lcard{background:#161b22;border:1px solid #21262d;border-radius:10px;padding:28px}
+.lcard-title{font-size:11px;color:#7d8590;letter-spacing:2px;text-transform:uppercase;margin-bottom:22px;text-align:center}
+.field{margin-bottom:18px}
+.field label{display:block;font-size:11px;color:#7d8590;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+.field input{width:100%;background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:11px 14px;color:#e6edf3;font-family:'Courier New',monospace;font-size:14px;outline:none;transition:border-color 0.2s}
+.field input:focus{border-color:#00d26a}
+.field input::placeholder{color:#3d444d}
+.forgot a{font-size:11px;color:#58a6ff;text-decoration:none;float:right;margin-top:6px}
+.lbtn{width:100%;background:#00d26a;border:none;border-radius:6px;padding:13px;color:#0d1117;font-family:'Courier New',monospace;font-size:14px;font-weight:700;letter-spacing:2px;cursor:pointer;margin-top:8px;transition:background 0.2s,transform 0.1s}
+.lbtn:hover{background:#26e07a}
+.lbtn:active{transform:scale(0.98)}
+.lstatus{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:18px}
+.dot{width:6px;height:6px;background:#00d26a;border-radius:50%;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.lstatus-text{font-size:10px;color:#7d8590;letter-spacing:2px}
+.footer-text{text-align:center;font-size:11px;color:#7d8590;margin-top:20px}
+.footer-text a{color:#00d26a;text-decoration:none}
+#app{display:none;min-height:100vh;flex-direction:column;position:relative;z-index:1}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid #21262d;background:#0d1117;position:sticky;top:0;z-index:5}
+.tb-logo{display:flex;align-items:center;gap:10px}
+.tb-icon{width:32px;height:32px;background:#00d26a;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#0d1117}
+.tb-name{font-size:15px;font-weight:700;letter-spacing:2px}
+.tb-right{display:flex;align-items:center;gap:10px}
+.user-badge{background:#1a2a1a;border:1px solid #00d26a;color:#00d26a;font-size:10px;padding:4px 10px;border-radius:4px;letter-spacing:1px}
+.logout-btn{background:transparent;border:1px solid #21262d;color:#7d8590;font-family:'Courier New',monospace;font-size:10px;padding:4px 10px;border-radius:4px;cursor:pointer;letter-spacing:1px;transition:all 0.2s}
+.logout-btn:hover{border-color:#f85149;color:#f85149}
+.app-body{display:flex;flex:1}
+.sidebar{width:180px;background:#0d1117;border-right:1px solid #21262d;padding:16px 0;min-height:calc(100vh - 57px);flex-shrink:0}
+.nav-item{display:flex;align-items:center;gap:10px;padding:11px 20px;cursor:pointer;font-size:12px;letter-spacing:1px;color:#7d8590;transition:all 0.15s;border-left:3px solid transparent}
+.nav-item:hover{color:#e6edf3;background:#161b22}
+.nav-item.active{color:#00d26a;border-left:3px solid #00d26a;background:#0f1f14}
+.content{flex:1;padding:20px;overflow-y:auto}
+.page{display:none}.page.active{display:block}
+.page-title{font-size:13px;color:#7d8590;letter-spacing:3px;text-transform:uppercase;margin-bottom:20px}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.kpi{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:14px}
+.kpi-label{font-size:10px;color:#7d8590;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px}
+.kpi-value{font-size:20px;font-weight:700}
+.kpi-delta{font-size:11px;color:#7d8590;margin-top:4px}
+.green{color:#00d26a}.red{color:#f85149}.cyan{color:#58a6ff}
+.panel{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px;margin-bottom:16px}
+.panel-title{font-size:11px;color:#7d8590;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px}
+.two-col{display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:16px}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #21262d}
+.stat-row:last-child{border-bottom:none}
+.stat-label{font-size:12px;color:#7d8590}
+.stat-val{font-size:13px;font-weight:700}
+.bar-wrap{margin-bottom:10px}
+.bar-track{height:6px;background:#21262d;border-radius:2px;margin-top:4px}
+.bar-fill{height:100%;border-radius:2px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:10px 12px;color:#7d8590;font-size:10px;letter-spacing:1px;border-bottom:1px solid #21262d;font-weight:400}
+td{padding:10px 12px;border-bottom:1px solid #161b22;color:#e6edf3}
+tr:hover td{background:#161b22}
+.badge{display:inline-block;padding:3px 8px;border-radius:4px;font-size:10px;letter-spacing:1px}
+.badge-green{background:#0f1f14;color:#00d26a;border:1px solid #00d26a}
+.badge-red{background:#1f0f0f;color:#f85149;border:1px solid #f85149}
+.wallet-card{background:linear-gradient(135deg,#0f1f14,#161b22);border:1px solid #00d26a;border-radius:12px;padding:24px;margin-bottom:20px}
+.w-balance{font-size:36px;font-weight:700;color:#00d26a;margin:8px 0}
+.w-label{font-size:10px;color:#7d8590;letter-spacing:2px}
+.w-actions{display:flex;gap:10px;margin-top:16px}
+.w-btn{flex:1;padding:10px;border-radius:6px;font-family:'Courier New',monospace;font-size:12px;font-weight:700;letter-spacing:1px;cursor:pointer;border:none;transition:all 0.2s}
+.w-btn-d{background:#00d26a;color:#0d1117}
+.w-btn-w{background:transparent;border:1px solid #58a6ff;color:#58a6ff}
+.tx-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #21262d}
+.tx-info{display:flex;align-items:center;gap:10px}
+.tx-icon{width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px}
+.tx-name{font-size:13px}.tx-date{font-size:11px;color:#7d8590}
+.setting-group{margin-bottom:24px}
+.setting-group h3{font-size:11px;color:#7d8590;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #21262d}
+.setting-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #161b22}
+.setting-label{font-size:13px;color:#e6edf3}
+.setting-sub{font-size:11px;color:#7d8590;margin-top:2px}
+.toggle{width:40px;height:22px;background:#21262d;border-radius:11px;cursor:pointer;position:relative;transition:background 0.2s}
+.toggle.on{background:#00d26a}
+.toggle::after{content:'';width:16px;height:16px;background:#e6edf3;border-radius:50%;position:absolute;top:3px;left:3px;transition:left 0.2s}
+.toggle.on::after{left:21px}
+.sinput{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:8px 12px;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;outline:none;width:200px}
+.sinput:focus{border-color:#00d26a}
+.sbtn{background:transparent;border:1px solid #00d26a;color:#00d26a;font-family:'Courier New',monospace;font-size:11px;padding:8px 16px;border-radius:6px;cursor:pointer;letter-spacing:1px;transition:all 0.2s}
+.sbtn:hover{background:#00d26a;color:#0d1117}
+.sel{width:100%;background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:10px 12px;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;outline:none}
+.sel:focus{border-color:#00d26a}
+.date-input{width:100%;background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:9px 10px;color:#e6edf3;font-family:'Courier New',monospace;font-size:12px;outline:none;color-scheme:dark}
+.run-btn{background:#00d26a;border:none;border-radius:6px;padding:14px 48px;color:#0d1117;font-family:'Courier New',monospace;font-size:14px;font-weight:700;letter-spacing:2px;cursor:pointer;transition:all 0.2s}
+.run-btn:hover{background:#26e07a}
+.run-btn:disabled{opacity:0.6;cursor:not-allowed}
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="l-container">
+    <div class="logo-wrap">
+      <div class="logo-icon">FX</div>
+      <div class="logo-text">FARHANFX ALGO</div>
+      <div class="logo-sub">TRADING SYSTEM</div>
+    </div>
+    <div class="lcard">
+      <div class="lcard-title" id="form-title">Secure Access</div>
+      <div class="field"><label>Username</label><input type="text" id="username" placeholder="Enter your username"/></div>
+      <div class="field"><label>Password</label><input type="password" id="password" placeholder="••••••••••••"/><div class="forgot"><a href="#">Forgot password?</a></div></div>
+      <div id="register-fields" style="display:none">
+        <div class="field"><label>Email</label><input type="email" id="email" placeholder="Enter your email"/></div>
+        <div class="field"><label>Confirm Password</label><input type="password" id="confirm-password" placeholder="••••••••••••"/></div>
+      </div>
+      <button class="lbtn" id="main-btn" onclick="handleAction()">LOGIN →</button>
+      <div class="lstatus"><div class="dot"></div><div class="lstatus-text">SYSTEM ONLINE</div></div>
+    </div>
+    <div class="footer-text" id="footer-link">Don't have an account? <a href="#" onclick="toggleForm(event)">Create Account</a></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="topbar">
+    <div class="tb-logo"><div class="tb-icon">FX</div><div class="tb-name">FARHANFX ALGO</div></div>
+    <div class="tb-right">
+      <div class="user-badge" id="user-badge">● USER</div>
+      <button class="logout-btn" onclick="logout()">LOGOUT ×</button>
+    </div>
+  </div>
+  <div class="app-body">
+    <div class="sidebar">
+      <div class="nav-item active" onclick="showPage('dashboard',this)"><i class="ti ti-layout-dashboard"></i> DASHBOARD</div>
+      <div class="nav-item" onclick="showPage('trades',this)"><i class="ti ti-list"></i> TRADES</div>
+      <div class="nav-item" onclick="showPage('reports',this)"><i class="ti ti-chart-bar"></i> REPORTS</div>
+      <div class="nav-item" onclick="showPage('wallet',this)"><i class="ti ti-wallet"></i> WALLET</div>
+      <div class="nav-item" onclick="showPage('backtest',this)"><i class="ti ti-test-pipe"></i> BACKTEST</div>
+      <div class="nav-item" onclick="showPage('settings',this)"><i class="ti ti-settings"></i> SETTINGS</div>
+    </div>
+    <div class="content">
+
+      <!-- DASHBOARD -->
+      <div class="page active" id="page-dashboard">
+        <div class="page-title">Overview</div>
+        <div class="kpi-grid">
+          <div class="kpi"><div class="kpi-label">Current Balance</div><div class="kpi-value green">$14,832</div><div class="kpi-delta">↑ +48.32% all time</div></div>
+          <div class="kpi"><div class="kpi-label">This Month</div><div class="kpi-value green">+$732</div><div class="kpi-delta">↑ +5.19%</div></div>
+          <div class="kpi"><div class="kpi-label">Win Rate</div><div class="kpi-value cyan">67.4%</div><div class="kpi-delta">312 total trades</div></div>
+          <div class="kpi"><div class="kpi-label">Max Drawdown</div><div class="kpi-value red">-7.4%</div><div class="kpi-delta">Recovered in 9d</div></div>
+        </div>
+        <div class="two-col">
+          <div class="panel"><div class="panel-title">Equity Curve</div><div style="position:relative;height:200px"><canvas id="equityChart"></canvas></div></div>
+          <div class="panel"><div class="panel-title">Monthly P&amp;L</div><div style="position:relative;height:200px"><canvas id="plChart"></canvas></div></div>
+        </div>
+        <div class="three-col">
+          <div class="panel">
+            <div class="panel-title">Performance</div>
+            <div class="stat-row"><span class="stat-label">Profit Factor</span><span class="stat-val green">2.31</span></div>
+            <div class="stat-row"><span class="stat-label">Sharpe Ratio</span><span class="stat-val cyan">1.87</span></div>
+            <div class="stat-row"><span class="stat-label">Avg RR</span><span class="stat-val cyan">1:2.4</span></div>
+            <div class="stat-row"><span class="stat-label">Expectancy</span><span class="stat-val green">+$15.49</span></div>
+            <div class="stat-row"><span class="stat-label">Calmar Ratio</span><span class="stat-val green">4.34</span></div>
+          </div>
+          <div class="panel"><div class="panel-title">Drawdown</div><div style="position:relative;height:150px"><canvas id="ddChart"></canvas></div></div>
+          <div class="panel">
+            <div class="panel-title">Risk Metrics</div>
+            <div class="bar-wrap"><div style="display:flex;justify-content:space-between"><span class="stat-label">Max DD</span><span class="stat-val red" style="font-size:11px">7.4%</span></div><div class="bar-track"><div class="bar-fill" style="width:37%;background:#f85149"></div></div></div>
+            <div class="bar-wrap"><div style="display:flex;justify-content:space-between"><span class="stat-label">Risk/Trade</span><span class="stat-val cyan" style="font-size:11px">1.0%</span></div><div class="bar-track"><div class="bar-fill" style="width:10%;background:#58a6ff"></div></div></div>
+            <div class="bar-wrap"><div style="display:flex;justify-content:space-between"><span class="stat-label">Win Streak</span><span class="stat-val green" style="font-size:11px">11</span></div><div class="bar-track"><div class="bar-fill" style="width:73%;background:#00d26a"></div></div></div>
+            <div class="bar-wrap"><div style="display:flex;justify-content:space-between"><span class="stat-label">Loss Streak</span><span class="stat-val red" style="font-size:11px">4</span></div><div class="bar-track"><div class="bar-fill" style="width:27%;background:#f85149"></div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TRADES -->
+      <div class="page" id="page-trades">
+        <div class="page-title">Trade History</div>
+        <div class="kpi-grid">
+          <div class="kpi"><div class="kpi-label">Total Trades</div><div class="kpi-value">312</div><div class="kpi-delta">All time</div></div>
+          <div class="kpi"><div class="kpi-label">Wins</div><div class="kpi-value green">210</div><div class="kpi-delta">67.4% win rate</div></div>
+          <div class="kpi"><div class="kpi-label">Losses</div><div class="kpi-value red">102</div><div class="kpi-delta">32.6% loss rate</div></div>
+          <div class="kpi"><div class="kpi-label">Avg Hold Time</div><div class="kpi-value cyan">4.2h</div><div class="kpi-delta">Per trade</div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Recent Trades</div>
+          <table><thead><tr><th>#</th><th>PAIR</th><th>TYPE</th><th>OPEN</th><th>CLOSE</th><th>LOTS</th><th>P&amp;L</th><th>STATUS</th></tr></thead>
+          <tbody>
+            <tr><td>#312</td><td>EUR/USD</td><td><span class="badge badge-green">BUY</span></td><td>1.08420</td><td>1.08710</td><td>0.50</td><td class="green">+$145</td><td><span class="badge badge-green">WIN</span></td></tr>
+            <tr><td>#311</td><td>GBP/JPY</td><td><span class="badge badge-red">SELL</span></td><td>192.340</td><td>192.180</td><td>0.30</td><td class="green">+$96</td><td><span class="badge badge-green">WIN</span></td></tr>
+            <tr><td>#310</td><td>XAU/USD</td><td><span class="badge badge-green">BUY</span></td><td>2312.50</td><td>2308.20</td><td>0.10</td><td class="red">-$43</td><td><span class="badge badge-red">LOSS</span></td></tr>
+            <tr><td>#309</td><td>USD/CAD</td><td><span class="badge badge-red">SELL</span></td><td>1.36840</td><td>1.36510</td><td>0.40</td><td class="green">+$132</td><td><span class="badge badge-green">WIN</span></td></tr>
+            <tr><td>#308</td><td>EUR/GBP</td><td><span class="badge badge-green">BUY</span></td><td>0.85620</td><td>0.85490</td><td>0.50</td><td class="red">-$65</td><td><span class="badge badge-red">LOSS</span></td></tr>
+            <tr><td>#307</td><td>NAS100</td><td><span class="badge badge-green">BUY</span></td><td>18420.0</td><td>18530.0</td><td>0.20</td><td class="green">+$220</td><td><span class="badge badge-green">WIN</span></td></tr>
+            <tr><td>#306</td><td>GBP/USD</td><td><span class="badge badge-red">SELL</span></td><td>1.27340</td><td>1.27210</td><td>0.60</td><td class="green">+$78</td><td><span class="badge badge-green">WIN</span></td></tr>
+            <tr><td>#305</td><td>USD/JPY</td><td><span class="badge badge-green">BUY</span></td><td>154.820</td><td>154.650</td><td>0.30</td><td class="red">-$51</td><td><span class="badge badge-red">LOSS</span></td></tr>
+          </tbody></table>
+        </div>
+      </div>
+
+      <!-- REPORTS -->
+      <div class="page" id="page-reports">
+        <div class="page-title">Reports & Analytics</div>
+        <div class="kpi-grid">
+          <div class="kpi"><div class="kpi-label">Best Month</div><div class="kpi-value green">+$732</div><div class="kpi-delta">June 2025</div></div>
+          <div class="kpi"><div class="kpi-label">Worst Month</div><div class="kpi-value red">-$180</div><div class="kpi-delta">July 2024</div></div>
+          <div class="kpi"><div class="kpi-label">Avg Monthly</div><div class="kpi-value cyan">+$268</div><div class="kpi-delta">Over 18 months</div></div>
+          <div class="kpi"><div class="kpi-label">Profitable Months</div><div class="kpi-value green">15/18</div><div class="kpi-delta">83.3% success</div></div>
+        </div>
+        <div class="two-col">
+          <div class="panel"><div class="panel-title">Pair Performance</div><div style="position:relative;height:220px"><canvas id="pairChart"></canvas></div></div>
+          <div class="panel"><div class="panel-title">Trade Distribution</div><div style="position:relative;height:220px"><canvas id="distChart"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Monthly Summary</div>
+          <table><thead><tr><th>MONTH</th><th>TRADES</th><th>WINS</th><th>LOSSES</th><th>WIN RATE</th><th>P&amp;L</th></tr></thead>
+          <tbody>
+            <tr><td>Jun 2025</td><td>21</td><td>15</td><td>6</td><td class="cyan">71.4%</td><td class="green">+$732</td></tr>
+            <tr><td>May 2025</td><td>18</td><td>13</td><td>5</td><td class="cyan">72.2%</td><td class="green">+$350</td></tr>
+            <tr><td>Apr 2025</td><td>20</td><td>14</td><td>6</td><td class="cyan">70.0%</td><td class="green">+$330</td></tr>
+            <tr><td>Mar 2025</td><td>19</td><td>12</td><td>7</td><td class="cyan">63.1%</td><td class="green">+$440</td></tr>
+            <tr><td>Feb 2025</td><td>16</td><td>11</td><td>5</td><td class="cyan">68.7%</td><td class="green">+$490</td></tr>
+            <tr><td>Jan 2025</td><td>17</td><td>10</td><td>7</td><td class="cyan">58.8%</td><td class="red">-$140</td></tr>
+          </tbody></table>
+        </div>
+      </div>
+
+      <!-- WALLET -->
+      <div class="page" id="page-wallet">
+        <div class="page-title">Wallet</div>
+        <div class="wallet-card">
+          <div class="w-label">TOTAL BALANCE</div>
+          <div class="w-balance">$14,832.00</div>
+          <div style="display:flex;gap:24px;margin-top:4px">
+            <div><div class="w-label">PROFIT</div><div style="color:#00d26a;font-size:14px;font-weight:700;margin-top:4px">+$4,832.00</div></div>
+            <div><div class="w-label">INITIAL</div><div style="color:#58a6ff;font-size:14px;font-weight:700;margin-top:4px">$10,000.00</div></div>
+            <div><div class="w-label">RETURN</div><div style="color:#00d26a;font-size:14px;font-weight:700;margin-top:4px">+48.32%</div></div>
+          </div>
+          <div class="w-actions">
+            <button class="w-btn w-btn-d" onclick="alert('Deposit coming soon!')">↓ DEPOSIT</button>
+            <button class="w-btn w-btn-w" onclick="alert('Withdraw coming soon!')">↑ WITHDRAW</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Transaction History</div>
+          <div class="tx-row"><div class="tx-info"><div class="tx-icon" style="background:#0f1f14"><i class="ti ti-arrow-down green"></i></div><div><div class="tx-name">Initial Deposit</div><div class="tx-date">Jan 01, 2024</div></div></div><div class="green" style="font-weight:700">+$10,000.00</div></div>
+          <div class="tx-row"><div class="tx-info"><div class="tx-icon" style="background:#0f1f14"><i class="ti ti-chart-line green"></i></div><div><div class="tx-name">Trading Profit — Q1</div><div class="tx-date">Mar 31, 2024</div></div></div><div class="green" style="font-weight:700">+$1,050.00</div></div>
+          <div class="tx-row"><div class="tx-info"><div class="tx-icon" style="background:#0f1f14"><i class="ti ti-chart-line green"></i></div><div><div class="tx-name">Trading Profit — Q2</div><div class="tx-date">Jun 30, 2024</div></div></div><div class="green" style="font-weight:700">+$910.00</div></div>
+          <div class="tx-row"><div class="tx-info"><div class="tx-icon" style="background:#1f0f0f"><i class="ti ti-arrow-up red"></i></div><div><div class="tx-name">Withdrawal</div><div class="tx-date">Jul 15, 2024</div></div></div><div class="red" style="font-weight:700">-$500.00</div></div>
+          <div class="tx-row"><div class="tx-info"><div class="tx-icon" style="background:#0f1f14"><i class="ti ti-chart-line green"></i></div><div><div class="tx-name">Trading Profit — Q3</div><div class="tx-date">Sep 30, 2024</div></div></div><div class="green" style="font-weight:700">+$1,640.00</div></div>
+          <div class="tx-row"><div class="tx-info"><div class="tx-icon" style="background:#0f1f14"><i class="ti ti-chart-line green"></i></div><div><div class="tx-name">Trading Profit — Q4</div><div class="tx-date">Dec 31, 2024</div></div></div><div class="green" style="font-weight:700">+$1,732.00</div></div>
+        </div>
+      </div>
+
+      <!-- BACKTEST -->
+      <div class="page" id="page-backtest">
+        <div class="page-title">Backtest Engine</div>
+        <div id="bt-setup">
+          <div class="three-col" style="margin-bottom:16px">
+            <div class="panel">
+              <div class="panel-title">Strategy</div>
+              <div class="field" style="margin-bottom:12px"><label>Select Strategy</label>
+                <select id="bt-strategy" class="sel"><option>FarhanFX Trend Follow</option><option>FarhanFX Scalper v2</option><option>FarhanFX Breakout</option><option>FarhanFX Mean Reversion</option></select>
+              </div>
+              <div class="field" style="margin-bottom:0"><label>Timeframe</label>
+                <select id="bt-tf" class="sel"><option>M5</option><option>M15</option><option selected>H1</option><option>H4</option><option>D1</option></select>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">Symbol & Date</div>
+              <div class="field" style="margin-bottom:12px"><label>Pair</label>
+                <select id="bt-pair" class="sel"><option>EUR/USD</option><option>GBP/USD</option><option>XAU/USD</option><option>NAS100</option><option>GBP/JPY</option><option>USD/CAD</option></select>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div class="field" style="margin-bottom:0"><label>From</label><input type="date" id="bt-from" value="2024-01-01" class="date-input"/></div>
+                <div class="field" style="margin-bottom:0"><label>To</label><input type="date" id="bt-to" value="2024-12-31" class="date-input"/></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-title">Risk Settings</div>
+              <div class="field" style="margin-bottom:12px"><label>Initial Capital ($)</label><input id="bt-capital" type="number" value="10000" class="sinput" style="width:100%"/></div>
+              <div class="field" style="margin-bottom:12px"><label>Risk per Trade (%)</label><input id="bt-risk" type="number" value="1.0" step="0.1" class="sinput" style="width:100%"/></div>
+              <div class="field" style="margin-bottom:0"><label>Stop Loss (pips)</label><input id="bt-sl" type="number" value="20" class="sinput" style="width:100%"/></div>
+            </div>
+          </div>
+          <div style="text-align:center;margin-bottom:20px">
+            <button onclick="runBacktest()" class="run-btn" id="bt-run-btn">▶ RUN BACKTEST</button>
+          </div>
+        </div>
+        <div id="bt-loading" style="display:none;text-align:center;padding:40px">
+          <div style="font-size:13px;color:#00d26a;letter-spacing:2px;margin-bottom:12px" id="bt-load-text">INITIALIZING...</div>
+          <div style="width:100%;height:4px;background:#21262d;border-radius:2px;overflow:hidden"><div id="bt-progress-bar" style="height:100%;background:#00d26a;border-radius:2px;width:0%;transition:width 0.3s"></div></div>
+        </div>
+        <div id="bt-results" style="display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <div style="font-size:11px;color:#7d8590;letter-spacing:2px" id="bt-result-label">RESULTS</div>
+            <button onclick="resetBacktest()" class="logout-btn">← NEW TEST</button>
+          </div>
+          <div class="kpi-grid">
+            <div class="kpi"><div class="kpi-label">Net Profit</div><div class="kpi-value green" id="r-profit">—</div><div class="kpi-delta" id="r-return">—</div></div>
+            <div class="kpi"><div class="kpi-label">Win Rate</div><div class="kpi-value cyan" id="r-winrate">—</div><div class="kpi-delta" id="r-trades">—</div></div>
+            <div class="kpi"><div class="kpi-label">Max Drawdown</div><div class="kpi-value red" id="r-dd">—</div><div class="kpi-delta" id="r-pf">—</div></div>
+            <div class="kpi"><div class="kpi-label">Sharpe Ratio</div><div class="kpi-value cyan" id="r-sharpe">—</div><div class="kpi-delta" id="r-calmar">—</div></div>
+          </div>
+          <div class="two-col">
+            <div class="panel"><div class="panel-title">Equity Curve</div><div style="position:relative;height:200px"><canvas id="bt-equity-chart"></canvas></div></div>
+            <div class="panel"><div class="panel-title">Drawdown</div><div style="position:relative;height:200px"><canvas id="bt-dd-chart"></canvas></div></div>
+          </div>
+          <div class="panel">
+            <div class="panel-title">Trade Log</div>
+            <table><thead><tr><th>#</th><th>PAIR</th><th>TYPE</th><th>ENTRY</th><th>EXIT</th><th>PIPS</th><th>P&amp;L</th><th>RESULT</th></tr></thead><tbody id="bt-trade-log"></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="page" id="page-settings">
+        <div class="page-title">Settings</div>
+        <div class="panel">
+          <div class="setting-group">
+            <h3>Account</h3>
+            <div class="setting-row"><div><div class="setting-label">Username</div><div class="setting-sub">Your login name</div></div><input class="sinput" id="s-username" value="farhan"/></div>
+            <div class="setting-row"><div><div class="setting-label">Email</div><div class="setting-sub">Notifications sent here</div></div><input class="sinput" value="farhan@farhanfx.com"/></div>
+            <div class="setting-row"><div><div class="setting-label">Password</div><div class="setting-sub">Change your password</div></div><button class="sbtn">CHANGE →</button></div>
+          </div>
+          <div class="setting-group">
+            <h3>Trading</h3>
+            <div class="setting-row"><div><div class="setting-label">Risk per Trade</div><div class="setting-sub">% of balance per trade</div></div><input class="sinput" value="1.0%" style="width:120px"/></div>
+            <div class="setting-row"><div><div class="setting-label">Max Daily Loss</div><div class="setting-sub">Auto-stop when hit</div></div><input class="sinput" value="3.0%" style="width:120px"/></div>
+            <div class="setting-row"><div><div class="setting-label">Auto Trading</div><div class="setting-sub">Enable algo execution</div></div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+            <div class="setting-row"><div><div class="setting-label">Trade Notifications</div><div class="setting-sub">Alert on open/close</div></div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+          </div>
+          <div class="setting-group">
+            <h3>Notifications</h3>
+            <div class="setting-row"><div><div class="setting-label">Email Alerts</div><div class="setting-sub">Daily P&amp;L summary</div></div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div>
+            <div class="setting-row"><div><div class="setting-label">Drawdown Alert</div><div class="setting-sub">Alert if DD exceeds 5%</div></div><div class="toggle" onclick="this.classList.toggle('on')"></div></div>
+          </div>
+          <button class="sbtn" style="margin-top:8px" onclick="saveSettings()">SAVE CHANGES →</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const tc='#7d8590';
+const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun'];
+let isRegister=false,chartsInit=false,btEqChart=null,btDdChart=null;
+
+function toggleForm(e){e.preventDefault();isRegister=!isRegister;const rf=document.getElementById('register-fields'),btn=document.getElementById('main-btn'),title=document.getElementById('form-title'),fl=document.getElementById('footer-link');if(isRegister){rf.style.display='block';btn.textContent='CREATE ACCOUNT →';title.textContent='Create Account';fl.innerHTML='Already have an account? <a href="#" onclick="toggleForm(event)">Login</a>';}else{rf.style.display='none';btn.textContent='LOGIN →';title.textContent='Secure Access';fl.innerHTML='Don\'t have an account? <a href="#" onclick="toggleForm(event)">Create Account</a>';}}
+
+function showError(btn,msg,reset){btn.style.background='#f85149';btn.textContent=msg;setTimeout(()=>{btn.style.background='#00d26a';btn.textContent=reset;},1800);}
+
+function handleAction(){const u=document.getElementById('username').value.trim(),p=document.getElementById('password').value.trim(),btn=document.getElementById('main-btn');if(isRegister){const em=document.getElementById('email').value.trim(),cp=document.getElementById('confirm-password').value.trim();if(!u||!p||!em||!cp){showError(btn,'FILL ALL FIELDS','CREATE ACCOUNT →');return;}if(p!==cp){showError(btn,'PASSWORDS DO NOT MATCH','CREATE ACCOUNT →');return;}btn.style.background='#58a6ff';btn.textContent='CREATING...';setTimeout(()=>{btn.style.background='#00d26a';btn.textContent='✓ ACCOUNT CREATED';setTimeout(()=>showApp(u),700);},1300);}else{if(!u||!p){showError(btn,'FILL ALL FIELDS','LOGIN →');return;}btn.style.background='#58a6ff';btn.textContent='AUTHENTICATING...';setTimeout(()=>{btn.style.background='#00d26a';btn.textContent='✓ ACCESS GRANTED';setTimeout(()=>showApp(u),700);},1300);}}
+
+function showApp(u){document.getElementById('login-screen').style.display='none';const app=document.getElementById('app');app.style.display='flex';document.getElementById('user-badge').textContent='● '+u.toUpperCase();document.getElementById('s-username').value=u;if(!chartsInit){initCharts();chartsInit=true;}}
+
+function logout(){document.getElementById('app').style.display='none';document.getElementById('login-screen').style.display='flex';document.getElementById('main-btn').style.background='#00d26a';document.getElementById('main-btn').textContent='LOGIN →';document.getElementById('username').value='';document.getElementById('password').value='';}
+
+function showPage(id,el){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');el.classList.add('active');}
+
+function saveSettings(){const btn=document.querySelector('#page-settings .sbtn');const orig=btn.textContent;btn.style.background='#00d26a';btn.style.color='#0d1117';btn.textContent='✓ SAVED!';setTimeout(()=>{btn.style.background='transparent';btn.style.color='#00d26a';btn.textContent=orig;},1800);}
+
+function runBacktest(){const btn=document.getElementById('bt-run-btn');btn.disabled=true;btn.textContent='RUNNING...';btn.style.opacity='0.7';document.getElementById('bt-loading').style.display='block';document.getElementById('bt-results').style.display='none';const steps=['LOADING PRICE DATA...','APPLYING STRATEGY RULES...','SIMULATING TRADES...','CALCULATING METRICS...','BUILDING CHARTS...'];let i=0,pct=0;const bar=document.getElementById('bt-progress-bar'),txt=document.getElementById('bt-load-text');const iv=setInterval(()=>{pct+=20;bar.style.width=pct+'%';txt.textContent=steps[i]||'FINALIZING...';i++;if(pct>=100){clearInterval(iv);setTimeout(showBtResults,400);}},420);}
+
+function showBtResults(){const capital=parseFloat(document.getElementById('bt-capital').value)||10000,risk=parseFloat(document.getElementById('bt-risk').value)||1,pair=document.getElementById('bt-pair').value,strat=document.getElementById('bt-strategy').value,tf=document.getElementById('bt-tf').value,seed=pair.length+strat.length+tf.length,winRate=58+((seed*7)%18),totalTrades=80+((seed*3)%80),wins=Math.round(totalTrades*winRate/100),losses=totalTrades-wins,avgWin=capital*risk/100*2.3,avgLoss=capital*risk/100,netProfit=Math.round(wins*avgWin-losses*avgLoss),retPct=((netProfit/capital)*100).toFixed(1),maxDD=-(4+((seed*11)%9)).toFixed(1),sharpe=(1.2+((seed*0.07)%1.1)).toFixed(2),pf=netProfit>0?(wins*avgWin/(losses*avgLoss)).toFixed(2):'0.80',calmar=(Math.abs(parseFloat(retPct)/parseFloat(maxDD))).toFixed(2);document.getElementById('r-profit').textContent=(netProfit>=0?'+$':'-$')+Math.abs(netProfit).toLocaleString();document.getElementById('r-profit').className='kpi-value '+(netProfit>=0?'green':'red');document.getElementById('r-return').textContent=(netProfit>=0?'↑ +':'↓ ')+retPct+'% return';document.getElementById('r-winrate').textContent=winRate.toFixed(1)+'%';document.getElementById('r-trades').textContent=totalTrades+' trades total';document.getElementById('r-dd').textContent=maxDD+'%';document.getElementById('r-pf').textContent='Profit factor: '+pf;document.getElementById('r-sharpe').textContent=sharpe;document.getElementById('r-calmar').textContent='Calmar: '+calmar;document.getElementById('bt-result-label').textContent='RESULTS — '+pair+' | '+strat+' | '+tf;const eqData=[capital];for(let i=1;i<=totalTrades;i++){const prev=eqData[eqData.length-1];eqData.push(Math.round(prev+(Math.random()<winRate/100?avgWin:-avgLoss)));}const labels=eqData.map((_,i)=>i===0?'Start':'T'+i);if(btEqChart)btEqChart.destroy();btEqChart=new Chart(document.getElementById('bt-equity-chart'),{type:'line',data:{labels,datasets:[{data:eqData,borderColor:netProfit>=0?'#00d26a':'#f85149',borderWidth:2,pointRadius:0,fill:true,backgroundColor:netProfit>=0?'rgba(0,210,106,0.12)':'rgba(248,81,73,0.10)',tension:0.3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:tc,font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:10},grid:{color:'rgba(33,38,45,0.6)'}},y:{ticks:{color:tc,font:{size:9},callback:v=>'$'+v.toLocaleString()},grid:{color:'rgba(33,38,45,0.6)'}}}}});let peak=capital,ddData=[0];for(let i=1;i<eqData.length;i++){if(eqData[i]>peak)peak=eqData[i];ddData.push(parseFloat(((eqData[i]-peak)/peak*100).toFixed(2)));}if(btDdChart)btDdChart.destroy();btDdChart=new Chart(document.getElementById('bt-dd-chart'),{type:'line',data:{labels,datasets:[{data:ddData,borderColor:'#f85149',borderWidth:1.5,pointRadius:0,fill:true,backgroundColor:'rgba(248,81,73,0.12)',tension:0.3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:tc,font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:8},grid:{display:false}},y:{ticks:{color:tc,font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(33,38,45,0.6)'},max:0}}}});const tbody=document.getElementById('bt-trade-log');tbody.innerHTML='';for(let i=totalTrades;i>Math.max(totalTrades-8,0);i--){const isWin=Math.random()<winRate/100,type=Math.random()>0.5?'BUY':'SELL',pips=isWin?Math.round(20+Math.random()*30):-Math.round(10+Math.random()*15),pl=isWin?Math.round(avgWin):Math.round(avgLoss);tbody.innerHTML+=`<tr><td>#${i}</td><td>${pair}</td><td><span class="badge ${type==='BUY'?'badge-green':'badge-red'}">${type}</span></td><td>${(1.08+Math.random()*0.02).toFixed(5)}</td><td>${(1.08+Math.random()*0.02).toFixed(5)}</td><td class="${pips>0?'green':'red'}">${pips>0?'+':''}${pips}</td><td class="${isWin?'green':'red'}">${isWin?'+$':'-$'}${pl}</td><td><span class="badge ${isWin?'badge-green':'badge-red'}">${isWin?'WIN':'LOSS'}</span></td></tr>`;}document.getElementById('bt-loading').style.display='none';document.getElementById('bt-results').style.display='block';const btn=document.getElementById('bt-run-btn');btn.disabled=false;btn.textContent='▶ RUN BACKTEST';btn.style.opacity='1';}
+
+function resetBacktest(){document.getElementById('bt-results').style.display='none';document.getElementById('bt-progress-bar').style.width='0%';}
+
+function initCharts(){const eq=[10000,10280,10510,10390,10720,11050,11340,11180,11630,12010,12280,12650,12490,12980,13420,13750,14100,14832];new Chart(document.getElementById('equityChart'),{type:'line',data:{labels:months,datasets:[{data:eq,borderColor:'#00d26a',borderWidth:2,pointRadius:0,fill:true,backgroundColor:(ctx)=>{const g=ctx.chart.ctx.createLinearGradient(0,0,0,200);g.addColorStop(0,'rgba(0,210,106,0.18)');g.addColorStop(1,'rgba(0,210,106,0)');return g;},tension:0.4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#21262d',titleColor:'#e6edf3',bodyColor:'#7d8590',borderColor:'#30363d',borderWidth:1,callbacks:{label:v=>'$'+v.raw.toLocaleString()}}},scales:{x:{ticks:{color:tc,font:{size:10},maxRotation:0,autoSkip:true,maxTicksLimit:9},grid:{color:'rgba(33,38,45,0.6)'}},y:{ticks:{color:tc,font:{size:10},callback:v=>'$'+v.toLocaleString()},grid:{color:'rgba(33,38,45,0.6)'}}}}});const pl=[280,230,-120,330,330,290,-180,450,380,270,370,-140,490,440,330,350,680,732];new Chart(document.getElementById('plChart'),{type:'bar',data:{labels:months,datasets:[{data:pl,backgroundColor:pl.map(v=>v>=0?'rgba(0,210,106,0.7)':'rgba(248,81,73,0.7)'),borderColor:pl.map(v=>v>=0?'#00d26a':'#f85149'),borderWidth:1,borderRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:tc,font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:9},grid:{display:false}},y:{ticks:{color:tc,font:{size:10},callback:v=>'$'+v},grid:{color:'rgba(33,38,45,0.6)'}}}}});const dd=[0,-1.2,-0.8,-2.1,-0.5,-3.4,-7.4,-4.1,-1.8,-0.6,-2.9,-5.1,-1.3,-0.4,-2.7,-1.1,-0.3,0];new Chart(document.getElementById('ddChart'),{type:'line',data:{labels:months,datasets:[{data:dd,borderColor:'#f85149',borderWidth:1.5,pointRadius:0,fill:true,backgroundColor:'rgba(248,81,73,0.12)',tension:0.4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:tc,font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:6},grid:{display:false}},y:{ticks:{color:tc,font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(33,38,45,0.6)'},max:0}}}});new Chart(document.getElementById('pairChart'),{type:'bar',data:{labels:['EUR/USD','GBP/JPY','XAU/USD','NAS100','USD/CAD','GBP/USD'],datasets:[{data:[72,68,65,75,63,70],backgroundColor:'rgba(0,210,106,0.6)',borderColor:'#00d26a',borderWidth:1,borderRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:tc,font:{size:10}},grid:{display:false}},y:{ticks:{color:tc,font:{size:10},callback:v=>v+'%'},grid:{color:'rgba(33,38,45,0.6)'},min:50,max:80}}}});new Chart(document.getElementById('distChart'),{type:'doughnut',data:{labels:['Wins','Losses'],datasets:[{data:[210,102],backgroundColor:['rgba(0,210,106,0.7)','rgba(248,81,73,0.7)'],borderColor:['#00d26a','#f85149'],borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},cutout:'65%'}});}
+</script>
+</body>
+</html>
