@@ -532,12 +532,12 @@ def _load_today_start():
         with open(_TODAY_FILE, encoding="utf-8-sig") as f:  # utf-8-sig strips BOM
             return _json.load(f)
     except Exception:
-        return {"date": None, "balance": None}
+        return {"date": None, "balance": None, "login": None}
 
-def _save_today_start(date_str, balance):
+def _save_today_start(date_str, balance, login):
     try:
         with open(_TODAY_FILE, "w") as f:
-            _json.dump({"date": date_str, "balance": balance}, f)
+            _json.dump({"date": date_str, "balance": balance, "login": login}, f)
     except Exception:
         pass
 
@@ -553,8 +553,11 @@ def get_today_realized():
         today_str  = datetime.now().strftime("%Y-%m-%d")
         stored     = _load_today_start()
 
-        if stored["date"] != today_str or stored["balance"] is None:
-            _save_today_start(today_str, info.balance)
+        # Reset baseline if day rolled over OR the connected account login changed
+        # (e.g. server briefly connected to a different MT5 terminal) — comparing
+        # balances across two different accounts produces a meaningless number.
+        if stored["date"] != today_str or stored["balance"] is None or stored.get("login") != info.login:
+            _save_today_start(today_str, info.balance, info.login)
             start_balance = info.balance
         else:
             start_balance = stored["balance"]
