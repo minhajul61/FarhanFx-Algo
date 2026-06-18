@@ -7,7 +7,7 @@ function Write-Log($msg) {
     Add-Content -Path $logFile -Value $line
 }
 
-function Trim-Log {
+function Clear-LogFile {
     if (Test-Path $logFile) {
         $lines = Get-Content $logFile
         if ($lines.Count -gt $maxLogLines) {
@@ -43,4 +43,4 @@ if (-not $healthy) {
     Write-Log "RESTART triggered"
 }
 
-Trim-Log
+Clear-LogFile

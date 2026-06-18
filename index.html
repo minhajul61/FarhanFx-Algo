@@ -417,6 +417,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       <div class="nav-item active" onclick="showPage('dashboard',this)"><i class="ti ti-layout-dashboard"></i> DASHBOARD</div>
       <div class="nav-item" onclick="showPage('algo',this)"><i class="ti ti-robot"></i> FOREX ALGO</div>
       <div class="nav-item" onclick="showPage('crypto',this)"><i class="ti ti-currency-bitcoin"></i> CRYPTO</div>
+      <div class="nav-item" onclick="showPage('forexbot',this)"><i class="ti ti-affiliate"></i> FOREX BOT</div>
       <div class="nav-item" onclick="showPage('trades',this)"><i class="ti ti-list"></i> TRADES</div>
       <div class="nav-item" onclick="showPage('journal',this)"><i class="ti ti-notebook"></i> JOURNAL</div>
       <div class="nav-item" onclick="showPage('reports',this)"><i class="ti ti-chart-bar"></i> REPORTS</div>
@@ -2029,6 +2030,63 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             </div>
           </div>
         </div>
+
+        <!-- Capital Protection — Buffer Ratchet System (live, MT5-connected) -->
+        <div class="panel" style="margin-top:14px;border-color:var(--red)">
+          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span>🛡️ Capital Protection — Buffer Ratchet</span>
+              <span id="cp-status-badge" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--card2);color:var(--text3);border:1px solid var(--border)">INACTIVE</span>
+            </div>
+            <button class="sbtn" onclick="cpLoadStatus()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
+          </div>
+          <div style="font-size:11px;color:var(--text2);margin-top:6px;margin-bottom:12px;line-height:1.6">
+            প্রতিষ্ঠানিক fund manager-রা যেভাবে capital protect করে — মূল capital কে কখনো risk এ ফেলবে না, শুধু floor-এর উপরে ছোট একটা buffer নিয়ে খেলবে। Buffer target হিট হলে floor উপরে উঠে যায় (lock in)। Floor ভাঙলে সব strategy auto-stop + mandatory cool-off period।
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div>
+              <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:8px">CONFIGURATION</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                <div class="field"><label>Starting Capital ($)</label><input class="sinput" id="cp-capital" type="number" min="0" value="1000" style="width:100%"/></div>
+                <div class="field"><label>Buffer Amount ($)</label><input class="sinput" id="cp-buffer" type="number" min="0" value="100" style="width:100%"/></div>
+              </div>
+              <div class="field" style="margin-bottom:10px"><label>Cool-off Days After Liquidation</label><input class="sinput" id="cp-break-days" type="number" min="1" max="30" value="7" style="width:100%"/></div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px">
+                  <input type="checkbox" id="cp-enabled" style="accent-color:var(--accent);width:16px;height:16px"/>
+                  <span style="color:var(--accent);font-weight:700">ENABLE PROTECTION</span>
+                </label>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button onclick="cpSaveConfig()" style="flex:1;padding:8px;background:linear-gradient(135deg,var(--red),#f97316);border:none;color:#fff;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font)">💾 SAVE &amp; ACTIVATE</button>
+                <button onclick="cpResetCycle()" style="padding:8px 14px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font)">↺ RESET</button>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:8px">LIVE STATUS</div>
+              <div style="background:var(--bg2);border-radius:10px;padding:14px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;text-align:center">
+                  <div>
+                    <div style="font-size:9px;color:var(--text2);letter-spacing:1px">CURRENT EQUITY</div>
+                    <div style="font-size:18px;font-weight:700;color:var(--text);margin-top:4px" id="cp-equity">—</div>
+                  </div>
+                  <div>
+                    <div style="font-size:9px;color:var(--text2);letter-spacing:1px">FLOOR (LIQUIDATION)</div>
+                    <div style="font-size:18px;font-weight:700;color:var(--red);margin-top:4px" id="cp-floor">—</div>
+                  </div>
+                </div>
+                <div style="margin-bottom:10px">
+                  <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div id="cp-progress-bar" style="height:100%;background:var(--green);border-radius:4px;width:0%;transition:width 0.5s"></div></div>
+                  <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px">
+                    <span style="color:var(--text2)">Floor</span>
+                    <span id="cp-target" style="color:var(--green)">Target: —</span>
+                  </div>
+                </div>
+                <div style="text-align:center;padding:10px;border-radius:8px;font-size:13px;font-weight:700;letter-spacing:1px" id="cp-status-msg">CONFIGURE TO BEGIN</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- CRYPTO FUTURES PAGE -->
@@ -2845,6 +2903,108 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         </div>
       </div>
 
+      <!-- FOREX BOT PAGE -->
+      <div class="page" id="page-forexbot">
+        <div class="page-title" style="display:flex;justify-content:space-between;align-items:center">
+          Forex Bot — Grid Recovery
+          <div style="display:flex;align-items:center;gap:6px">
+            <div id="fb-status-dot" style="width:6px;height:6px;border-radius:50%;background:var(--text3)"></div>
+            <span id="fb-status-label" style="font-size:10px;color:var(--text3);letter-spacing:0.5px">NOT CONNECTED</span>
+          </div>
+        </div>
+        <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--amber)">
+          ⚠ Grid/martingale strategy — lot size grows on each loss step. Runs on its own separate MT5 account, isolated from your main live account. Test on a demo account first.
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <!-- MT5 Connect Panel -->
+          <div class="panel">
+            <div class="panel-title">MT5 Account (separate from main account)</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <input id="fb-login" class="sinput" type="number" placeholder="Login (account number)" autocomplete="off"/>
+              <input id="fb-password" class="sinput" type="password" placeholder="Password" autocomplete="off"/>
+              <input id="fb-server" class="sinput" type="text" placeholder="Server (e.g. VantageMarkets-Live)" autocomplete="off"/>
+              <input id="fb-terminal-path" class="sinput" type="text" placeholder="Terminal path (optional, e.g. C:\Program Files\Vantage Markets MT5 Terminal\terminal64.exe)" autocomplete="off"/>
+              <button onclick="fbConnect()" id="fb-connect-btn" style="padding:8px 16px;background:var(--accent);border:none;color:#fff;font-weight:700;border-radius:6px;font-family:var(--font);font-size:11px;cursor:pointer">CONNECT</button>
+              <div id="fb-connect-result" style="font-size:11px;margin-top:4px"></div>
+            </div>
+          </div>
+
+          <!-- Strategy Settings Panel -->
+          <div class="panel">
+            <div class="panel-title">Grid Recovery Settings</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div>
+                <label style="font-size:9px;color:var(--text3);letter-spacing:0.5px">SYMBOL</label>
+                <input id="fb-symbol" class="sinput" type="text" value="XAUUSD" style="width:100%"/>
+              </div>
+              <div>
+                <label style="font-size:9px;color:var(--text3);letter-spacing:0.5px">TIMEFRAME</label>
+                <select id="fb-timeframe" class="sinput" style="width:100%">
+                  <option value="M5">M5</option>
+                  <option value="M15" selected>M15</option>
+                  <option value="M30">M30</option>
+                  <option value="H1">H1</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:9px;color:var(--text3);letter-spacing:0.5px">BASE LOT</label>
+                <input id="fb-base-lot" class="sinput" type="number" step="0.01" value="0.01" style="width:100%"/>
+              </div>
+              <div>
+                <label style="font-size:9px;color:var(--text3);letter-spacing:0.5px">MAX STEPS</label>
+                <input id="fb-max-steps" class="sinput" type="number" value="12" style="width:100%"/>
+              </div>
+              <div>
+                <label style="font-size:9px;color:var(--text3);letter-spacing:0.5px">MULTIPLIER</label>
+                <input id="fb-multiplier" class="sinput" type="number" step="0.01" value="1.68" style="width:100%"/>
+              </div>
+              <div>
+                <label style="font-size:9px;color:var(--text3);letter-spacing:0.5px">TP $ (0 = auto)</label>
+                <input id="fb-tp-usd" class="sinput" type="number" step="0.1" value="0" style="width:100%"/>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px">
+              <button onclick="fbStart()" id="fb-start-btn" style="flex:1;padding:10px;background:var(--green);border:none;color:#fff;font-weight:800;border-radius:6px;font-family:var(--font);font-size:12px;cursor:pointer">▶ START</button>
+              <button onclick="fbStop()" id="fb-stop-btn" style="flex:1;padding:10px;background:var(--red);border:none;color:#fff;font-weight:800;border-radius:6px;font-family:var(--font);font-size:12px;cursor:pointer">■ STOP</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status -->
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:16px 0">
+          <div class="kpi" style="border-top:2px solid var(--accent);padding:12px 16px">
+            <div class="kpi-label">ACCOUNT</div>
+            <div class="kpi-value" id="fb-acc-login" style="font-size:16px">—</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px" id="fb-acc-server">—</div>
+          </div>
+          <div class="kpi" style="border-top:2px solid var(--cyan);padding:12px 16px">
+            <div class="kpi-label">BALANCE</div>
+            <div class="kpi-value cyan" id="fb-balance" style="font-size:18px">—</div>
+          </div>
+          <div class="kpi" style="border-top:2px solid var(--amber);padding:12px 16px">
+            <div class="kpi-label">GRID STEP</div>
+            <div class="kpi-value amber" id="fb-step" style="font-size:18px">0 / 0</div>
+          </div>
+          <div class="kpi" style="border-top:2px solid var(--green);padding:12px 16px">
+            <div class="kpi-label">BASKET P&amp;L</div>
+            <div class="kpi-value" id="fb-basket-pnl" style="font-size:18px">—</div>
+          </div>
+          <div class="kpi" style="border-top:2px solid var(--text3);padding:12px 16px">
+            <div class="kpi-label">DIRECTION</div>
+            <div class="kpi-value" id="fb-direction" style="font-size:18px">—</div>
+          </div>
+        </div>
+
+        <!-- Log -->
+        <div class="panel">
+          <div class="panel-title">Activity Log</div>
+          <div id="fb-log" style="background:#0a0c13;border-radius:8px;min-height:200px;max-height:360px;overflow-y:auto;padding:8px;font-size:11px;font-family:monospace;color:var(--text2)">
+            <div style="color:var(--text3);text-align:center;padding:40px">Not started yet.</div>
+          </div>
+        </div>
+      </div>
+
       <!-- SETTINGS PAGE -->
       <div class="page" id="page-settings">
         <div class="page-title">Settings</div>
@@ -3164,10 +3324,11 @@ function showPage(id, el) {
   if (id === 'tradingview') { setTimeout(() => { tvInit(_tvSym, _tvTf); window.dispatchEvent(new Event('resize')); }, 80); }
   if (id === 'algo')        { startAlgoRefresh(); _aiRestoreState(); }
   if (id === 'journal')     { jInit(); }
-  if (id === 'risk')        { rcCalcPos(); rcCalcKelly(); rcCalcPropDD(); }
+  if (id === 'risk')        { rcCalcPos(); rcCalcKelly(); rcCalcPropDD(); cpLoadStatus(); }
   if (id === 'reports')     { loadReports(); }
   if (id === 'crypto')      { cryptoInit(); }
   if (id === 'settings')    { applySettingsToUI(loadSettings()); }
+  if (id === 'forexbot')    { fbStartPolling(); } else { fbStopPolling(); }
 }
 
 function tvExitFullPage() {
@@ -3255,6 +3416,79 @@ function rcCalcPropDD() {
     statusEl.textContent = '✓ SAFE TO TRADE';
     statusEl.style.background = 'rgba(16,185,129,0.1)'; statusEl.style.color = 'var(--green)'; statusEl.style.border = '1px solid var(--green)';
   }
+}
+
+// ── CAPITAL PROTECTION (Buffer Ratchet System) ──────────────────────────────
+async function cpLoadStatus() {
+  const r = await apiFetch('/api/capital-protection/status');
+  if (r.error) return;
+
+  document.getElementById('cp-capital').value     = r.starting_capital || 1000;
+  document.getElementById('cp-buffer').value      = r.buffer_amount || 100;
+  document.getElementById('cp-break-days').value  = r.break_days || 7;
+  document.getElementById('cp-enabled').checked   = !!r.enabled;
+
+  const badge = document.getElementById('cp-status-badge');
+  if (r.status === 'active') {
+    badge.textContent = '● ACTIVE'; badge.style.background = 'rgba(16,185,129,0.15)';
+    badge.style.color = 'var(--green)'; badge.style.borderColor = 'var(--green)';
+  } else if (r.status === 'liquidated') {
+    badge.textContent = '🛑 LIQUIDATED'; badge.style.background = 'rgba(239,68,68,0.2)';
+    badge.style.color = 'var(--red)'; badge.style.borderColor = 'var(--red)';
+  } else {
+    badge.textContent = 'INACTIVE'; badge.style.background = 'var(--card2)';
+    badge.style.color = 'var(--text3)'; badge.style.borderColor = 'var(--border)';
+  }
+
+  const eq    = r.equity;
+  const floor = r.liquidation_line || 0;
+  const target = r.target_line || 0;
+  document.getElementById('cp-equity').textContent = eq != null ? '$' + eq.toFixed(2) : '—';
+  document.getElementById('cp-floor').textContent   = '$' + floor.toFixed(2);
+  document.getElementById('cp-target').textContent  = 'Target: $' + target.toFixed(2);
+
+  const bar = document.getElementById('cp-progress-bar');
+  if (eq != null && target > floor) {
+    const pct = Math.max(0, Math.min(100, (eq - floor) / (target - floor) * 100));
+    bar.style.width = pct + '%';
+    bar.style.background = pct < 30 ? 'var(--red)' : pct < 70 ? 'var(--amber)' : 'var(--green)';
+  } else {
+    bar.style.width = '0%';
+  }
+
+  const msgEl = document.getElementById('cp-status-msg');
+  if (r.status === 'liquidated') {
+    msgEl.textContent = `🛑 LIQUIDATED — ${r.break_days_left}d cool-off left`;
+    msgEl.style.background = 'rgba(239,68,68,0.2)'; msgEl.style.color = 'var(--red)';
+  } else if (r.status === 'active') {
+    msgEl.textContent = '✓ PROTECTION ACTIVE';
+    msgEl.style.background = 'rgba(16,185,129,0.1)'; msgEl.style.color = 'var(--green)';
+  } else {
+    msgEl.textContent = 'CONFIGURE TO BEGIN';
+    msgEl.style.background = 'var(--card2)'; msgEl.style.color = 'var(--text3)';
+  }
+}
+
+async function cpSaveConfig() {
+  const starting_capital = parseFloat(document.getElementById('cp-capital').value) || 0;
+  const buffer_amount    = parseFloat(document.getElementById('cp-buffer').value) || 0;
+  const break_days       = parseInt(document.getElementById('cp-break-days').value) || 7;
+  const enabled          = document.getElementById('cp-enabled').checked;
+
+  const r = await apiFetch('/api/capital-protection/config', {
+    method: 'POST',
+    body: JSON.stringify({ enabled, starting_capital, buffer_amount, break_days })
+  });
+  if (r.error) { toastErr('Save failed: ' + r.error); return; }
+  toast(enabled ? '🛡️ Capital protection activated' : '🛡️ Capital protection saved (inactive)');
+  cpLoadStatus();
+}
+
+async function cpResetCycle() {
+  const r = await apiFetch('/api/capital-protection/reset', { method: 'POST' });
+  if (r.error) { toastErr('Reset failed: ' + r.error); return; }
+  toast('↺ Cycle reset — floor back at starting capital');
+  cpLoadStatus();
 }
 
 // ── TRADING JOURNAL ────────────────────────────────────────────────────────────
@@ -4084,6 +4318,111 @@ async function apiFetch(path, opts = {}) {
 }
 
 function fmt(n, cur = '') { return cur + (n >= 0 ? '' : '-') + Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+// ── FOREX BOT (Grid Recovery) ────────────────────────────────────────────────
+let _fbPollTimer = null;
+
+async function fbConnect() {
+  const btn = document.getElementById('fb-connect-btn');
+  const resultEl = document.getElementById('fb-connect-result');
+  const login = parseInt(document.getElementById('fb-login').value);
+  const password = document.getElementById('fb-password').value;
+  const server = document.getElementById('fb-server').value.trim();
+  const terminal_path = document.getElementById('fb-terminal-path').value.trim();
+
+  if (!login || !password || !server) {
+    resultEl.style.color = 'var(--red)';
+    resultEl.textContent = 'Login, password, and server are required.';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'CONNECTING...';
+  const r = await apiFetch('/api/forexbot/connect', {
+    method: 'POST',
+    body: JSON.stringify({ login, password, server, terminal_path })
+  });
+  btn.disabled = false; btn.textContent = 'CONNECT';
+
+  if (r.error) {
+    resultEl.style.color = 'var(--red)';
+    resultEl.textContent = '✗ ' + r.error;
+    return;
+  }
+  resultEl.style.color = 'var(--green)';
+  const a = r.account;
+  resultEl.textContent = `✓ Connected: ${a.login} (${a.name}) — ${a.server} — balance ${a.balance} ${a.currency}`;
+  document.getElementById('fb-status-label').textContent = 'CONNECTED (not running)';
+  document.getElementById('fb-status-dot').style.background = 'var(--amber)';
+}
+
+async function fbStart() {
+  const btn = document.getElementById('fb-start-btn');
+  btn.disabled = true;
+  const body = {
+    symbol:     document.getElementById('fb-symbol').value.trim() || 'XAUUSD',
+    timeframe:  document.getElementById('fb-timeframe').value,
+    base_lot:   parseFloat(document.getElementById('fb-base-lot').value) || 0.01,
+    max_steps:  parseInt(document.getElementById('fb-max-steps').value) || 12,
+    multiplier: parseFloat(document.getElementById('fb-multiplier').value) || 1.68,
+    tp_usd:     parseFloat(document.getElementById('fb-tp-usd').value) || 0,
+  };
+  const r = await apiFetch('/api/forexbot/start', { method: 'POST', body: JSON.stringify(body) });
+  btn.disabled = false;
+  if (r.error) { toast(r.error, false); return; }
+  toast('Forex Bot started', true);
+  fbStartPolling();
+}
+
+async function fbStop() {
+  const btn = document.getElementById('fb-stop-btn');
+  btn.disabled = true; btn.textContent = 'STOPPING...';
+  const r = await apiFetch('/api/forexbot/stop', { method: 'POST' });
+  btn.disabled = false; btn.textContent = '■ STOP';
+  if (r.error) { toast(r.error, false); return; }
+  toast('Forex Bot stopped', true);
+  fbPollStatus();
+}
+
+function fbStartPolling() {
+  fbPollStatus();
+  if (_fbPollTimer) clearInterval(_fbPollTimer);
+  _fbPollTimer = setInterval(fbPollStatus, 5000);
+}
+
+function fbStopPolling() {
+  if (_fbPollTimer) { clearInterval(_fbPollTimer); _fbPollTimer = null; }
+}
+
+async function fbPollStatus() {
+  const r = await apiFetch('/api/forexbot/status');
+  if (r.error) return;
+  const g = id => document.getElementById(id);
+
+  const running = r.process_alive && r.status === 'running';
+  g('fb-status-label').textContent = r.status === 'error' ? 'ERROR' : (running ? 'RUNNING' : 'STOPPED');
+  g('fb-status-dot').style.background = r.status === 'error' ? 'var(--red)' : (running ? 'var(--green)' : 'var(--text3)');
+
+  if (r.login) {
+    g('fb-acc-login').textContent = r.login;
+    g('fb-acc-server').textContent = r.server || '—';
+  }
+  if (r.balance !== undefined) g('fb-balance').textContent = '$' + Number(r.balance).toFixed(2);
+  if (r.step !== undefined) g('fb-step').textContent = `${r.step} / ${r.max_steps || 0}`;
+  if (r.basket_pnl !== undefined) {
+    const pnlEl = g('fb-basket-pnl');
+    pnlEl.textContent = (r.basket_pnl >= 0 ? '+$' : '-$') + Math.abs(r.basket_pnl).toFixed(2);
+    pnlEl.className = 'kpi-value ' + (r.basket_pnl >= 0 ? 'green' : 'red');
+  }
+  if (r.direction) g('fb-direction').textContent = r.direction;
+
+  if (Array.isArray(r.logs) && r.logs.length) {
+    const logEl = g('fb-log');
+    logEl.innerHTML = r.logs.slice().reverse().map(l => `<div>${l}</div>`).join('');
+  }
+  if (r.error) {
+    toast('Forex Bot error: ' + r.error, false);
+  }
+}
 
 // ── ACCOUNT DATA ───────────────────────────────────────────────────────────────
 async function loadAccount() {

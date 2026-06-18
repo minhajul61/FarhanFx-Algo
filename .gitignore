@@ -6,4 +6,13 @@ __pycache__/
 exchanges.json
 server_out.txt
 server_err.txt
+server_out.log
+server_err.log
+watchdog_local.log
+telegram_cfg.json
+capital_protection.json
+forex_bot_config.json
+forex_bot_status.json
+forex_bot_stop.flag
+server_local.log
 Trading Meterial/

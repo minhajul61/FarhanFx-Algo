@@ -3327,9 +3327,7 @@ def stop_strategy(sid: str):
     _save_strategies_state()   # update disk — remove stopped strategy
     return {"success": True}
 
-@app.post("/api/strategy/stop_all")
-def stop_all_strategies():
-    """Stop every running strategy at once."""
+def _stop_all_strategies_internal() -> int:
     stopped = 0
     for sid, s in _strategies.items():
         if s.get("status") == "running":
@@ -3337,6 +3335,12 @@ def stop_all_strategies():
             s["status"] = "stopped"
             stopped += 1
     _save_strategies_state()
+    return stopped
+
+@app.post("/api/strategy/stop_all")
+def stop_all_strategies():
+    """Stop every running strategy at once."""
+    stopped = _stop_all_strategies_internal()
     return {"success": True, "stopped": stopped}
 
 @app.get("/api/strategy/list")
@@ -5939,6 +5943,135 @@ def crypto_algo_list(live: bool = False):
     return result
 
 
+# ── FOREX BOT (Grid Recovery, isolated process + own MT5 account) ──────────────
+# Runs as a separate subprocess (forex_bot.py) with its own MT5 terminal
+# connection, deliberately isolated from the main _mt5_worker connection that
+# drives the live strategies above. This avoids the single-connection-per-
+# process limitation of the MetaTrader5 module ever switching the main
+# account's login out from under the live strategies.
+import subprocess as _subprocess
+import sys as _sys
+
+_FB_DIR          = os.path.dirname(os.path.abspath(__file__))
+_FB_CONFIG_FILE  = os.path.join(_FB_DIR, "forex_bot_config.json")
+_FB_STATUS_FILE  = os.path.join(_FB_DIR, "forex_bot_status.json")
+_FB_STOP_FLAG    = os.path.join(_FB_DIR, "forex_bot_stop.flag")
+_FB_PROTECTED_LOGIN = 698085  # never allow the bot to touch the main live account
+_forex_bot_proc = None
+
+class ForexBotConnectRequest(BaseModel):
+    login:         int
+    password:      str
+    server:        str
+    terminal_path: str = ""
+
+@app.post("/api/forexbot/connect")
+def forexbot_connect(req: ForexBotConnectRequest):
+    """Validate credentials with a one-off connection in a separate process
+    (so it never touches the main MT5 connection), then save config."""
+    if req.login == _FB_PROTECTED_LOGIN:
+        return JSONResponse({"error": "This is the main live trading account — Forex Bot must use a different account"}, status_code=400)
+
+    check_script = (
+        "import MetaTrader5 as mt5, json, sys\n"
+        f"kwargs = {{'timeout': 20000}}\n"
+        f"path = {req.terminal_path!r}\n"
+        "if path: kwargs['path'] = path\n"
+        "ok = mt5.initialize(**kwargs)\n"
+        "if not ok:\n"
+        "    print(json.dumps({'error': str(mt5.last_error())})); sys.exit(0)\n"
+        f"logged = mt5.login(login={req.login}, password={req.password!r}, server={req.server!r}, timeout=25000)\n"
+        "if not logged:\n"
+        "    print(json.dumps({'error': str(mt5.last_error())})); mt5.shutdown(); sys.exit(0)\n"
+        "info = mt5.account_info()\n"
+        "mt5.shutdown()\n"
+        "if info is None:\n"
+        "    print(json.dumps({'error': 'no account info'}))\n"
+        "else:\n"
+        "    print(json.dumps({'login': info.login, 'name': info.name, 'server': info.server, 'balance': info.balance, 'currency': info.currency, 'leverage': info.leverage}))\n"
+    )
+    try:
+        result = _subprocess.run(
+            [_sys.executable, "-c", check_script],
+            capture_output=True, text=True, timeout=40
+        )
+        out = (result.stdout or "").strip().splitlines()
+        data = json.loads(out[-1]) if out else {"error": "no output from connection check"}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+    if "error" in data:
+        return JSONResponse(data, status_code=400)
+    if data.get("login") == _FB_PROTECTED_LOGIN:
+        return JSONResponse({"error": "Resolved to the main live trading account — refused"}, status_code=400)
+
+    with open(_FB_CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump({"login": req.login, "password": req.password, "server": req.server,
+                   "terminal_path": req.terminal_path}, f)
+    return {"success": True, "account": data}
+
+
+class ForexBotStartRequest(BaseModel):
+    symbol:     str = "XAUUSD"
+    timeframe:  str = "M15"
+    base_lot:   float = 0.01
+    max_steps:  int = 12
+    multiplier: float = 1.68
+    tp_usd:     float = 0.0
+
+@app.post("/api/forexbot/start")
+def forexbot_start(req: ForexBotStartRequest):
+    global _forex_bot_proc
+    if not os.path.exists(_FB_CONFIG_FILE):
+        return JSONResponse({"error": "Connect an account first"}, status_code=400)
+    if _forex_bot_proc is not None and _forex_bot_proc.poll() is None:
+        return JSONResponse({"error": "Forex Bot is already running"}, status_code=400)
+
+    with open(_FB_CONFIG_FILE, encoding="utf-8") as f:
+        cfg = json.load(f)
+    cfg.update(req.model_dump())
+    with open(_FB_CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(cfg, f)
+
+    if os.path.exists(_FB_STOP_FLAG):
+        os.remove(_FB_STOP_FLAG)
+
+    script_path = os.path.join(_FB_DIR, "forex_bot.py")
+    _forex_bot_proc = _subprocess.Popen(
+        [_sys.executable, script_path],
+        cwd=_FB_DIR,
+        creationflags=getattr(_subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    return {"success": True, "pid": _forex_bot_proc.pid}
+
+@app.post("/api/forexbot/stop")
+def forexbot_stop():
+    global _forex_bot_proc
+    with open(_FB_STOP_FLAG, "w") as f:
+        f.write("stop")
+    # Give it a few seconds to exit gracefully; the dashboard will poll status.
+    if _forex_bot_proc is not None:
+        try:
+            _forex_bot_proc.wait(timeout=10)
+        except Exception:
+            _forex_bot_proc.terminate()
+        _forex_bot_proc = None
+    return {"success": True}
+
+@app.get("/api/forexbot/status")
+def forexbot_status():
+    alive = _forex_bot_proc is not None and _forex_bot_proc.poll() is None
+    data = {"process_alive": alive, "status": "stopped" if not alive else "running"}
+    if os.path.exists(_FB_STATUS_FILE):
+        try:
+            with open(_FB_STATUS_FILE, encoding="utf-8") as f:
+                data.update(json.load(f))
+            data["process_alive"] = alive
+        except Exception:
+            pass
+    return data
+
+
 @app.get("/")
 def serve_index():
     return FileResponse("index.html", headers={
@@ -6052,6 +6185,129 @@ def _drawdown_monitor():
 
 
 threading.Thread(target=_drawdown_monitor, daemon=True, name="dd-monitor").start()
+
+
+# ── Capital Protection: Buffer/Ratchet system ───────────────────────────
+# Inspired by how prop-fund managers treat allocated capital: never risk
+# the core capital itself — only a small "buffer" above a hard floor.
+# Hit the buffer target -> bank it, ratchet the floor up. Hit the floor
+# from below -> hard-stop everything and force a cool-off period.
+_CAP_PROT_FILE = "capital_protection.json"
+_CAP_PROT_DEF = {
+    "enabled":          False,
+    "starting_capital":  0.0,
+    "buffer_amount":     0.0,
+    "liquidation_line":  0.0,   # hard floor — breach stops all strategies
+    "target_line":       0.0,  # liquidation_line + buffer_amount
+    "status":            "inactive",   # inactive | active | liquidated
+    "liquidated_at":      0.0,         # unix timestamp
+    "break_days":         7,
+}
+
+def _load_cap_prot() -> dict:
+    try:
+        with open(_CAP_PROT_FILE) as f:
+            cfg = json.load(f)
+        for k, v in _CAP_PROT_DEF.items():
+            cfg.setdefault(k, v)
+        return cfg
+    except Exception:
+        return dict(_CAP_PROT_DEF)
+
+def _save_cap_prot(cfg: dict):
+    with open(_CAP_PROT_FILE, "w") as f:
+        json.dump(cfg, f, indent=2)
+
+def _capital_protection_monitor():
+    _time.sleep(35)
+    while True:
+        try:
+            cfg = _load_cap_prot()
+            if cfg.get("enabled") and cfg.get("status") == "active":
+                info = _mt5_call(lambda: mt5.account_info())
+                if info and not isinstance(info, dict):
+                    eq     = info.equity
+                    target = cfg.get("target_line", 0.0)
+                    floor  = cfg.get("liquidation_line", 0.0)
+                    buf    = cfg.get("buffer_amount", 0.0)
+                    if target > 0 and eq >= target:
+                        cfg["liquidation_line"] = target
+                        cfg["target_line"]      = target + buf
+                        _save_cap_prot(cfg)
+                        _tg_notify(
+                            f"<b>FarhanFX — Buffer Target Hit 🎯</b>\n"
+                            f"Equity reached <code>${eq:.2f}</code>\n"
+                            f"New floor locked at <code>${target:.2f}</code> — withdraw "
+                            f"${buf:.2f} to bank it.\n"
+                            f"Next target: <code>${cfg['target_line']:.2f}</code>"
+                        )
+                    elif floor > 0 and eq <= floor:
+                        stopped = _stop_all_strategies_internal()
+                        cfg["status"]         = "liquidated"
+                        cfg["liquidated_at"]  = _time.time()
+                        _save_cap_prot(cfg)
+                        _tg_notify(
+                            f"<b>FarhanFX — Liquidation Line Hit 🛑</b>\n"
+                            f"Equity dropped to <code>${eq:.2f}</code> — floor breached.\n"
+                            f"Stopped {stopped} running strategy(ies). Mandatory "
+                            f"{cfg['break_days']}-day break — no trading.\n"
+                            f"Review your setups before resuming."
+                        )
+        except Exception:
+            pass
+        _time.sleep(120)
+
+threading.Thread(target=_capital_protection_monitor, daemon=True, name="cap-protection").start()
+
+
+class CapProtectionReq(BaseModel):
+    enabled:           bool
+    starting_capital:  float
+    buffer_amount:      float
+    break_days:        int = 7
+
+@app.post("/api/capital-protection/config")
+def cap_protection_save(req: CapProtectionReq):
+    cfg = _load_cap_prot()
+    capital_changed = (cfg.get("starting_capital") != req.starting_capital or
+                        cfg.get("buffer_amount") != req.buffer_amount)
+    cfg["enabled"]          = req.enabled
+    cfg["break_days"]       = req.break_days
+    cfg["starting_capital"] = req.starting_capital
+    cfg["buffer_amount"]    = req.buffer_amount
+    if capital_changed or cfg.get("status") in ("inactive", None):
+        cfg["liquidation_line"] = req.starting_capital
+        cfg["target_line"]      = req.starting_capital + req.buffer_amount
+    if req.enabled:
+        if cfg.get("status") != "liquidated":
+            cfg["status"] = "active"
+    else:
+        cfg["status"] = "inactive"
+    _save_cap_prot(cfg)
+    return {"success": True, **cfg}
+
+@app.get("/api/capital-protection/status")
+def cap_protection_status():
+    cfg = _load_cap_prot()
+    info = _mt5_call(lambda: mt5.account_info())
+    equity = info.equity if info and not isinstance(info, dict) else None
+    days_left = 0
+    if cfg.get("status") == "liquidated":
+        elapsed   = _time.time() - cfg.get("liquidated_at", 0)
+        remaining = cfg.get("break_days", 7) * 86400 - elapsed
+        days_left = max(0, round(remaining / 86400, 1))
+    return {**cfg, "equity": equity, "break_days_left": days_left}
+
+@app.post("/api/capital-protection/reset")
+def cap_protection_reset():
+    """Manually resume after the cool-off break, or start a fresh cycle."""
+    cfg = _load_cap_prot()
+    cfg["liquidation_line"] = cfg.get("starting_capital", 0.0)
+    cfg["target_line"]      = cfg.get("starting_capital", 0.0) + cfg.get("buffer_amount", 0.0)
+    cfg["status"]           = "active" if cfg.get("enabled") else "inactive"
+    cfg["liquidated_at"]    = 0.0
+    _save_cap_prot(cfg)
+    return {"success": True, **cfg}
 
 
 def _normalise_symbol(raw: str) -> str:
