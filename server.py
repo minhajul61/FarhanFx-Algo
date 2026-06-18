@@ -640,8 +640,9 @@ def get_reports(months: int = 12, filter: str = "all", date_from: str = "", date
                     out_list.append(d)
 
         # ── Accumulators ──────────────────────────────────────────────────────
-        monthly:    dict = {}
-        by_symbol:  dict = {}
+        monthly:     dict = {}
+        by_symbol:   dict = {}
+        by_strategy: dict = {}
         by_dow:     dict = {i: {"day": d, "trades": 0, "wins": 0, "losses": 0, "pnl": 0.0}
                             for i, d in enumerate(["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"])}
         by_session: dict = {s: {"session": s, "trades": 0, "wins": 0, "losses": 0, "pnl": 0.0}
@@ -692,6 +693,22 @@ def get_reports(months: int = 12, filter: str = "all", date_from: str = "", date
             daily[dkey]["pnl"]     = round(daily[dkey]["pnl"] + net, 2)
             if net > 0: daily[dkey]["wins"]   += 1
             else:       daily[dkey]["losses"] += 1
+
+            # By strategy (from comment prefix FarhanFX-{strategy})
+            _cmt = (in_d.comment if in_d else "") or ""
+            if _cmt.startswith("FarhanFX-") and "Close" not in _cmt:
+                _strat_name = _cmt[len("FarhanFX-"):][:20].rstrip()
+                if _strat_name not in by_strategy:
+                    by_strategy[_strat_name] = {"strategy": _strat_name, "trades": 0, "wins": 0, "losses": 0,
+                                                 "pnl": 0.0, "gross_win": 0.0, "gross_loss": 0.0}
+                by_strategy[_strat_name]["trades"] += 1
+                by_strategy[_strat_name]["pnl"]     = round(by_strategy[_strat_name]["pnl"] + net, 2)
+                if net > 0:
+                    by_strategy[_strat_name]["wins"]      += 1
+                    by_strategy[_strat_name]["gross_win"]  = round(by_strategy[_strat_name]["gross_win"] + net, 2)
+                else:
+                    by_strategy[_strat_name]["losses"]     += 1
+                    by_strategy[_strat_name]["gross_loss"] = round(by_strategy[_strat_name]["gross_loss"] + net, 2)
 
             # Symbol
             sym = out.symbol
@@ -752,6 +769,12 @@ def get_reports(months: int = 12, filter: str = "all", date_from: str = "", date
         for s in sess_list:
             s["win_rate"] = wr(s["wins"], s["trades"])
 
+        strat_list = sorted(by_strategy.values(), key=lambda x: x["trades"], reverse=True)
+        for s in strat_list:
+            s["win_rate"]     = wr(s["wins"], s["trades"])
+            s["profit_factor"]= pf(s["gross_win"], s["gross_loss"])
+            s["avg_trade"]    = round(s["pnl"] / s["trades"], 2) if s["trades"] > 0 else 0
+
         wins   = [n for n in all_nets if n > 0]
         losses = [n for n in all_nets if n <= 0]
         total  = len(all_nets)
@@ -794,13 +817,14 @@ def get_reports(months: int = 12, filter: str = "all", date_from: str = "", date
             "worst_dow":         min(dow_list, key=lambda x: x["pnl"])  if dow_list else {},
         }
         return {
-            "summary":       summary,
-            "monthly":       monthly_list,
-            "monthly_chart": monthly_chart_list,
-            "daily":         daily_list[:60],
-            "by_symbol":     sym_list,
-            "by_dow":        dow_list,
-            "by_session":    sess_list,
+            "summary":      summary,
+            "monthly":      monthly_list,
+            "monthly_chart":monthly_chart_list,
+            "daily":        daily_list[:60],
+            "by_symbol":    sym_list,
+            "by_dow":       dow_list,
+            "by_session":   sess_list,
+            "by_strategy":  strat_list,
         }
     return _mt5_call(fn)
 
@@ -2321,6 +2345,13 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
         if result and hasattr(result, "retcode") and result.retcode == mt5.TRADE_RETCODE_DONE:
             add_log(f"✅ {side} #{result.order} @ {result.price}  SL:{sl_val}  TP:{tp_val}")
             _strategies[sid]["trades"] += 1
+            _tg_notify(
+                f"<b>FarhanFX — Trade Opened</b>\n"
+                f"📊 <b>{strategy}</b> | {symbol}\n"
+                f"{'🟢 BUY' if side.upper() == 'BUY' else '🔴 SELL'} @ <code>{result.price}</code>\n"
+                f"SL: <code>{sl_val}</code>  TP: <code>{tp_val}</code>\n"
+                f"Lot: <code>{volume}</code>"
+            )
         elif result:
             err = getattr(result, "comment", str(result))
             code = getattr(result, "retcode", "?")
@@ -2391,9 +2422,9 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
 
             # ── Session filter: block known low-WR hours (data-driven) ──────────
             _utc_hour = datetime.now(timezone.utc).hour
-            # 12 UTC: pre-NY dead zone (historical 44% WR)
-            # 20 UTC: Sydney open choppy period (live data shows 22% WR, -$18)
-            _session_block = _utc_hour in (12, 20)
+            # Confirmed bad hours from 30-day live data analysis:
+            # 05 UTC: 63.5% WR | 06 UTC: 58.6% WR | 12 UTC: 44% WR | 16 UTC: 51.9% WR | 20 UTC: 22% WR
+            _session_block = _utc_hour in (5, 6, 12, 16, 20)
 
             # ── Minimum TP enforcement: require TP >= 1.5 × SL (data-driven R:R fix) ─
             if tp_pips < sl_pips * 1.5:
@@ -2905,16 +2936,20 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                     _d1_bull = _d1_bear = _h4_bull = _h4_bear = False
 
                 _m2_hr    = datetime.now(timezone.utc).hour
-                _in_sess  = (7 <= _m2_hr < 11) or (13 <= _m2_hr < 16)
+                # Extended to include 03-04 UTC (90%+ WR confirmed by live data)
+                _in_sess  = (3 <= _m2_hr < 5) or (7 <= _m2_hr < 11) or (13 <= _m2_hr < 16)
+                # D1/H4: require at least ONE to confirm direction (not both — reduces missed trades)
+                _tf_bull = (_d1_bull and not _h4_bear) or (_h4_bull and not _d1_bear)
+                _tf_bear = (_d1_bear and not _h4_bull) or (_h4_bear and not _d1_bull)
 
                 _m2b = (ema_rising  and closes[-1] > ema20_v[-1] and closes[-1] > closes[-2]
                         and touched_bull and closes[-1] > opens[-1]
                         and 45 < rsi_c < 62 and trend_bull
-                        and _d1_bull and _h4_bull and _in_sess)
+                        and _tf_bull and _in_sess)
                 _m2s = (ema_falling and closes[-1] < ema20_v[-1] and closes[-1] < closes[-2]
                         and touched_bear and closes[-1] < opens[-1]
                         and 38 < rsi_c < 55 and trend_bear
-                        and _d1_bear and _h4_bear and _in_sess)
+                        and _tf_bear and _in_sess)
 
                 _strategies[sid]["indicator"] = (
                     f"EMA20:{ema20_v[-1]:.2f} E50:{ema50_v[-1]:.2f} RSI:{rsi_c:.0f} | "
@@ -2974,7 +3009,11 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 _tc_bull_c = _tc_c[-1] > _tc_o[-1]
                 _tc_bear_c = _tc_c[-1] < _tc_o[-1]
                 _tc_hr     = datetime.now(timezone.utc).hour
-                _tc_sess   = (7 <= _tc_hr < 11) or (12 <= _tc_hr < 16)
+                # Extended to include 03-04 UTC (90%+ WR) — was missing this prime window
+                _tc_sess   = (3 <= _tc_hr < 5) or (7 <= _tc_hr < 11) or (13 <= _tc_hr < 16)
+                # Relax D1/H4: at least one must confirm, other must not oppose
+                _tc_tf_bull = (_tc_d1b  and not _tc_h4be) or (_tc_h4b  and not _tc_d1be)
+                _tc_tf_bear = (_tc_d1be and not _tc_h4b)  or (_tc_h4be and not _tc_d1b)
 
                 _strategies[sid]["indicator"] = (
                     f"E50:{_tc_e50[-1]:.2f} E200:{_tc_e200[-1]:.2f} RSI:{_tc_rsi_v:.0f} "
@@ -2985,12 +3024,12 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 )
                 if (_tc_price > _tc_e200[-1] and _tc_st[-1]==1 and _tc_near50
                         and _tc_bull_c and 45 < _tc_rsi_v < 65
-                        and _tc_d1b and _tc_h4b and _tc_sess):
+                        and _tc_tf_bull and _tc_sess):
                     signal = "BUY"
                     add_log(f"TrendCont BUY: near EMA50 in uptrend RSI:{_tc_rsi_v:.0f}")
                 elif (_tc_price < _tc_e200[-1] and _tc_st[-1]==-1 and _tc_near50
                         and _tc_bear_c and 35 < _tc_rsi_v < 55
-                        and _tc_d1be and _tc_h4be and _tc_sess):
+                        and _tc_tf_bear and _tc_sess):
                     signal = "SELL"
                     add_log(f"TrendCont SELL: near EMA50 in downtrend RSI:{_tc_rsi_v:.0f}")
 
@@ -3037,7 +3076,11 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 _m15_bull_c = _m15_c[-1] > _m15_o[-1]
                 _m15_bear_c = _m15_c[-1] < _m15_o[-1]
                 _m15_hr     = datetime.now(timezone.utc).hour
-                _m15_sess   = (7 <= _m15_hr < 11) or (12 <= _m15_hr < 16)
+                # Extended to include 03-04 UTC (90%+ WR window from live data)
+                _m15_sess   = (3 <= _m15_hr < 5) or (7 <= _m15_hr < 11) or (13 <= _m15_hr < 16)
+                # Relax D1/H4: at least one must confirm, other must not oppose
+                _m15_tf_bull = (_m15_d1b  and not _m15_h4be) or (_m15_h4b  and not _m15_d1be)
+                _m15_tf_bear = (_m15_d1be and not _m15_h4b)  or (_m15_h4be and not _m15_d1b)
 
                 _strategies[sid]["indicator"] = (
                     f"EMA50:{_m15_eF[-1]:.2f} EMA100:{_m15_eS[-1]:.2f} RSI:{_m15_rsi:.0f} "
@@ -3048,33 +3091,36 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 )
                 if (_m15_price > _m15_eS[-1] and _m15_st[-1]==1 and _m15_near
                         and _m15_bull_c and 40 < _m15_rsi < 68
-                        and _m15_d1b and _m15_h4b and _m15_sess
+                        and _m15_tf_bull and _m15_sess
                         and _m15_atr >= 1.0):
                     signal = "BUY"
                     add_log(f"TrendCont M15 BUY: near EMA50 in uptrend RSI:{_m15_rsi:.0f}")
                 elif (_m15_price < _m15_eS[-1] and _m15_st[-1]==-1 and _m15_near
                         and _m15_bear_c and 32 < _m15_rsi < 60
-                        and _m15_d1be and _m15_h4be and _m15_sess
+                        and _m15_tf_bear and _m15_sess
                         and _m15_atr >= 1.0):
                     signal = "SELL"
                     add_log(f"TrendCont M15 SELL: near EMA50 in downtrend RSI:{_m15_rsi:.0f}")
 
             # Block trades during bad sessions or news
             if signal and (_session_block or _news_block):
-                reason = "20:00/12:00 UTC dead zone" if _session_block else "high-impact news"
+                reason = f"{_utc_hour:02d}:00 UTC low-WR dead zone" if _session_block else "high-impact news"
                 add_log(f"⛔ Signal {signal} blocked — {reason}")
                 signal = None
 
             # ── AI Gate: multi-TF analysis must confirm signal direction ─────────
             if signal:
-                _ai_approved, _ai_score, _ai_reason = _check_ai_gate(symbol, signal)
+                # Monday has 65.1% WR vs 75%+ other days — raise threshold on Mondays
+                _is_monday   = datetime.now(timezone.utc).weekday() == 0
+                _ai_threshold = 65 if _is_monday else 55
+                _ai_approved, _ai_score, _ai_reason = _check_ai_gate(symbol, signal, threshold=_ai_threshold)
                 _strategies[sid]["indicator"] = (_strategies[sid].get("indicator","") +
                     f" | AI:{_ai_score}/100")
                 if not _ai_approved:
-                    add_log(f"🤖 AI Gate BLOCKED {signal} (score {_ai_score}/100) — {_ai_reason}")
+                    add_log(f"🤖 AI Gate BLOCKED {signal} (score {_ai_score}/{_ai_threshold}) — {_ai_reason}")
                     signal = None
                 else:
-                    add_log(f"🤖 AI Gate OK {signal} (score {_ai_score}/100) — {_ai_reason}")
+                    add_log(f"🤖 AI Gate OK {signal} (score {_ai_score}/{_ai_threshold}) — {_ai_reason}")
 
             if signal:
                 is_buy    = signal == "BUY"
@@ -3173,6 +3219,12 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
                 if prev_count > 0 and cur_count < prev_count:
                     freed = prev_count - cur_count
                     add_log(f"✅ {freed} position(s) closed (SL/TP hit) — {cur_count}/{max_trades} slots open")
+                    _tg_notify(
+                        f"<b>FarhanFX — Position Closed</b>\n"
+                        f"📊 <b>{strategy}</b> | {symbol}\n"
+                        f"✅ {freed} position(s) hit SL/TP\n"
+                        f"Running P&amp;L: <code>${_strategies[sid].get('pnl', 0.0):.2f}</code>"
+                    )
                 prev_count = cur_count
             except Exception:
                 pass
@@ -3203,6 +3255,11 @@ def _strategy_runner(sid: str, cfg: dict, stop_ev: threading.Event, log: list):
 
         except Exception as e:
             add_log(f"⚠️ Error: {e}")
+            _tg_notify(
+                f"<b>FarhanFX — Strategy Error</b>\n"
+                f"📊 <b>{strategy}</b> | {symbol}\n"
+                f"⚠️ <code>{str(e)[:300]}</code>"
+            )
 
         _time.sleep(30)
 
@@ -5883,13 +5940,15 @@ _TG_THREAD   : threading.Thread | None = None
 _TG_OFFSET   = 0
 
 _TG_CFG_DEF = {
-    "token":       "",
-    "chat_id":     "",            # accept signals only from this chat (blank = any)
-    "exchanges":   ["binance"],   # which exchanges to place on
-    "auto_trade":  False,
-    "amount":      0.01,          # contracts per trade
-    "leverage":    10,
-    "enabled":     False,
+    "token":          "",
+    "chat_id":        "",            # accept signals only from this chat (blank = any)
+    "exchanges":      ["binance"],   # which exchanges to place on
+    "auto_trade":     False,
+    "amount":         0.01,          # contracts per trade
+    "leverage":       10,
+    "enabled":        False,
+    "notify_enabled": True,          # outgoing alerts: trade open/close, errors, drawdown
+    "drawdown_pct":   5.0,           # alert when equity drops this % below session peak
 }
 
 
@@ -5938,6 +5997,41 @@ def _tg_notify(message: str):
         })
     except Exception:
         pass
+
+
+_DD_PEAK_EQUITY: float = 0.0
+_DD_LAST_ALERT:  float = 0.0   # timestamp of last drawdown alert
+
+def _drawdown_monitor():
+    global _DD_PEAK_EQUITY, _DD_LAST_ALERT
+    _time.sleep(30)   # wait for MT5 to connect before first check
+    while True:
+        try:
+            cfg = _load_tg_cfg()
+            if cfg.get("token") and cfg.get("chat_id") and cfg.get("notify_enabled", True):
+                info = _mt5_call(lambda: mt5.account_info())
+                if info and not isinstance(info, dict):
+                    eq = info.equity
+                    if eq > _DD_PEAK_EQUITY:
+                        _DD_PEAK_EQUITY = eq
+                    if _DD_PEAK_EQUITY > 0:
+                        dd_pct = (_DD_PEAK_EQUITY - eq) / _DD_PEAK_EQUITY * 100
+                        threshold = float(cfg.get("drawdown_pct", 5.0))
+                        now = _time.time()
+                        if dd_pct >= threshold and (now - _DD_LAST_ALERT) > 3600:
+                            _DD_LAST_ALERT = now
+                            _tg_notify(
+                                f"<b>FarhanFX — Drawdown Alert</b>\n"
+                                f"⚠️ Equity dropped <b>{dd_pct:.1f}%</b> from peak\n"
+                                f"Peak: <code>${_DD_PEAK_EQUITY:.2f}</code>  "
+                                f"Now: <code>${eq:.2f}</code>"
+                            )
+        except Exception:
+            pass
+        _time.sleep(300)   # check every 5 minutes
+
+
+threading.Thread(target=_drawdown_monitor, daemon=True, name="dd-monitor").start()
 
 
 def _normalise_symbol(raw: str) -> str:
@@ -6166,13 +6260,15 @@ except Exception:
 
 
 class TgConfigReq(BaseModel):
-    token:       str
-    chat_id:     str  = ""
-    exchanges:   list = ["binance"]
-    auto_trade:  bool = False
-    amount:      float = 0.01
-    leverage:    int   = 10
-    enabled:     bool  = True
+    token:           str
+    chat_id:         str   = ""
+    exchanges:       list  = ["binance"]
+    auto_trade:      bool  = False
+    amount:          float = 0.01
+    leverage:        int   = 10
+    enabled:         bool  = True
+    notify_enabled:  bool  = True
+    drawdown_pct:    float = 5.0
 
 
 @app.post("/api/telegram/config")
