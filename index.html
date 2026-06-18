@@ -2923,8 +2923,16 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <div style="display:flex;flex-direction:column;gap:8px">
               <input id="fb-login" class="sinput" type="number" placeholder="Login (account number)" autocomplete="off"/>
               <input id="fb-password" class="sinput" type="password" placeholder="Password" autocomplete="off"/>
+              <select id="fb-broker" class="sinput" style="width:100%" onchange="fbBrokerChange()">
+                <option value="">— Select broker (auto-fills server + terminal) —</option>
+                <option value="exness">Exness</option>
+                <option value="vantage">Vantage</option>
+                <option value="cxm">CXM Direct</option>
+                <option value="custom">Other / Custom</option>
+              </select>
               <input id="fb-server" class="sinput" type="text" placeholder="Server (e.g. VantageMarkets-Live)" autocomplete="off"/>
               <input id="fb-terminal-path" class="sinput" type="text" placeholder="Terminal path (optional, e.g. C:\Program Files\Vantage Markets MT5 Terminal\terminal64.exe)" autocomplete="off"/>
+              <div style="font-size:10px;color:var(--text3)">Exact server name may differ by region/account type — check your MT5 terminal's login screen if Connect fails. Each broker normally needs its own separate MT5 terminal install (different terminal64.exe path).</div>
               <button onclick="fbConnect()" id="fb-connect-btn" style="padding:8px 16px;background:var(--accent);border:none;color:#fff;font-weight:700;border-radius:6px;font-family:var(--font);font-size:11px;cursor:pointer">CONNECT</button>
               <div id="fb-connect-result" style="font-size:11px;margin-top:4px"></div>
             </div>
@@ -4321,6 +4329,28 @@ function fmt(n, cur = '') { return cur + (n >= 0 ? '' : '-') + Math.abs(n).toLoc
 
 // ── FOREX BOT (Grid Recovery) ────────────────────────────────────────────────
 let _fbPollTimer = null;
+
+const FB_BROKER_PRESETS = {
+  exness: { server: 'Exness-MT5Real', terminal: '', note: 'Exness server names vary (MT5Real/MT5Real2/MT5Trial...) — check your MT5 login screen. Install the Exness MT5 terminal separately if not already done.' },
+  vantage:{ server: 'VantageMarkets-Live', terminal: 'C:\\Program Files\\Vantage Markets MT5 Terminal\\terminal64.exe', note: '' },
+  cxm:    { server: 'CXMDirect-Live', terminal: '', note: 'Do NOT point this at your main account\'s CXM terminal — install a SEPARATE CXM Direct MT5 terminal copy for the bot, otherwise it will refuse to connect (protected path).' },
+  custom: { server: '', terminal: '', note: '' },
+};
+
+function fbBrokerChange() {
+  const choice = document.getElementById('fb-broker').value;
+  const preset = FB_BROKER_PRESETS[choice];
+  if (!preset) return;
+  document.getElementById('fb-server').value = preset.server;
+  document.getElementById('fb-terminal-path').value = preset.terminal;
+  const resultEl = document.getElementById('fb-connect-result');
+  if (preset.note) {
+    resultEl.style.color = 'var(--amber)';
+    resultEl.textContent = '⚠ ' + preset.note;
+  } else {
+    resultEl.textContent = '';
+  }
+}
 
 async function fbConnect() {
   const btn = document.getElementById('fb-connect-btn');

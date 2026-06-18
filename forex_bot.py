@@ -41,6 +41,7 @@ _STOP_FLAG   = os.path.join(_DIR, "forex_bot_stop.flag")
 # live-trading account, even if the user mistypes a terminal path that
 # happens to resolve to it.
 _PROTECTED_LOGIN = 698085
+_PROTECTED_TERMINAL_PATH = r"C:\Program Files\MetaTrader 5\terminal64.exe"
 
 MAGIC = 777001
 
@@ -181,6 +182,11 @@ def main():
     if login == _PROTECTED_LOGIN:
         _log(logs, f"REFUSED — login {login} is the protected main trading account. Aborting.")
         _write_status(status="error", error="refused: protected main account", logs=logs)
+        return
+
+    if terminal and os.path.normcase(os.path.abspath(terminal)) == os.path.normcase(os.path.abspath(_PROTECTED_TERMINAL_PATH)):
+        _log(logs, f"REFUSED — terminal path is the main account's terminal. Logging in here would hijack live trading. Aborting.")
+        _write_status(status="error", error="refused: protected main terminal path", logs=logs)
         return
 
     init_kwargs = {"timeout": 20000}

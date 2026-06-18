@@ -5965,12 +5965,22 @@ class ForexBotConnectRequest(BaseModel):
     server:        str
     terminal_path: str = ""
 
+def _fb_path_collides_with_main(path: str) -> bool:
+    """True if the given terminal path would attach to the SAME running
+    terminal instance as the main live account. Logging into a different
+    account on that terminal would hijack it mid-trade — never allow it."""
+    if not path or not _MT5_TERMINAL_PATH:
+        return False
+    return os.path.normcase(os.path.abspath(path)) == os.path.normcase(os.path.abspath(_MT5_TERMINAL_PATH))
+
 @app.post("/api/forexbot/connect")
 def forexbot_connect(req: ForexBotConnectRequest):
     """Validate credentials with a one-off connection in a separate process
     (so it never touches the main MT5 connection), then save config."""
     if req.login == _FB_PROTECTED_LOGIN:
         return JSONResponse({"error": "This is the main live trading account — Forex Bot must use a different account"}, status_code=400)
+    if _fb_path_collides_with_main(req.terminal_path):
+        return JSONResponse({"error": "This terminal path is the main live trading terminal — using it here would log that terminal into a different account mid-trade. Install a separate MT5 terminal for this broker instead."}, status_code=400)
 
     check_script = (
         "import MetaTrader5 as mt5, json, sys\n"
