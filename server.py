@@ -22,11 +22,28 @@ from pydantic import BaseModel
 
 _cmd_queue: queue.Queue = queue.Queue()
 
+# Explicit terminal path — the VPS has a second MT5 terminal installed
+# ("CXM Direct MT5 Terminal") logged into a different, unrelated account.
+# Without specifying path, mt5.initialize() can attach to whichever terminal
+# it finds first, silently connecting to the wrong account. This path is the
+# terminal logged into the correct account (Minhajul Hoque, 698085).
+# Falls back to None (default lookup) if this exact path doesn't exist —
+# keeps local-PC runs (different install path) working unchanged.
+_MT5_TERMINAL_PATH = r"C:\Program Files\MetaTrader 5\terminal64.exe"
+if not os.path.exists(_MT5_TERMINAL_PATH):
+    _MT5_TERMINAL_PATH = None
+
+def _mt5_init(**kwargs) -> bool:
+    """mt5.initialize() wrapper that pins the terminal path when known."""
+    if _MT5_TERMINAL_PATH:
+        kwargs["path"] = _MT5_TERMINAL_PATH
+    return mt5.initialize(**kwargs)
+
 
 def _mt5_worker():
     """Runs forever on its own thread, executing MT5 calls."""
     # timeout=8000ms — don't hang if MT5 terminal is not running yet
-    ok = mt5.initialize(timeout=8000)
+    ok = _mt5_init(timeout=8000)
     if ok:
         info = mt5.account_info()
         if info:
@@ -216,7 +233,7 @@ _MT5_ERR = {
 def connect_mt5(req: ConnectRequest):
     def fn():
         # Ensure MT5 is initialized — 10s timeout so we don't block forever
-        if not mt5.initialize(timeout=10000):
+        if not _mt5_init(timeout=10000):
             code, msg = mt5.last_error()
             hint = "Open MetaTrader 5 terminal first, then try again"
             return {"error": hint, "code": code}
@@ -265,7 +282,7 @@ def disconnect_mt5():
         return {"success": True, "skipped": True, "reason": f"{len(running)} strategies still running — MT5 kept alive"}
     def fn():
         mt5.shutdown()
-        mt5.initialize()
+        _mt5_init()
         return {"success": True}
     return _mt5_call(fn)
 
