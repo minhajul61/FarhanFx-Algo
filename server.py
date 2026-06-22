@@ -11,7 +11,7 @@ from typing import List, Optional
 
 import MetaTrader5 as mt5
 import uvicorn
-from fastapi import FastAPI, Header, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
@@ -102,6 +102,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def _role_gate(request: Request, call_next):
+    """Client-role accounts (self-registered crypto users) may only reach
+    /api/auth/* and /api/crypto/* — everything else (MT5/forex/strategies/
+    reports, the owner's personal trading data) is off-limits to them.
+    Admin sessions, unauthenticated requests, and unrecognized tokens are
+    left untouched — this only adds a new restriction for the new
+    client-role tokens this feature introduces."""
+    path = request.url.path
+    if path.startswith("/api/") and not path.startswith("/api/auth/") and not path.startswith("/api/crypto/"):
+        token = (request.headers.get("authorization") or "").replace("Bearer ", "").strip()
+        sess = _auth_sessions.get(token)
+        if sess and sess.get("role") == "client":
+            return JSONResponse({"error": "Forbidden"}, status_code=403)
+    return await call_next(request)
+
 
 # ── ACCOUNT ─────────────────────────────────────────────────────────────────────
 
@@ -141,6 +157,11 @@ class AuthLoginRequest(BaseModel):
     username: str
     password: str
 
+class AuthRegisterRequest(BaseModel):
+    username: str
+    password: str
+    display_name: str = ""
+
 class AuthChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
@@ -167,11 +188,28 @@ def _ensure_default_user():
             "username": "admin",
             "salt": salt,
             "password_hash": _hash_pw("admin123", salt),
-            "display_name": "Admin"
+            "display_name": "Admin",
+            "role": "admin",
         }]
         _save_users(data)
+    else:
+        # Migration: existing accounts created before "role" existed default to admin —
+        # this is the owner's own pre-existing account, never a self-registered client.
+        changed = False
+        for u in data["users"]:
+            if "role" not in u:
+                u["role"] = "admin"
+                changed = True
+        if changed:
+            _save_users(data)
 
 _ensure_default_user()
+
+def _make_session(username: str, display_name: str, role: str) -> str:
+    token = secrets.token_urlsafe(32)
+    _auth_sessions[token] = {"username": username, "display_name": display_name,
+                              "role": role, "created": datetime.now().isoformat()}
+    return token
 
 @app.post("/api/auth/login")
 def auth_login(req: AuthLoginRequest):
@@ -179,10 +217,34 @@ def auth_login(req: AuthLoginRequest):
     user  = next((u for u in data.get("users", []) if u["username"] == req.username), None)
     if not user or _hash_pw(req.password, user["salt"]) != user["password_hash"]:
         return JSONResponse({"error": "Invalid username or password"}, status_code=401)
-    token = secrets.token_urlsafe(32)
-    _auth_sessions[token] = {"username": req.username, "display_name": user.get("display_name", req.username),
-                              "created": datetime.now().isoformat()}
-    return {"token": token, "username": req.username, "display_name": user.get("display_name", req.username)}
+    display_name = user.get("display_name", req.username)
+    role = user.get("role", "admin")
+    token = _make_session(req.username, display_name, role)
+    return {"token": token, "username": req.username, "display_name": display_name, "role": role}
+
+@app.post("/api/auth/register")
+def auth_register(req: AuthRegisterRequest):
+    username = req.username.strip()
+    if not username or not req.password:
+        return JSONResponse({"error": "Username and password are required"}, status_code=400)
+    if len(req.password) < 6:
+        return JSONResponse({"error": "Password must be at least 6 characters"}, status_code=400)
+    data = _load_users()
+    if any(u["username"].lower() == username.lower() for u in data.get("users", [])):
+        return JSONResponse({"error": "Username already taken"}, status_code=400)
+    salt = secrets.token_hex(16)
+    display_name = req.display_name.strip() or username
+    # Self-registration always creates a client account — never admin.
+    data.setdefault("users", []).append({
+        "username": username,
+        "salt": salt,
+        "password_hash": _hash_pw(req.password, salt),
+        "display_name": display_name,
+        "role": "client",
+    })
+    _save_users(data)
+    token = _make_session(username, display_name, "client")
+    return {"token": token, "username": username, "display_name": display_name, "role": "client"}
 
 @app.get("/api/auth/verify")
 def auth_verify(authorization: str = Header(default=None)):
@@ -190,7 +252,8 @@ def auth_verify(authorization: str = Header(default=None)):
     sess  = _auth_sessions.get(token)
     if not sess:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
-    return {"username": sess["username"], "display_name": sess.get("display_name", sess["username"])}
+    return {"username": sess["username"], "display_name": sess.get("display_name", sess["username"]),
+            "role": sess.get("role", "admin")}
 
 @app.post("/api/auth/logout")
 def auth_logout(authorization: str = Header(default=None)):
@@ -212,6 +275,13 @@ def auth_change_password(req: AuthChangePasswordRequest, authorization: str = He
     user["password_hash"] = _hash_pw(req.new_password, user["salt"])
     _save_users(data)
     return {"ok": True}
+
+def _get_current_user(authorization: str = Header(default=None)) -> dict:
+    token = (authorization or "").replace("Bearer ", "").strip()
+    sess  = _auth_sessions.get(token)
+    if not sess:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return sess
 
 
 class ConnectRequest(BaseModel):
@@ -4754,7 +4824,7 @@ class CoinSwitchClient:
 
 
 _EX_FILE   = "exchanges.json"
-_active_ex = {}   # {"binance": ccxt.Exchange, "bybit": ccxt.Exchange, "coinswitch": CoinSwitchClient}
+_active_ex = {}   # {username: {"binance": ccxt.Exchange, "bybit": ..., "coinswitch": CoinSwitchClient}}
 
 
 class ExConnectReq(BaseModel):
@@ -4789,9 +4859,17 @@ class CryptoLeverageReq(BaseModel):
 
 
 def _load_ex_cfg():
+    """Returns {username: {exchange_name: {api_key, api_secret, testnet}}}.
+    Migrates the old single-tenant flat format ({exchange_name: config}) to
+    {"admin": <old dict>} the first time it's loaded, so the owner's existing
+    connection survives the multi-tenant upgrade."""
     try:
-        with open(_EX_FILE) as f: return json.load(f)
+        with open(_EX_FILE) as f: data = json.load(f)
     except: return {}
+    if data and all(isinstance(v, dict) and "api_key" in v for v in data.values()):
+        data = {"admin": data}
+        _save_ex_cfg(data)
+    return data
 
 def _save_ex_cfg(data):
     with open(_EX_FILE, "w") as f: json.dump(data, f, indent=2)
@@ -4821,18 +4899,19 @@ def _build_exchange(name: str, key: str, secret: str, testnet: bool = False):
 
 
 def _restore_exchanges():
-    """Try to reconnect saved exchanges on server startup."""
+    """Try to reconnect every user's saved exchanges on server startup."""
     if not _CCXT_OK:
         return
     cfg = _load_ex_cfg()
-    for name, info in cfg.items():
-        try:
-            ex = _build_exchange(name, info["api_key"], info["api_secret"], info.get("testnet", False))
-            ex.fetch_balance()
-            _active_ex[name] = ex
-            print(f"Crypto: {name} restored ✓")
-        except Exception as e:
-            print(f"Crypto: {name} restore failed — {e}")
+    for username, exchanges in cfg.items():
+        for name, info in exchanges.items():
+            try:
+                ex = _build_exchange(name, info["api_key"], info["api_secret"], info.get("testnet", False))
+                ex.fetch_balance()
+                _active_ex.setdefault(username, {})[name] = ex
+                print(f"Crypto: {username}/{name} restored ✓")
+            except Exception as e:
+                print(f"Crypto: {username}/{name} restore failed — {e}")
     # After exchanges are ready, restore bots
     _load_saved_bots()
 
@@ -4870,6 +4949,7 @@ def _load_saved_bots():
             # Migrate old bots missing new fields
             bot.setdefault("max_open_trades", 2)
             bot.setdefault("open_trade_count", 1 if bot.get("open_side") else 0)
+            bot.setdefault("username", "admin")  # pre-multi-tenant bots belong to the owner
             _crypto_bots[bid] = bot
             if bot.get('status') == 'active':
                 delay = 15 + keys.index(bid) * 3
@@ -4913,15 +4993,16 @@ def _fmt_position(p):
 
 
 @app.post("/api/crypto/connect")
-def crypto_connect(req: ExConnectReq):
+def crypto_connect(req: ExConnectReq, current_user: dict = Depends(_get_current_user)):
     if not _CCXT_OK:
         return JSONResponse(status_code=400, content={"error": "ccxt not installed — pip install ccxt"})
     try:
         ex  = _build_exchange(req.exchange, req.api_key, req.api_secret, req.testnet)
         bal = ex.fetch_balance()
-        _active_ex[req.exchange.lower()] = ex
+        uname = current_user["username"]
+        _active_ex.setdefault(uname, {})[req.exchange.lower()] = ex
         cfg = _load_ex_cfg()
-        cfg[req.exchange.lower()] = {
+        cfg.setdefault(uname, {})[req.exchange.lower()] = {
             "api_key": req.api_key, "api_secret": req.api_secret,
             "testnet": req.testnet
         }
@@ -4943,28 +5024,32 @@ def crypto_connect(req: ExConnectReq):
 
 
 @app.post("/api/crypto/disconnect/{exchange}")
-def crypto_disconnect(exchange: str):
-    _active_ex.pop(exchange.lower(), None)
+def crypto_disconnect(exchange: str, current_user: dict = Depends(_get_current_user)):
+    uname = current_user["username"]
+    _active_ex.get(uname, {}).pop(exchange.lower(), None)
     cfg = _load_ex_cfg()
-    cfg.pop(exchange.lower(), None)
+    cfg.get(uname, {}).pop(exchange.lower(), None)
     _save_ex_cfg(cfg)
     return {"success": True}
 
 
 @app.get("/api/crypto/status")
-def crypto_status():
+def crypto_status(current_user: dict = Depends(_get_current_user)):
+    uname = current_user["username"]
     cfg = _load_ex_cfg()
+    mine = _active_ex.get(uname, {})
     return {
-        "binance":     "binance"     in _active_ex,
-        "bybit":       "bybit"       in _active_ex,
-        "coinswitch":  "coinswitch"  in _active_ex,
-        "saved":       list(cfg.keys()),
+        "binance":     "binance"     in mine,
+        "bybit":       "bybit"       in mine,
+        "coinswitch":  "coinswitch"  in mine,
+        "saved":       list(cfg.get(uname, {}).keys()),
     }
 
 
 @app.get("/api/crypto/debug_raw")
-def crypto_debug_raw(exchange: str = "coinswitch", path: str = "/trade/api/v2/futures/wallet_balance"):
-    ex = _active_ex.get(exchange.lower())
+def crypto_debug_raw(exchange: str = "coinswitch", path: str = "/trade/api/v2/futures/wallet_balance",
+                      current_user: dict = Depends(_get_current_user)):
+    ex = _active_ex.get(current_user["username"], {}).get(exchange.lower())
     if not ex:
         return JSONResponse(status_code=400, content={"error": f"{exchange} not connected"})
     try:
@@ -4976,8 +5061,8 @@ def crypto_debug_raw(exchange: str = "coinswitch", path: str = "/trade/api/v2/fu
 
 
 @app.get("/api/crypto/balance")
-def crypto_balance(exchange: str = "binance"):
-    ex = _active_ex.get(exchange.lower())
+def crypto_balance(exchange: str = "binance", current_user: dict = Depends(_get_current_user)):
+    ex = _active_ex.get(current_user["username"], {}).get(exchange.lower())
     if not ex:
         return JSONResponse(status_code=400, content={"error": f"{exchange} not connected"})
     try:
@@ -5021,8 +5106,8 @@ def crypto_balance(exchange: str = "binance"):
 
 
 @app.get("/api/crypto/positions")
-def crypto_positions(exchange: str = "binance"):
-    ex = _active_ex.get(exchange.lower())
+def crypto_positions(exchange: str = "binance", current_user: dict = Depends(_get_current_user)):
+    ex = _active_ex.get(current_user["username"], {}).get(exchange.lower())
     if not ex:
         return JSONResponse(status_code=400, content={"error": f"{exchange} not connected"})
     try:
@@ -5040,8 +5125,9 @@ def crypto_positions(exchange: str = "binance"):
 
 
 @app.get("/api/crypto/orders")
-def crypto_orders(exchange: str = "binance", symbol: str = "BTC/USDT:USDT"):
-    ex = _active_ex.get(exchange.lower())
+def crypto_orders(exchange: str = "binance", symbol: str = "BTC/USDT:USDT",
+                   current_user: dict = Depends(_get_current_user)):
+    ex = _active_ex.get(current_user["username"], {}).get(exchange.lower())
     if not ex:
         return JSONResponse(status_code=400, content={"error": f"{exchange} not connected"})
     try:
@@ -5060,8 +5146,8 @@ def crypto_orders(exchange: str = "binance", symbol: str = "BTC/USDT:USDT"):
 
 
 @app.post("/api/crypto/order")
-def crypto_order(req: CryptoOrderReq):
-    ex = _active_ex.get(req.exchange.lower())
+def crypto_order(req: CryptoOrderReq, current_user: dict = Depends(_get_current_user)):
+    ex = _active_ex.get(current_user["username"], {}).get(req.exchange.lower())
     if not ex:
         return JSONResponse(status_code=400, content={"error": f"{req.exchange} not connected"})
     try:
@@ -5097,8 +5183,8 @@ def crypto_order(req: CryptoOrderReq):
 
 
 @app.post("/api/crypto/close")
-def crypto_close(req: CryptoCloseReq):
-    ex = _active_ex.get(req.exchange.lower())
+def crypto_close(req: CryptoCloseReq, current_user: dict = Depends(_get_current_user)):
+    ex = _active_ex.get(current_user["username"], {}).get(req.exchange.lower())
     if not ex:
         return JSONResponse(status_code=400, content={"error": f"{req.exchange} not connected"})
     try:
@@ -5116,8 +5202,8 @@ def crypto_close(req: CryptoCloseReq):
 
 
 @app.post("/api/crypto/leverage")
-def crypto_set_leverage(req: CryptoLeverageReq):
-    ex = _active_ex.get(req.exchange.lower())
+def crypto_set_leverage(req: CryptoLeverageReq, current_user: dict = Depends(_get_current_user)):
+    ex = _active_ex.get(current_user["username"], {}).get(req.exchange.lower())
     if not ex:
         return JSONResponse(status_code=400, content={"error": f"{req.exchange} not connected"})
     try:
@@ -5128,8 +5214,8 @@ def crypto_set_leverage(req: CryptoLeverageReq):
 
 
 @app.get("/api/crypto/markets")
-def crypto_markets(exchange: str = "binance"):
-    ex = _active_ex.get(exchange.lower())
+def crypto_markets(exchange: str = "binance", current_user: dict = Depends(_get_current_user)):
+    ex = _active_ex.get(current_user["username"], {}).get(exchange.lower())
     fallback = [
         "BTC/USDT:USDT","ETH/USDT:USDT","BNB/USDT:USDT","SOL/USDT:USDT",
         "XRP/USDT:USDT","DOGE/USDT:USDT","ADA/USDT:USDT","AVAX/USDT:USDT",
@@ -5152,8 +5238,9 @@ def crypto_markets(exchange: str = "binance"):
 
 # ── CRYPTO TRADE HISTORY ────────────────────────────────────────────────────────
 @app.get("/api/crypto/history")
-def crypto_history(exchange: str = "binance", symbol: str = "BTC/USDT:USDT", limit: int = 100):
-    ex = _active_ex.get(exchange.lower())
+def crypto_history(exchange: str = "binance", symbol: str = "BTC/USDT:USDT", limit: int = 100,
+                    current_user: dict = Depends(_get_current_user)):
+    ex = _active_ex.get(current_user["username"], {}).get(exchange.lower())
     if not ex:
         return JSONResponse(status_code=400, content={"error": f"{exchange} not connected"})
     try:
@@ -5801,7 +5888,7 @@ def _bot_tick(bot_id):
             oside = bot["open_side"]
             trail = bot.get("trailing_atr", 0) * atr
             tp    = bot.get("tp_atr", 0) * atr
-            ex    = _active_ex.get(bot["exchange"])
+            ex    = _active_ex.get(bot.get("username", "admin"), {}).get(bot["exchange"])
             if ex:
                 should_exit = False
                 exit_reason = ""
@@ -5836,7 +5923,7 @@ def _bot_tick(bot_id):
                         pass
 
         if signal:
-            ex = _active_ex.get(bot["exchange"])
+            ex = _active_ex.get(bot.get("username", "admin"), {}).get(bot["exchange"])
             if not ex:
                 return
 
@@ -5927,13 +6014,14 @@ def _bot_tick(bot_id):
 
 
 @app.post("/api/crypto/algo/start")
-def crypto_algo_start(req: CryptoBotReq):
-    ex = _active_ex.get(req.exchange.lower())
+def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_current_user)):
+    uname = current_user["username"]
+    ex = _active_ex.get(uname, {}).get(req.exchange.lower())
     if not ex:
         return JSONResponse(status_code=400, content={"error": f"{req.exchange} not connected"})
     bid = str(_uuid.uuid4())[:8]
     _crypto_bots[bid] = {
-        "id": bid, "exchange": req.exchange.lower(),
+        "id": bid, "username": uname, "exchange": req.exchange.lower(),
         "symbol": req.symbol, "strategy": req.strategy,
         "timeframe": req.timeframe, "risk_pct": req.risk_pct,
         "leverage": req.leverage,
@@ -5984,10 +6072,11 @@ def crypto_algo_analyze(symbol: str = "BTC/USDT:USDT", timeframe: str = "1h",
 
 
 @app.post("/api/crypto/algo/stop/{bot_id}")
-def crypto_algo_stop(bot_id: str):
-    if bot_id not in _crypto_bots:
+def crypto_algo_stop(bot_id: str, current_user: dict = Depends(_get_current_user)):
+    bot = _crypto_bots.get(bot_id)
+    if not bot or bot.get("username") != current_user["username"]:
         return JSONResponse(status_code=404, content={"error": "Bot not found"})
-    _crypto_bots[bot_id]["status"] = "stopped"
+    bot["status"] = "stopped"
     t = _bot_timers.pop(bot_id, None)
     if t:
         t.cancel()
@@ -5996,7 +6085,10 @@ def crypto_algo_stop(bot_id: str):
 
 
 @app.delete("/api/crypto/algo/{bot_id}")
-def crypto_algo_delete(bot_id: str):
+def crypto_algo_delete(bot_id: str, current_user: dict = Depends(_get_current_user)):
+    bot = _crypto_bots.get(bot_id)
+    if not bot or bot.get("username") != current_user["username"]:
+        return JSONResponse(status_code=404, content={"error": "Bot not found"})
     t = _bot_timers.pop(bot_id, None)
     if t:
         t.cancel()
@@ -6006,10 +6098,12 @@ def crypto_algo_delete(bot_id: str):
 
 
 @app.get("/api/crypto/algo/history")
-def crypto_algo_history():
-    """Return all trade records from all bots, newest first."""
+def crypto_algo_history(current_user: dict = Depends(_get_current_user)):
+    """Return this user's trade records from their own bots, newest first."""
     rows = []
     for bid, b in _crypto_bots.items():
+        if b.get("username") != current_user["username"]:
+            continue
         for t in b.get("trades", []):
             rows.append({
                 "bot_id":   bid,
@@ -6023,9 +6117,11 @@ def crypto_algo_history():
 
 
 @app.get("/api/crypto/algo/list")
-def crypto_algo_list(live: bool = False):
+def crypto_algo_list(live: bool = False, current_user: dict = Depends(_get_current_user)):
     result = []
     for b in _crypto_bots.values():
+        if b.get("username") != current_user["username"]:
+            continue
         entry = {k: v for k, v in b.items() if k != "trades"} | {
             "trade_count":  len(b.get("trades", [])),
             "recent_trades": b.get("trades", [])[-5:],
@@ -6035,7 +6131,7 @@ def crypto_algo_list(live: bool = False):
         }
         # Fetch live unrealized PnL for active in-position bots
         if live and b.get("open_side") and b.get("status") == "active":
-            ex = _active_ex.get(b["exchange"])
+            ex = _active_ex.get(current_user["username"], {}).get(b["exchange"])
             if ex:
                 try:
                     for p in ex.fetch_positions():
@@ -6526,7 +6622,7 @@ def _tg_execute_signal(sig: dict, cfg: dict) -> list:
     """Place orders on all configured exchanges. Returns list of results."""
     results = []
     for exname in cfg.get("exchanges", []):
-        ex = _active_ex.get(exname.lower())
+        ex = _active_ex.get("admin", {}).get(exname.lower())
         if not ex:
             results.append({"exchange": exname, "ok": False, "error": "not connected"})
             continue
