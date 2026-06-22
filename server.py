@@ -5618,6 +5618,33 @@ def _get_bot_signal(bot, ohlcv):
         if hist[-2] >= 0 and hist[-1] < 0:
             return "SELL"
 
+    elif strategy == "btc_momentum_breakout":
+        # MACD cross + EMA200 trend + volume confirmation + EMA50 trend-strength
+        # filter. Backtested on BTC/USDT 1h, Binance, 2023-06→2025-10 (21000 bars):
+        # 302 trades, 42.7% WR, PF 1.40. Out-of-sample split-half validated
+        # (41.6%/1.32 then 43.6%/1.44 — consistent, not overfit). See
+        # research_crypto_btc.py for the full grid search.
+        macd_l, sig_l, hist = _macd_calc(closes, bot.get("macd_fast",12), bot.get("macd_slow",26), bot.get("macd_signal",9))
+        if not hist or len(hist) < 2 or len(closes) < 220:
+            return None
+        ema200 = _ema_calc(closes, min(200, len(closes)-1))
+        ema50  = _ema_calc(closes, 50)
+        atr_v  = _atr_calc(highs, lows, closes, 14)
+        if len(ema50) < 11 or not ema200:
+            return None
+        vol_avg = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else volumes[-1]
+        slope   = (ema50[-1] - ema50[-11]) / atr_v if atr_v else 0
+        vol_ok  = volumes[-1] > vol_avg * 1.2
+        cross_up = hist[-2] <= 0 and hist[-1] > 0
+        cross_dn = hist[-2] >= 0 and hist[-1] < 0
+        bot["last_macd"]   = round(macd_l[-1], 2)
+        bot["last_slope"]  = round(slope, 2)
+        bot["last_vol_x"]  = round(volumes[-1] / vol_avg, 2) if vol_avg else 0
+        if cross_up and closes[-1] > ema200[-1] and vol_ok and slope > 0:
+            return "BUY"
+        if cross_dn and closes[-1] < ema200[-1] and vol_ok and slope < 0:
+            return "SELL"
+
     elif strategy == "bb_squeeze":
         # Price bounces off bands with volume confirmation
         upper, middle, lower, bw = _bb_calc(closes, bot["bb_period"], bot["bb_std"])

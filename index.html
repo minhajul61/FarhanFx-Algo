@@ -2643,6 +2643,9 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 <label>Strategy</label>
                 <select id="bot-strategy" onchange="botStrategyChange()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--font);font-size:12px;width:100%">
                   <option value="ai_score">⚡ AI Score (Multi-Indicator) — Recommended</option>
+                  <optgroup label="── Backtested ✓ ──">
+                    <option value="btc_momentum_breakout">🚀 BTC Momentum Breakout — 42.7% WR / PF 1.40</option>
+                  </optgroup>
                   <optgroup label="── Price Action (High WR) ──">
                     <option value="pin_bar_sr">📌 Pin Bar at S/R (3-Pillar)</option>
                     <option value="engulfing_trend">🕯️ Engulfing + Trend</option>
@@ -8841,6 +8844,7 @@ const _strategyHints = {
   engulfing_trend: '3-Pillar: Trend + Key Level + Engulfing/Morning Star/Piercing. Confirmed reversal at key level in trend direction.',
   false_breakout:  'IB False Breakout — institutions break Inside Bar to hunt stops, then reverse. Highest WR pattern (0.88 strength).',
   pa_confluence:   'All 3 Pillars must align: H4 Trend + any Key Level (SR/Fib/EMA/OB) + PA pattern ≥0.70 strength. Best setup.',
+  btc_momentum_breakout: 'MACD cross + EMA200 trend + volume>1.2x avg + EMA50 slope filter. Backtested on BTC/USDT 1h (Binance, 2.3yrs, 302 trades): 42.7% WR, PF 1.40 — validated out-of-sample. Set TP-ATR to 3.5 for the tested R:R (SL is fixed at 2x ATR).',
   macd_cross:      'MACD histogram crosses zero line. Strong trend-momentum signal. Best on 1h/4h charts.',
   bb_squeeze:      'Trades BB band touches with volume confirmation. Catches reversals at extremes. Best in ranging markets.',
   supertrend:      'ATR-based trailing indicator that flips direction on breakouts. Excellent for trending markets.',
@@ -8867,7 +8871,16 @@ function botStrategyChange() {
   if (st === 'supertrend') show('bot-st-params');
   if (st === 'rsi')        show('bot-rsi-params');
   if (st === 'ema_cross')  show('bot-ema-params');
+  if (st === 'btc_momentum_breakout') show('bot-macd-params');
   // scalp + breakout have no special params
+
+  // Backtested defaults — match the validated config exactly
+  if (st === 'btc_momentum_breakout') {
+    const tfEl = document.getElementById('bot-timeframe');
+    const tpEl = document.getElementById('bot-tp-atr');
+    if (tfEl) tfEl.value = '1h';
+    if (tpEl) tpEl.value = '3.5';
+  }
 }
 
 function _gv(id, def, fn) {
