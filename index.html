@@ -319,7 +319,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 <!-- AUTH SCREEN -->
 <div id="auth-screen" style="display:none">
   <div class="auth-bg"></div>
-  <div class="auth-card">
+  <div class="auth-card" id="auth-card-login">
     <div class="auth-brand">
       <div class="auth-icon">FX</div>
       <div class="auth-title">FARHANFX ALGO</div>
@@ -337,8 +337,34 @@ tr:hover td{background:rgba(139,92,246,0.05)}
              onkeydown="if(event.key==='Enter') doAuthLogin()"/>
     </div>
     <button class="auth-btn" id="auth-btn" onclick="doAuthLogin()">LOGIN →</button>
-    <div style="text-align:center;margin-top:16px;font-size:10px;color:var(--text3)">
-      Default: <span style="color:var(--accent)">admin</span> / <span style="color:var(--accent)">admin123</span>
+    <div style="text-align:center;margin-top:16px;font-size:11px;color:var(--text3)">
+      New here? <a href="#" onclick="showAuthRegister();return false;" style="color:var(--accent);font-weight:700">Sign up for Crypto Bot access</a>
+    </div>
+  </div>
+
+  <div class="auth-card" id="auth-card-register" style="display:none">
+    <div class="auth-brand">
+      <div class="auth-icon">FX</div>
+      <div class="auth-title">CREATE ACCOUNT</div>
+      <div class="auth-sub">CRYPTO BOT · CLIENT ACCESS</div>
+    </div>
+    <div class="auth-err" id="reg-err"></div>
+    <div class="field">
+      <label>Display name</label>
+      <input type="text" id="reg-display-name" placeholder="Your name" autocomplete="name"/>
+    </div>
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="reg-username" placeholder="Choose a username" autocomplete="username"/>
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="reg-password" placeholder="At least 6 characters" autocomplete="new-password"
+             onkeydown="if(event.key==='Enter') doAuthRegister()"/>
+    </div>
+    <button class="auth-btn" id="reg-btn" onclick="doAuthRegister()">SIGN UP →</button>
+    <div style="text-align:center;margin-top:16px;font-size:11px;color:var(--text3)">
+      Already have an account? <a href="#" onclick="showAuthLogin();return false;" style="color:var(--accent);font-weight:700">Log in</a>
     </div>
   </div>
 </div>
@@ -2184,8 +2210,8 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         <!-- ═══ TRADE SUB-TAB ════════════════════════════════════ -->
         <div class="crypto-sub-page" id="csp-trade" style="display:none">
 
-          <!-- 3 Exchange Order Panels -->
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;min-width:0">
+          <!-- Exchange Order Panels — only connected exchanges are shown (all 3 shown if none connected yet) -->
+          <div id="tp-cards-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;min-width:0">
 
             <!-- ── BINANCE ── -->
             <div class="tp-card" id="tp-card-binance">
@@ -3146,8 +3172,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     setTimeout(() => document.getElementById('auth-username').focus(), 100);
     return;
   }
-  // Token valid — update badge and check MT5
+  // Token valid — update badge, role, and check MT5
   document.getElementById('user-badge').textContent = '● ' + (vr.display_name || vr.username);
+  _setAuthRole(vr.role);
   await _afterAuthSuccess();
 });
 
@@ -4254,6 +4281,22 @@ function getSettings() { return loadSettings(); }
 function _getAuthToken() { return sessionStorage.getItem('fx_auth_token') || ''; }
 function _setAuthToken(t) { sessionStorage.setItem('fx_auth_token', t); }
 function _clearAuthToken() { sessionStorage.removeItem('fx_auth_token'); }
+function _getAuthRole()  { return sessionStorage.getItem('fx_role') || 'admin'; }
+function _setAuthRole(r) { sessionStorage.setItem('fx_role', r || 'admin'); }
+function _clearAuthRole(){ sessionStorage.removeItem('fx_role'); }
+
+function showAuthRegister() {
+  document.getElementById('auth-card-login').style.display = 'none';
+  document.getElementById('auth-card-register').style.display = 'block';
+  document.getElementById('reg-err').style.display = 'none';
+  setTimeout(() => document.getElementById('reg-display-name').focus(), 50);
+}
+function showAuthLogin() {
+  document.getElementById('auth-card-register').style.display = 'none';
+  document.getElementById('auth-card-login').style.display = 'block';
+  document.getElementById('auth-err').style.display = 'none';
+  setTimeout(() => document.getElementById('auth-username').focus(), 50);
+}
 
 async function doAuthLogin() {
   const username = document.getElementById('auth-username').value.trim();
@@ -4272,11 +4315,11 @@ async function doAuthLogin() {
     const data = await r.json();
     if (!r.ok) { errEl.textContent = data.error || 'Login failed.'; errEl.style.display = 'block'; return; }
     _setAuthToken(data.token);
+    _setAuthRole(data.role);
     document.getElementById('user-badge').textContent = '● ' + (data.display_name || data.username);
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('auth-username').value = '';
     document.getElementById('auth-password').value = '';
-    // Now check MT5 connection
     await _afterAuthSuccess();
   } catch(e) {
     errEl.textContent = 'Server offline — start server.py first'; errEl.style.display = 'block';
@@ -4285,7 +4328,57 @@ async function doAuthLogin() {
   }
 }
 
+async function doAuthRegister() {
+  const display_name = document.getElementById('reg-display-name').value.trim();
+  const username     = document.getElementById('reg-username').value.trim();
+  const password     = document.getElementById('reg-password').value;
+  const errEl = document.getElementById('reg-err');
+  const btn   = document.getElementById('reg-btn');
+  errEl.style.display = 'none';
+  if (!username || !password) { errEl.textContent = 'Username and password required.'; errEl.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Signing up...';
+  try {
+    const r = await fetch(API + '/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, display_name })
+    });
+    const data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error || 'Sign up failed.'; errEl.style.display = 'block'; return; }
+    _setAuthToken(data.token);
+    _setAuthRole(data.role);
+    document.getElementById('user-badge').textContent = '● ' + (data.display_name || data.username);
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('reg-display-name').value = '';
+    document.getElementById('reg-username').value = '';
+    document.getElementById('reg-password').value = '';
+    await _afterAuthSuccess();
+  } catch(e) {
+    errEl.textContent = 'Server offline — start server.py first'; errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'SIGN UP →';
+  }
+}
+
+// Client-role accounts (self-registered crypto users) only ever see the Crypto
+// page — every other nav item is hidden, and we skip the MT5 dashboard entirely
+// since those endpoints are blocked server-side for this role anyway.
+function _applyRoleUI(role) {
+  const cryptoNav = document.querySelector('.nav-item[onclick*="\'crypto\'"]');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.style.display = (role === 'client' && n !== cryptoNav) ? 'none' : '';
+  });
+}
+
 async function _afterAuthSuccess() {
+  const role = _getAuthRole();
+  _applyRoleUI(role);
+  if (role === 'client') {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    showPage('crypto', document.querySelector('.nav-item[onclick*="\'crypto\'"]'));
+    return;
+  }
   const r = await apiFetch('/api/account');
   // Always go straight to the dashboard — MT5 connects in the background via
   // the CONNECT MT5 bar/modal if it isn't already attached to a live session.
@@ -4300,6 +4393,9 @@ async function doAuthLogout() {
     try { await fetch(API + '/api/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }); } catch {}
   }
   _clearAuthToken();
+  _clearAuthRole();
+  _applyRoleUI('admin');   // restore full nav in case a different role logs in next
+  showAuthLogin();
   if (ws) { ws.close(); ws = null; }
   // NOTE: Do NOT call /api/disconnect here — algo strategies keep running on the server
   // MT5 stays connected so running strategies are not interrupted by logout
@@ -7912,11 +8008,14 @@ async function cryptoInit() {
   await cryptoCheckStatus();
   cryptoLoadMarkets();   // don't await — markets can load in background
   showCryptoTab('dashboard', document.getElementById('cst-dashboard'));
-  // Telegram bot status + signals
-  tgLoadStatus();
-  tgLoadSignals();
-  clearInterval(_tgRefTimer);
-  _tgRefTimer = setInterval(() => { tgLoadSignals(); tgLoadStatus(); }, 8000);
+  // Telegram signal bot is an owner-only automation tool (not exposed to client
+  // accounts), and its endpoints are blocked server-side for the client role anyway.
+  if (_getAuthRole() !== 'client') {
+    tgLoadStatus();
+    tgLoadSignals();
+    clearInterval(_tgRefTimer);
+    _tgRefTimer = setInterval(() => { tgLoadSignals(); tgLoadStatus(); }, 8000);
+  }
 }
 
 // ── Exchange status dots ──
@@ -7935,6 +8034,18 @@ async function cryptoCheckStatus() {
     if (s[n]) connected.push(n);
   });
   setCryptoConnStatus(connected);
+
+  // Show only connected exchange cards on the Trade tab (show all 3 if none connected yet)
+  const showAll = connected.length === 0;
+  ['binance','bybit','coinswitch'].forEach(n => {
+    const card = document.getElementById('tp-card-' + n);
+    if (card) card.style.display = (showAll || s[n]) ? '' : 'none';
+  });
+  const grid = document.getElementById('tp-cards-grid');
+  if (grid) {
+    const visibleCount = showAll ? 3 : connected.length;
+    grid.style.gridTemplateColumns = `repeat(${visibleCount}, 1fr)`;
+  }
 }
 
 function _updateTpConnBtn(exchange, isConnected) {
