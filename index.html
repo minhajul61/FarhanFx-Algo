@@ -809,6 +809,9 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         <div id="rpt-page-manual-forex"  style="display:none"></div>
         <div id="rpt-page-manual-crypto" style="display:none"></div>
         <div id="rpt-page-funding"       style="display:none"></div>
+
+        <!-- Strategy Robustness Matrix — algo-forex only, backtest WR vs live deployed TF -->
+        <div id="rpt-strategy-matrix" style="display:none;margin-top:14px"></div>
       </div>
 
 
@@ -4894,6 +4897,10 @@ function showReportTab(tab) {
     const isActive = t === tab;
     if (btn) { btn.style.borderBottomColor = isActive ? colors[t] : 'transparent'; btn.style.color = isActive ? colors[t] : 'var(--text3)'; }
     if (page) page.style.display = isActive ? '' : 'none';
+    if (t === 'algo-forex') {
+      const matrixEl = document.getElementById('rpt-strategy-matrix');
+      if (matrixEl) matrixEl.style.display = isActive ? '' : 'none';
+    }
   });
   loadActiveReport();
 }
@@ -4920,6 +4927,68 @@ async function loadAlgoForexReport() {
   if (!raw || raw.error) return;
   const trades = _rptFilterByDate((Array.isArray(raw) ? raw : []).filter(t => !_jsIsCrypto(t.symbol) && t.exit_price));
   _rptRenderFromAlgoTrades(prefix, trades, 'strategy');
+  loadStrategyMatrix();
+}
+
+async function loadStrategyMatrix() {
+  const matrixEl = document.getElementById('rpt-strategy-matrix');
+  if (!matrixEl) return;
+  matrixEl.style.display = '';
+  const data = await apiFetch('/api/strategy-matrix');
+  if (!data || data.error) { matrixEl.innerHTML = ''; return; }
+
+  const tfs = data.timeframes;
+  const wrColor = wr => wr == null ? 'var(--text3)' : wr >= 55 ? 'var(--green)' : wr >= 45 ? 'var(--amber)' : 'var(--red)';
+  const cellBg  = wr => wr == null ? 'transparent' : wr >= 55 ? 'rgba(16,185,129,0.12)' : wr >= 45 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)';
+
+  let headerHTML = `<th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px;text-transform:uppercase">Strategy</th>`;
+  tfs.forEach(tf => headerHTML += `<th style="text-align:center;padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text3);font-size:10px;text-transform:uppercase">${tf}</th>`);
+
+  let rowsHTML = '';
+  data.rows.forEach(r => {
+    rowsHTML += `<tr><td style="padding:8px 10px;font-size:11px;font-weight:700;border-bottom:1px solid var(--border)">${r.strategy}</td>`;
+    tfs.forEach(tf => {
+      const isBtCol   = tf === r.bt_tf;
+      const isLiveCol = tf === r.live_tf;
+      let cellContent = '—';
+      let bg = 'transparent', fg = 'var(--text3)';
+      if (isBtCol && r.bt_wr != null) {
+        bg = cellBg(r.bt_wr); fg = wrColor(r.bt_wr);
+        cellContent = `<b>${r.bt_wr}%</b><div style="font-size:8px;color:var(--text3);margin-top:1px">BT${r.bt_trades ? ' · '+r.bt_trades+'t' : ''}</div>`;
+      }
+      if (isLiveCol) {
+        const liveNote = r.live_ambiguous
+          ? `<div style="font-size:8px;color:var(--text3);margin-top:1px">live untracked*</div>`
+          : (r.live_trades > 0
+              ? `<div style="font-size:8px;color:var(--cyan);margin-top:1px">live ${r.live_wr}% · ${r.live_trades}t</div>`
+              : `<div style="font-size:8px;color:var(--text3);margin-top:1px">live 0 trades</div>`);
+        if (!isBtCol) { bg = 'rgba(88,166,255,0.08)'; fg = 'var(--text)'; cellContent = 'LIVE'; }
+        cellContent = `<div>${isBtCol ? `<b style="color:${fg}">${r.bt_wr}%</b>` : '<b style="color:var(--cyan)">LIVE</b>'}</div>${liveNote}`;
+      }
+      rowsHTML += `<td style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);background:${bg}">${cellContent}</td>`;
+    });
+    rowsHTML += `</tr>`;
+  });
+
+  matrixEl.innerHTML = `
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:0.5px">🧪 STRATEGY ROBUSTNESS MATRIX — BACKTEST vs LIVE TIMEFRAME</div>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead><tr>${headerHTML}</tr></thead>
+          <tbody>${rowsHTML}</tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:14px;margin-top:10px;font-size:9px;color:var(--text3);flex-wrap:wrap">
+        <span><span style="display:inline-block;width:8px;height:8px;background:var(--green);border-radius:2px;margin-right:4px"></span>WR ≥55%</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:var(--amber);border-radius:2px;margin-right:4px"></span>45-55%</span>
+        <span><span style="display:inline-block;width:8px;height:8px;background:var(--red);border-radius:2px;margin-right:4px"></span>&lt;45%</span>
+        <span>BT = backtested win rate · LIVE = currently deployed timeframe</span>
+        <span>*broker truncates trade comments to 16 chars — can't separate this strategy's live trades from a same-prefix sibling</span>
+      </div>
+    </div>`;
 }
 
 async function loadAlgoCryptoReport() {

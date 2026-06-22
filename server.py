@@ -849,6 +849,86 @@ def get_reports(months: int = 12, filter: str = "all", date_from: str = "", date
     return _mt5_call(fn)
 
 
+# ── STRATEGY ROBUSTNESS MATRIX ──────────────────────────────────────────────
+# Backtest reference numbers from the one-off Python backtests run during
+# development (see optimize_m15_trendcont.py for the M15 grid search; the
+# others came from earlier ad-hoc backtest scripts). Not derivable from live
+# data alone since most strategies have too few live trades yet.
+_STRATEGY_BT_REF = {
+    "Trend Continuation":     {"bt_tf": "H1",  "bt_wr": 63.6, "bt_pf": 2.25, "bt_trades": 33},
+    "M2B/M2S":                {"bt_tf": "H1",  "bt_wr": 59.3, "bt_pf": 1.91, "bt_trades": 81},
+    "Pin Bar SR":             {"bt_tf": "H1",  "bt_wr": 56.8, "bt_pf": None, "bt_trades": None},
+    "Engulfing Trend":        {"bt_tf": "H1",  "bt_wr": 53.8, "bt_pf": None, "bt_trades": None},
+    "PA Confluence":          {"bt_tf": "H1",  "bt_wr": 53.2, "bt_pf": None, "bt_trades": None},
+    "AI Signal Engine":       {"bt_tf": None,  "bt_wr": None, "bt_pf": None, "bt_trades": None},
+    "Trend Continuation M15": {"bt_tf": "M15", "bt_wr": 58.4, "bt_pf": 2.16, "bt_trades": 89},
+}
+# Truncated-comment prefix each strategy maps to in MT5 broker history
+# (CXM Direct truncates order comments to 16 chars: "FarhanFX-" + 7 chars).
+# Strategies sharing a prefix can't be told apart from history alone.
+_STRATEGY_LIVE_KEY = {
+    "Trend Continuation":     None,        # ambiguous with M15 variant ("Trend C")
+    "M2B/M2S":                "M2B/M2S",
+    "Pin Bar SR":             "Pin Bar",
+    "Engulfing Trend":        None,        # ambiguous with retired "Engulfing" ("Engulfi")
+    "PA Confluence":          "PA Conf",
+    "AI Signal Engine":       "AI Sign",
+    "Trend Continuation M15": None,        # ambiguous with H1 variant ("Trend C")
+}
+# Intended deployment timeframe — static, so the matrix still shows it even
+# when the strategy isn't currently running (stopping a strategy removes it
+# from strategies_state.json, which would otherwise blank this out).
+_STRATEGY_DEPLOY_TF = {
+    "Trend Continuation":     "H1",
+    "M2B/M2S":                "M30",
+    "Pin Bar SR":             "M30",
+    "Engulfing Trend":        "M30",
+    "PA Confluence":          "M30",
+    "AI Signal Engine":       "M30",
+    "Trend Continuation M15": "M15",
+}
+
+@app.get("/api/strategy-matrix")
+def strategy_matrix():
+    rpt = get_reports(months=12)
+    if isinstance(rpt, dict) and "error" in rpt:
+        return rpt
+    by_strat_live = {b["strategy"]: b for b in rpt.get("by_strategy", [])}
+
+    live_tf = dict(_STRATEGY_DEPLOY_TF)
+    for s in _strategies.values():
+        if s.get("strategy"):
+            live_tf[s["strategy"]] = s.get("timeframe")
+    if os.path.exists(_STRAT_STATE_FILE):
+        try:
+            with open(_STRAT_STATE_FILE) as f:
+                for entry in json.load(f):
+                    cfg = entry.get("config", {})
+                    if cfg.get("strategy"):
+                        live_tf[cfg["strategy"]] = cfg.get("timeframe")
+        except Exception:
+            pass
+
+    rows = []
+    for name, ref in _STRATEGY_BT_REF.items():
+        live_key = _STRATEGY_LIVE_KEY.get(name)
+        live = by_strat_live.get(live_key) if live_key else None
+        rows.append({
+            "strategy":    name,
+            "bt_tf":       ref["bt_tf"],
+            "bt_wr":       ref["bt_wr"],
+            "bt_pf":       ref["bt_pf"],
+            "bt_trades":   ref["bt_trades"],
+            "live_tf":     live_tf.get(name),
+            "live_wr":     live["win_rate"]     if live else None,
+            "live_pf":     live["profit_factor"] if live else None,
+            "live_trades": live["trades"]        if live else 0,
+            "live_pnl":    live["pnl"]           if live else 0.0,
+            "live_ambiguous": live_key is None,
+        })
+    return {"timeframes": ["M15", "M30", "H1", "D1"], "rows": rows}
+
+
 # ── SYMBOLS LIST ────────────────────────────────────────────────────────────────
 
 @app.get("/api/symbols")
