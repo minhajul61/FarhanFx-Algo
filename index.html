@@ -3101,6 +3101,28 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <button class="sbtn" style="padding:10px 20px;font-size:12px" onclick="resetSettings()">RESET DEFAULTS</button>
           <span id="s-save-status" style="font-size:11px;color:var(--text3)"></span>
         </div>
+
+        <!-- Client Management (admin only — clients can't reach this page at all) -->
+        <div class="panel" id="admin-clients-panel" style="margin-top:16px;display:none">
+          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
+            <span>Crypto Bot Clients</span>
+            <button class="sbtn" style="padding:5px 12px;font-size:10px" onclick="loadAdminClients()">↻ REFRESH</button>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
+            <thead>
+              <tr style="color:var(--text3);font-size:9px;letter-spacing:1px;border-bottom:1px solid var(--border)">
+                <th style="text-align:left;padding:6px">USERNAME</th>
+                <th style="text-align:left;padding:6px">NAME</th>
+                <th style="text-align:left;padding:6px">EXPIRES</th>
+                <th style="text-align:center;padding:6px">STATUS</th>
+                <th style="text-align:right;padding:6px">SET DAYS FROM NOW</th>
+              </tr>
+            </thead>
+            <tbody id="admin-clients-body">
+              <tr><td colspan="5" style="text-align:center;color:var(--text3);padding:14px">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
     </div>
@@ -3368,7 +3390,7 @@ function showPage(id, el) {
   if (id === 'risk')        { rcCalcPos(); rcCalcKelly(); rcCalcPropDD(); cpLoadStatus(); }
   if (id === 'reports')     { loadReports(); }
   if (id === 'crypto')      { cryptoInit(); }
-  if (id === 'settings')    { applySettingsToUI(loadSettings()); }
+  if (id === 'settings')    { applySettingsToUI(loadSettings()); if (_getAuthRole() === 'admin') { document.getElementById('admin-clients-panel').style.display = 'block'; loadAdminClients(); } }
   if (id === 'forexbot')    { fbStartPolling(); } else { fbStopPolling(); }
 }
 
@@ -4368,6 +4390,47 @@ function _applyRoleUI(role) {
   document.querySelectorAll('.nav-item').forEach(n => {
     n.style.display = (role === 'client' && n !== cryptoNav) ? 'none' : '';
   });
+}
+
+// ── ADMIN: CLIENT EXPIRY MANAGEMENT ─────────────────────────────────────────────
+async function loadAdminClients() {
+  const tbody = document.getElementById('admin-clients-body');
+  const r = await apiFetch('/api/admin/clients');
+  if (r.error || !Array.isArray(r)) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--red);padding:14px">${r.error || 'Failed to load'}</td></tr>`;
+    return;
+  }
+  if (!r.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:14px">No clients yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = r.map(c => {
+    const exp = c.expiry ? new Date(c.expiry).toLocaleDateString() : '—';
+    const statusColor = c.expired ? 'var(--red)' : 'var(--green)';
+    const statusText  = c.expired ? 'EXPIRED' : 'ACTIVE';
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:6px;font-weight:700">${c.username}</td>
+      <td style="padding:6px;color:var(--text2)">${c.display_name}</td>
+      <td style="padding:6px;color:var(--text2)">${exp}</td>
+      <td style="text-align:center;padding:6px;color:${statusColor};font-weight:700">${statusText}</td>
+      <td style="text-align:right;padding:6px">
+        <input type="number" id="exp-days-${c.username}" value="7" min="0" style="width:60px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px 6px;font-family:var(--font);font-size:11px"/>
+        <button onclick="setClientExpiry('${c.username}')" style="padding:5px 10px;background:var(--accent);border:none;color:#fff;border-radius:6px;font-family:var(--font);font-size:10px;cursor:pointer;margin-left:4px">SET</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function setClientExpiry(username) {
+  const days = parseInt(document.getElementById(`exp-days-${username}`).value);
+  if (isNaN(days) || days < 0) { toast('Enter a valid number of days', false); return; }
+  const r = await apiFetch(`/api/admin/clients/${encodeURIComponent(username)}/set_expiry`, {
+    method: 'POST',
+    body: JSON.stringify({ days })
+  });
+  if (r.error) { toast(r.error, false); return; }
+  toast(days === 0 ? `${username} access revoked` : `${username} set to ${days} days`, true);
+  loadAdminClients();
 }
 
 async function _afterAuthSuccess() {

@@ -169,6 +169,21 @@ class AuthChangePasswordRequest(BaseModel):
 def _hash_pw(password: str, salt: str) -> str:
     return hashlib.sha256(f"{salt}:{password}".encode()).hexdigest()
 
+_CLIENT_TRIAL_DAYS = 7  # default free trial length for self-registered clients
+
+def _is_client_expired(user: dict) -> bool:
+    """Admin accounts never expire. Clients with no expiry set are treated as
+    expired (defensive — every client should get one at registration)."""
+    if user.get("role") != "client":
+        return False
+    expiry = user.get("expiry")
+    if not expiry:
+        return True
+    try:
+        return datetime.fromisoformat(expiry) <= datetime.now()
+    except Exception:
+        return True
+
 def _load_users() -> dict:
     try:
         with open(_USERS_FILE, encoding="utf-8") as f:
@@ -217,6 +232,8 @@ def auth_login(req: AuthLoginRequest):
     user  = next((u for u in data.get("users", []) if u["username"] == req.username), None)
     if not user or _hash_pw(req.password, user["salt"]) != user["password_hash"]:
         return JSONResponse({"error": "Invalid username or password"}, status_code=401)
+    if _is_client_expired(user):
+        return JSONResponse({"error": "Service expired — contact admin to renew"}, status_code=403)
     display_name = user.get("display_name", req.username)
     role = user.get("role", "admin")
     token = _make_session(req.username, display_name, role)
@@ -234,6 +251,7 @@ def auth_register(req: AuthRegisterRequest):
         return JSONResponse({"error": "Username already taken"}, status_code=400)
     salt = secrets.token_hex(16)
     display_name = req.display_name.strip() or username
+    expiry = (datetime.now() + timedelta(days=_CLIENT_TRIAL_DAYS)).isoformat()
     # Self-registration always creates a client account — never admin.
     data.setdefault("users", []).append({
         "username": username,
@@ -241,10 +259,11 @@ def auth_register(req: AuthRegisterRequest):
         "password_hash": _hash_pw(req.password, salt),
         "display_name": display_name,
         "role": "client",
+        "expiry": expiry,
     })
     _save_users(data)
     token = _make_session(username, display_name, "client")
-    return {"token": token, "username": username, "display_name": display_name, "role": "client"}
+    return {"token": token, "username": username, "display_name": display_name, "role": "client", "expiry": expiry}
 
 @app.get("/api/auth/verify")
 def auth_verify(authorization: str = Header(default=None)):
@@ -252,6 +271,13 @@ def auth_verify(authorization: str = Header(default=None)):
     sess  = _auth_sessions.get(token)
     if not sess:
         return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    # Re-check expiry against the live user record (not the cached session) so an
+    # admin revoking/shortening access takes effect on the client's next page load.
+    data = _load_users()
+    user = next((u for u in data.get("users", []) if u["username"] == sess["username"]), None)
+    if user and _is_client_expired(user):
+        _auth_sessions.pop(token, None)
+        return JSONResponse({"error": "Service expired — contact admin to renew"}, status_code=403)
     return {"username": sess["username"], "display_name": sess.get("display_name", sess["username"]),
             "role": sess.get("role", "admin")}
 
@@ -282,6 +308,42 @@ def _get_current_user(authorization: str = Header(default=None)) -> dict:
     if not sess:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return sess
+
+def _require_admin(current_user: dict = Depends(_get_current_user)) -> dict:
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    return current_user
+
+
+class SetClientExpiryRequest(BaseModel):
+    days: int   # access expires `days` from now (0 = revoke immediately)
+
+@app.get("/api/admin/clients")
+def admin_list_clients(admin: dict = Depends(_require_admin)):
+    data = _load_users()
+    clients = []
+    for u in data.get("users", []):
+        if u.get("role") != "client":
+            continue
+        clients.append({
+            "username":     u["username"],
+            "display_name": u.get("display_name", u["username"]),
+            "expiry":       u.get("expiry"),
+            "expired":      _is_client_expired(u),
+        })
+    clients.sort(key=lambda c: c["expiry"] or "")
+    return clients
+
+@app.post("/api/admin/clients/{username}/set_expiry")
+def admin_set_client_expiry(username: str, req: SetClientExpiryRequest, admin: dict = Depends(_require_admin)):
+    data = _load_users()
+    user = next((u for u in data.get("users", []) if u["username"] == username), None)
+    if not user or user.get("role") != "client":
+        return JSONResponse({"error": "Client not found"}, status_code=404)
+    expiry = (datetime.now() + timedelta(days=req.days)).isoformat()
+    user["expiry"] = expiry
+    _save_users(data)
+    return {"success": True, "username": username, "expiry": expiry}
 
 
 class ConnectRequest(BaseModel):
