@@ -1,10 +1,12 @@
 import asyncio
+import base64
 import hashlib
 import json
 import os
 import queue
 import secrets
 import threading
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -102,16 +104,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_CLIENT_ALLOWED_PREFIXES = ("/api/auth/", "/api/crypto/", "/api/payment/")
+
 @app.middleware("http")
 async def _role_gate(request: Request, call_next):
     """Client-role accounts (self-registered crypto users) may only reach
-    /api/auth/* and /api/crypto/* — everything else (MT5/forex/strategies/
-    reports, the owner's personal trading data) is off-limits to them.
-    Admin sessions, unauthenticated requests, and unrecognized tokens are
-    left untouched — this only adds a new restriction for the new
-    client-role tokens this feature introduces."""
+    /api/auth/*, /api/crypto/*, and /api/payment/* (submitting payment proof)
+    — everything else (MT5/forex/strategies/reports, the owner's personal
+    trading data, /api/admin/*) is off-limits to them. Admin sessions,
+    unauthenticated requests, and unrecognized tokens are left untouched —
+    this only adds a new restriction for the new client-role tokens this
+    feature introduces."""
     path = request.url.path
-    if path.startswith("/api/") and not path.startswith("/api/auth/") and not path.startswith("/api/crypto/"):
+    if path.startswith("/api/") and not path.startswith(_CLIENT_ALLOWED_PREFIXES):
         token = (request.headers.get("authorization") or "").replace("Bearer ", "").strip()
         sess = _auth_sessions.get(token)
         if sess and sess.get("role") == "client":
@@ -161,6 +166,8 @@ class AuthRegisterRequest(BaseModel):
     username: str
     password: str
     display_name: str = ""
+    contact: str = ""           # phone / Telegram / email — how to reach this client
+    risk_accepted: bool = False
 
 class AuthChangePasswordRequest(BaseModel):
     old_password: str
@@ -183,6 +190,16 @@ def _is_client_expired(user: dict) -> bool:
         return datetime.fromisoformat(expiry) <= datetime.now()
     except Exception:
         return True
+
+def _days_left(user: dict):
+    """Whole days remaining until expiry, or None for admin/no-expiry accounts."""
+    if user.get("role") != "client" or not user.get("expiry"):
+        return None
+    try:
+        delta = datetime.fromisoformat(user["expiry"]) - datetime.now()
+        return max(0, delta.days)
+    except Exception:
+        return None
 
 def _load_users() -> dict:
     try:
@@ -237,7 +254,8 @@ def auth_login(req: AuthLoginRequest):
     display_name = user.get("display_name", req.username)
     role = user.get("role", "admin")
     token = _make_session(req.username, display_name, role)
-    return {"token": token, "username": req.username, "display_name": display_name, "role": role}
+    return {"token": token, "username": req.username, "display_name": display_name, "role": role,
+            "days_left": _days_left(user)}
 
 @app.post("/api/auth/register")
 def auth_register(req: AuthRegisterRequest):
@@ -246,6 +264,10 @@ def auth_register(req: AuthRegisterRequest):
         return JSONResponse({"error": "Username and password are required"}, status_code=400)
     if len(req.password) < 6:
         return JSONResponse({"error": "Password must be at least 6 characters"}, status_code=400)
+    if not req.contact.strip():
+        return JSONResponse({"error": "A contact (phone, Telegram, or email) is required"}, status_code=400)
+    if not req.risk_accepted:
+        return JSONResponse({"error": "You must accept the risk disclaimer to register"}, status_code=400)
     data = _load_users()
     if any(u["username"].lower() == username.lower() for u in data.get("users", [])):
         return JSONResponse({"error": "Username already taken"}, status_code=400)
@@ -260,6 +282,8 @@ def auth_register(req: AuthRegisterRequest):
         "display_name": display_name,
         "role": "client",
         "expiry": expiry,
+        "contact": req.contact.strip(),
+        "risk_accepted_at": datetime.now().isoformat(),
     })
     _save_users(data)
     token = _make_session(username, display_name, "client")
@@ -279,7 +303,7 @@ def auth_verify(authorization: str = Header(default=None)):
         _auth_sessions.pop(token, None)
         return JSONResponse({"error": "Service expired — contact admin to renew"}, status_code=403)
     return {"username": sess["username"], "display_name": sess.get("display_name", sess["username"]),
-            "role": sess.get("role", "admin")}
+            "role": sess.get("role", "admin"), "days_left": _days_left(user) if user else None}
 
 @app.post("/api/auth/logout")
 def auth_logout(authorization: str = Header(default=None)):
@@ -328,8 +352,10 @@ def admin_list_clients(admin: dict = Depends(_require_admin)):
         clients.append({
             "username":     u["username"],
             "display_name": u.get("display_name", u["username"]),
+            "contact":      u.get("contact", ""),
             "expiry":       u.get("expiry"),
             "expired":      _is_client_expired(u),
+            "days_left":    _days_left(u),
         })
     clients.sort(key=lambda c: c["expiry"] or "")
     return clients
@@ -344,6 +370,105 @@ def admin_set_client_expiry(username: str, req: SetClientExpiryRequest, admin: d
     user["expiry"] = expiry
     _save_users(data)
     return {"success": True, "username": username, "expiry": expiry}
+
+
+# ── PAYMENT PROOF SUBMISSION / APPROVAL ─────────────────────────────────────────
+# Client uploads a payment screenshot (sent as base64 JSON, no multipart dep
+# needed); admin reviews it and approves to set the client's expiry, or rejects.
+_PAYMENT_FILE        = "payment_requests.json"
+_PAYMENT_PROOFS_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "payment_proofs")
+_MAX_PROOF_BYTES     = 5 * 1024 * 1024  # 5MB
+
+def _load_payment_requests() -> dict:
+    try:
+        with open(_PAYMENT_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _save_payment_requests(data: dict):
+    with open(_PAYMENT_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+class PaymentSubmitRequest(BaseModel):
+    days_requested: int
+    image_base64:   str   # raw base64 or a data: URL — either is accepted
+    note:           str = ""
+
+@app.post("/api/payment/submit")
+def payment_submit(req: PaymentSubmitRequest, current_user: dict = Depends(_get_current_user)):
+    if req.days_requested <= 0:
+        return JSONResponse({"error": "Invalid number of days"}, status_code=400)
+    raw = req.image_base64
+    if raw.startswith("data:") and "," in raw:
+        raw = raw.split(",", 1)[1]
+    try:
+        img_bytes = base64.b64decode(raw)
+    except Exception:
+        return JSONResponse({"error": "Invalid image data"}, status_code=400)
+    if not img_bytes:
+        return JSONResponse({"error": "Image is empty"}, status_code=400)
+    if len(img_bytes) > _MAX_PROOF_BYTES:
+        return JSONResponse({"error": "Image too large (max 5MB)"}, status_code=400)
+    os.makedirs(_PAYMENT_PROOFS_DIR, exist_ok=True)
+    req_id = str(uuid.uuid4())[:8]
+    fname  = f"{req_id}.jpg"
+    with open(os.path.join(_PAYMENT_PROOFS_DIR, fname), "wb") as f:
+        f.write(img_bytes)
+    data = _load_payment_requests()
+    data[req_id] = {
+        "id": req_id, "username": current_user["username"],
+        "days_requested": req.days_requested, "note": req.note.strip()[:300],
+        "image_file": fname, "status": "pending",
+        "submitted_at": datetime.now().isoformat(),
+    }
+    _save_payment_requests(data)
+    return {"success": True, "request_id": req_id}
+
+@app.get("/api/admin/payment_requests")
+def admin_list_payment_requests(admin: dict = Depends(_require_admin)):
+    data = _load_payment_requests()
+    return sorted(data.values(), key=lambda r: r["submitted_at"], reverse=True)
+
+@app.get("/api/admin/payment_requests/{request_id}/image")
+def admin_view_payment_image(request_id: str, admin: dict = Depends(_require_admin)):
+    data = _load_payment_requests()
+    req = data.get(request_id)
+    if not req:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    path = os.path.join(_PAYMENT_PROOFS_DIR, req["image_file"])
+    if not os.path.exists(path):
+        return JSONResponse({"error": "Image file missing"}, status_code=404)
+    return FileResponse(path)
+
+@app.post("/api/admin/payment_requests/{request_id}/approve")
+def admin_approve_payment(request_id: str, admin: dict = Depends(_require_admin)):
+    data = _load_payment_requests()
+    req = data.get(request_id)
+    if not req or req["status"] != "pending":
+        return JSONResponse({"error": "Request not found or already processed"}, status_code=404)
+    users = _load_users()
+    user = next((u for u in users.get("users", []) if u["username"] == req["username"]), None)
+    if not user:
+        return JSONResponse({"error": "Client account no longer exists"}, status_code=404)
+    expiry = (datetime.now() + timedelta(days=req["days_requested"])).isoformat()
+    user["expiry"] = expiry
+    _save_users(users)
+    req["status"]      = "approved"
+    req["resolved_at"]  = datetime.now().isoformat()
+    _save_payment_requests(data)
+    return {"success": True, "expiry": expiry}
+
+@app.post("/api/admin/payment_requests/{request_id}/reject")
+def admin_reject_payment(request_id: str, admin: dict = Depends(_require_admin)):
+    data = _load_payment_requests()
+    req = data.get(request_id)
+    if not req or req["status"] != "pending":
+        return JSONResponse({"error": "Request not found or already processed"}, status_code=404)
+    req["status"]     = "rejected"
+    req["resolved_at"] = datetime.now().isoformat()
+    _save_payment_requests(data)
+    return {"success": True}
 
 
 class ConnectRequest(BaseModel):
@@ -4885,6 +5010,21 @@ class CoinSwitchClient:
             return []
 
 
+def _set_margin_mode_safe(ex, symbol: str, mode: str = "isolated"):
+    """Best-effort isolated-margin guard so one bad leveraged trade can't
+    draw down the whole account. Silently no-ops on failure (some symbols
+    reject the call if a position is already open, which is fine — it
+    just means the mode was set on an earlier call) and on CoinSwitch,
+    whose wrapper doesn't expose a margin-mode endpoint here — verify
+    isolated margin manually in the CoinSwitch app for that case."""
+    if isinstance(ex, CoinSwitchClient):
+        return
+    try:
+        ex.set_margin_mode(mode, symbol)
+    except Exception:
+        pass
+
+
 _EX_FILE   = "exchanges.json"
 _active_ex = {}   # {username: {"binance": ccxt.Exchange, "bybit": ..., "coinswitch": CoinSwitchClient}}
 
@@ -5012,6 +5152,7 @@ def _load_saved_bots():
             bot.setdefault("max_open_trades", 2)
             bot.setdefault("open_trade_count", 1 if bot.get("open_side") else 0)
             bot.setdefault("username", "admin")  # pre-multi-tenant bots belong to the owner
+            bot.setdefault("margin_mode", "isolated")
             _crypto_bots[bid] = bot
             if bot.get('status') == 'active':
                 delay = 15 + keys.index(bid) * 3
@@ -5213,9 +5354,10 @@ def crypto_order(req: CryptoOrderReq, current_user: dict = Depends(_get_current_
     if not ex:
         return JSONResponse(status_code=400, content={"error": f"{req.exchange} not connected"})
     try:
-        # Set leverage before placing
+        # Set leverage + isolated margin before placing
         try: ex.set_leverage(req.leverage, req.symbol)
         except: pass
+        _set_margin_mode_safe(ex, req.symbol)
         params = {}
         if req.reduce_only:
             params["reduceOnly"] = True
@@ -5270,6 +5412,7 @@ def crypto_set_leverage(req: CryptoLeverageReq, current_user: dict = Depends(_ge
         return JSONResponse(status_code=400, content={"error": f"{req.exchange} not connected"})
     try:
         ex.set_leverage(req.leverage, req.symbol)
+        _set_margin_mode_safe(ex, req.symbol)
         return {"success": True, "leverage": req.leverage}
     except Exception as e:
         return JSONResponse(status_code=400, content={"error": str(e)[:200]})
@@ -5375,6 +5518,7 @@ class CryptoBotReq(BaseModel):
     timeframe:      str   = "1h"
     risk_pct:       float = 1.0
     leverage:       int   = 10
+    margin_mode:    str   = "isolated"   # "isolated" | "cross" — isolated limits blast radius to this position's margin
     # EMA params
     fast_ema:       int   = 9
     slow_ema:       int   = 21
@@ -6037,6 +6181,7 @@ def _bot_tick(bot_id):
                 ex.set_leverage(bot["leverage"], bot["symbol"])
             except Exception:
                 pass
+            _set_margin_mode_safe(ex, bot["symbol"], bot.get("margin_mode", "isolated"))
 
             # Step 4: Place order
             side  = "buy" if signal == "BUY" else "sell"
@@ -6086,7 +6231,7 @@ def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_curre
         "id": bid, "username": uname, "exchange": req.exchange.lower(),
         "symbol": req.symbol, "strategy": req.strategy,
         "timeframe": req.timeframe, "risk_pct": req.risk_pct,
-        "leverage": req.leverage,
+        "leverage": req.leverage, "margin_mode": req.margin_mode,
         # EMA
         "fast_ema": req.fast_ema, "slow_ema": req.slow_ema,
         # RSI
@@ -6695,6 +6840,7 @@ def _tg_execute_signal(sig: dict, cfg: dict) -> list:
                 ex.set_leverage(lev, sig["symbol"])
             except Exception:
                 pass
+            _set_margin_mode_safe(ex, sig["symbol"])
             order = ex.create_order(
                 symbol=sig["symbol"],
                 type="market",

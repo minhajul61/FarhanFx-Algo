@@ -362,6 +362,14 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       <input type="password" id="reg-password" placeholder="At least 6 characters" autocomplete="new-password"
              onkeydown="if(event.key==='Enter') doAuthRegister()"/>
     </div>
+    <div class="field">
+      <label>Contact (phone, Telegram, or email)</label>
+      <input type="text" id="reg-contact" placeholder="So we can reach you about your account" autocomplete="tel"/>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:8px;margin:10px 0;font-size:11px;color:var(--text2)">
+      <input type="checkbox" id="reg-risk-accepted" style="margin-top:2px"/>
+      <label for="reg-risk-accepted" style="cursor:pointer">I understand automated crypto trading carries real financial risk, including possible loss of funds, and I accept this risk.</label>
+    </div>
     <button class="auth-btn" id="reg-btn" onclick="doAuthRegister()">SIGN UP →</button>
     <div style="text-align:center;margin-top:16px;font-size:11px;color:var(--text3)">
       Already have an account? <a href="#" onclick="showAuthLogin();return false;" style="color:var(--accent);font-weight:700">Log in</a>
@@ -2120,6 +2128,10 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
       <!-- CRYPTO FUTURES PAGE -->
       <div class="page" id="page-crypto">
+        <div id="crypto-expiry-banner" style="display:none;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--amber);display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <span id="crypto-expiry-text"></span>
+          <button onclick="openPaymentModal()" style="padding:6px 14px;background:var(--amber);border:none;color:#000;font-weight:700;border-radius:6px;font-family:var(--font);font-size:11px;cursor:pointer;white-space:nowrap">RENEW / SUBMIT PAYMENT</button>
+        </div>
         <div class="page-title" style="display:flex;justify-content:space-between;align-items:center">
           Crypto Futures
           <div style="display:flex;align-items:center;gap:6px">
@@ -3113,15 +3125,26 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               <tr style="color:var(--text3);font-size:9px;letter-spacing:1px;border-bottom:1px solid var(--border)">
                 <th style="text-align:left;padding:6px">USERNAME</th>
                 <th style="text-align:left;padding:6px">NAME</th>
+                <th style="text-align:left;padding:6px">CONTACT</th>
                 <th style="text-align:left;padding:6px">EXPIRES</th>
                 <th style="text-align:center;padding:6px">STATUS</th>
                 <th style="text-align:right;padding:6px">SET DAYS FROM NOW</th>
               </tr>
             </thead>
             <tbody id="admin-clients-body">
-              <tr><td colspan="5" style="text-align:center;color:var(--text3);padding:14px">Loading…</td></tr>
+              <tr><td colspan="6" style="text-align:center;color:var(--text3);padding:14px">Loading…</td></tr>
             </tbody>
           </table>
+        </div>
+
+        <div class="panel" id="admin-payments-panel" style="margin-top:16px;display:none">
+          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
+            <span>Payment Requests <span id="admin-payments-pending-count" style="color:var(--amber)"></span></span>
+            <button class="sbtn" style="padding:5px 12px;font-size:10px" onclick="loadAdminPaymentRequests()">↻ REFRESH</button>
+          </div>
+          <div id="admin-payments-body" style="margin-top:8px;display:flex;flex-direction:column;gap:10px">
+            <div style="text-align:center;color:var(--text3);padding:14px">Loading…</div>
+          </div>
         </div>
       </div>
 
@@ -3169,6 +3192,36 @@ tr:hover td{background:rgba(139,92,246,0.05)}
   </div>
 </div>
 
+<!-- PAYMENT PROOF SUBMISSION MODAL (client) -->
+<div id="payment-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--amber);border-radius:16px;padding:28px;min-width:340px;max-width:420px;box-shadow:0 8px 40px rgba(0,0,0,0.6)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="color:var(--amber);font-weight:700;font-size:14px;letter-spacing:1px">SUBMIT PAYMENT</div>
+      <button onclick="closePaymentModal()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div class="auth-err" id="payment-err" style="display:none;margin-bottom:10px"></div>
+    <div class="field">
+      <label>Days requested</label>
+      <select id="payment-days" class="sinput" style="width:100%">
+        <option value="30">30 days — Monthly</option>
+        <option value="90">90 days — Quarterly</option>
+        <option value="365">365 days — Yearly</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Payment screenshot (bKash/Nagad/Bank)</label>
+      <input type="file" id="payment-file" accept="image/*" onchange="_previewPaymentImage()" style="width:100%;color:var(--text2);font-size:11px"/>
+    </div>
+    <img id="payment-preview" style="display:none;max-width:100%;max-height:160px;border-radius:8px;margin:8px 0;border:1px solid var(--border)"/>
+    <div class="field">
+      <label>Note (optional)</label>
+      <input type="text" id="payment-note" class="sinput" placeholder="Transaction ID, etc." style="width:100%"/>
+    </div>
+    <button onclick="submitPaymentProof()" id="payment-submit-btn" style="width:100%;margin-top:8px;padding:12px;background:var(--amber);border:none;color:#000;font-weight:700;border-radius:8px;font-family:var(--font);font-size:13px;cursor:pointer">SUBMIT FOR REVIEW</button>
+    <div style="text-align:center;margin-top:10px;font-size:10px;color:var(--text3)">Admin will review and activate your account.</div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 // ── CONFIG ─────────────────────────────────────────────────────────────────────
@@ -3197,6 +3250,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Token valid — update badge, role, and check MT5
   document.getElementById('user-badge').textContent = '● ' + (vr.display_name || vr.username);
   _setAuthRole(vr.role);
+  _setDaysLeft(vr.days_left);
   await _afterAuthSuccess();
 });
 
@@ -3390,7 +3444,7 @@ function showPage(id, el) {
   if (id === 'risk')        { rcCalcPos(); rcCalcKelly(); rcCalcPropDD(); cpLoadStatus(); }
   if (id === 'reports')     { loadReports(); }
   if (id === 'crypto')      { cryptoInit(); }
-  if (id === 'settings')    { applySettingsToUI(loadSettings()); if (_getAuthRole() === 'admin') { document.getElementById('admin-clients-panel').style.display = 'block'; loadAdminClients(); } }
+  if (id === 'settings')    { applySettingsToUI(loadSettings()); if (_getAuthRole() === 'admin') { document.getElementById('admin-clients-panel').style.display = 'block'; document.getElementById('admin-payments-panel').style.display = 'block'; loadAdminClients(); loadAdminPaymentRequests(); } }
   if (id === 'forexbot')    { fbStartPolling(); } else { fbStopPolling(); }
 }
 
@@ -4306,6 +4360,8 @@ function _clearAuthToken() { sessionStorage.removeItem('fx_auth_token'); }
 function _getAuthRole()  { return sessionStorage.getItem('fx_role') || 'admin'; }
 function _setAuthRole(r) { sessionStorage.setItem('fx_role', r || 'admin'); }
 function _clearAuthRole(){ sessionStorage.removeItem('fx_role'); }
+function _getDaysLeft()  { const v = sessionStorage.getItem('fx_days_left'); return v === null || v === 'null' ? null : parseInt(v); }
+function _setDaysLeft(d) { if (d === null || d === undefined) sessionStorage.removeItem('fx_days_left'); else sessionStorage.setItem('fx_days_left', d); }
 
 function showAuthRegister() {
   document.getElementById('auth-card-login').style.display = 'none';
@@ -4338,6 +4394,7 @@ async function doAuthLogin() {
     if (!r.ok) { errEl.textContent = data.error || 'Login failed.'; errEl.style.display = 'block'; return; }
     _setAuthToken(data.token);
     _setAuthRole(data.role);
+    _setDaysLeft(data.days_left);
     document.getElementById('user-badge').textContent = '● ' + (data.display_name || data.username);
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('auth-username').value = '';
@@ -4354,26 +4411,33 @@ async function doAuthRegister() {
   const display_name = document.getElementById('reg-display-name').value.trim();
   const username     = document.getElementById('reg-username').value.trim();
   const password     = document.getElementById('reg-password').value;
+  const contact      = document.getElementById('reg-contact').value.trim();
+  const risk_accepted= document.getElementById('reg-risk-accepted').checked;
   const errEl = document.getElementById('reg-err');
   const btn   = document.getElementById('reg-btn');
   errEl.style.display = 'none';
   if (!username || !password) { errEl.textContent = 'Username and password required.'; errEl.style.display = 'block'; return; }
+  if (!contact) { errEl.textContent = 'Please provide a contact (phone, Telegram, or email).'; errEl.style.display = 'block'; return; }
+  if (!risk_accepted) { errEl.textContent = 'Please accept the risk disclaimer to continue.'; errEl.style.display = 'block'; return; }
   btn.disabled = true; btn.textContent = 'Signing up...';
   try {
     const r = await fetch(API + '/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, display_name })
+      body: JSON.stringify({ username, password, display_name, contact, risk_accepted })
     });
     const data = await r.json();
     if (!r.ok) { errEl.textContent = data.error || 'Sign up failed.'; errEl.style.display = 'block'; return; }
     _setAuthToken(data.token);
     _setAuthRole(data.role);
+    _setDaysLeft(data.days_left);
     document.getElementById('user-badge').textContent = '● ' + (data.display_name || data.username);
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('reg-display-name').value = '';
     document.getElementById('reg-username').value = '';
     document.getElementById('reg-password').value = '';
+    document.getElementById('reg-contact').value = '';
+    document.getElementById('reg-risk-accepted').checked = false;
     await _afterAuthSuccess();
   } catch(e) {
     errEl.textContent = 'Server offline — start server.py first'; errEl.style.display = 'block';
@@ -4397,11 +4461,11 @@ async function loadAdminClients() {
   const tbody = document.getElementById('admin-clients-body');
   const r = await apiFetch('/api/admin/clients');
   if (r.error || !Array.isArray(r)) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--red);padding:14px">${r.error || 'Failed to load'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--red);padding:14px">${r.error || 'Failed to load'}</td></tr>`;
     return;
   }
   if (!r.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:14px">No clients yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:14px">No clients yet</td></tr>';
     return;
   }
   tbody.innerHTML = r.map(c => {
@@ -4411,6 +4475,7 @@ async function loadAdminClients() {
     return `<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:6px;font-weight:700">${c.username}</td>
       <td style="padding:6px;color:var(--text2)">${c.display_name}</td>
+      <td style="padding:6px;color:var(--text2)">${c.contact || '—'}</td>
       <td style="padding:6px;color:var(--text2)">${exp}</td>
       <td style="text-align:center;padding:6px;color:${statusColor};font-weight:700">${statusText}</td>
       <td style="text-align:right;padding:6px">
@@ -4433,6 +4498,143 @@ async function setClientExpiry(username) {
   loadAdminClients();
 }
 
+// ── EXPIRY WARNING BANNER (client) ──────────────────────────────────────────────
+function _renderExpiryBanner() {
+  const banner = document.getElementById('crypto-expiry-banner');
+  if (!banner) return;
+  const daysLeft = _getDaysLeft();
+  if (_getAuthRole() !== 'client' || daysLeft === null || daysLeft > 3) {
+    banner.style.display = 'none';
+    return;
+  }
+  document.getElementById('crypto-expiry-text').textContent = daysLeft === 0
+    ? '⚠ Your access expires today. Renew now to avoid interruption.'
+    : `⚠ Your access expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}. Renew now to avoid interruption.`;
+  banner.style.display = 'flex';
+}
+
+// ── PAYMENT PROOF SUBMISSION (client) ───────────────────────────────────────────
+let _paymentImageBase64 = '';
+
+function openPaymentModal() {
+  document.getElementById('payment-modal').style.display = 'flex';
+  document.getElementById('payment-err').style.display = 'none';
+  document.getElementById('payment-file').value = '';
+  document.getElementById('payment-note').value = '';
+  document.getElementById('payment-preview').style.display = 'none';
+  _paymentImageBase64 = '';
+}
+function closePaymentModal() {
+  document.getElementById('payment-modal').style.display = 'none';
+}
+function _previewPaymentImage() {
+  const file = document.getElementById('payment-file').files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    _paymentImageBase64 = e.target.result;
+    const img = document.getElementById('payment-preview');
+    img.src = e.target.result;
+    img.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+async function submitPaymentProof() {
+  const errEl = document.getElementById('payment-err');
+  const btn   = document.getElementById('payment-submit-btn');
+  errEl.style.display = 'none';
+  if (!_paymentImageBase64) { errEl.textContent = 'Please attach a payment screenshot.'; errEl.style.display = 'block'; return; }
+  const days = parseInt(document.getElementById('payment-days').value);
+  const note = document.getElementById('payment-note').value.trim();
+  btn.disabled = true; btn.textContent = 'Submitting...';
+  try {
+    const r = await apiFetch('/api/payment/submit', {
+      method: 'POST',
+      body: JSON.stringify({ days_requested: days, image_base64: _paymentImageBase64, note })
+    });
+    if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+    toast('Payment submitted — waiting for admin approval', true);
+    closePaymentModal();
+  } catch (e) {
+    errEl.textContent = 'Submit failed — try again.'; errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'SUBMIT FOR REVIEW';
+  }
+}
+
+// ── ADMIN: PAYMENT REQUEST REVIEW ───────────────────────────────────────────────
+// Payment proof images are admin-only — a plain <img src> can't carry the
+// Authorization header, so each image is fetched with auth and turned into a
+// local blob: URL for display instead of hitting the endpoint directly.
+let _paymentImageBlobUrls = [];
+async function _fetchAuthedImageUrl(path) {
+  const token = _getAuthToken();
+  const r = await fetch(API + path, { headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+  if (!r.ok) return '';
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  _paymentImageBlobUrls.push(url);
+  return url;
+}
+
+async function loadAdminPaymentRequests() {
+  const body = document.getElementById('admin-payments-body');
+  const r = await apiFetch('/api/admin/payment_requests');
+  if (r.error || !Array.isArray(r)) {
+    body.innerHTML = `<div style="text-align:center;color:var(--red);padding:14px">${r.error || 'Failed to load'}</div>`;
+    return;
+  }
+  // Release previously created blob URLs before building a fresh batch
+  _paymentImageBlobUrls.forEach(u => URL.revokeObjectURL(u));
+  _paymentImageBlobUrls = [];
+
+  const pending = r.filter(p => p.status === 'pending');
+  const countEl = document.getElementById('admin-payments-pending-count');
+  if (countEl) countEl.textContent = pending.length ? `(${pending.length} pending)` : '';
+  if (!r.length) {
+    body.innerHTML = '<div style="text-align:center;color:var(--text3);padding:14px">No payment requests yet</div>';
+    return;
+  }
+
+  body.innerHTML = r.map(p => {
+    const statusColor = p.status === 'pending' ? 'var(--amber)' : p.status === 'approved' ? 'var(--green)' : 'var(--red)';
+    const actions = p.status === 'pending'
+      ? `<button onclick="approvePaymentRequest('${p.id}')" style="padding:6px 12px;background:var(--green);border:none;color:#fff;border-radius:6px;font-family:var(--font);font-size:10px;cursor:pointer;font-weight:700">✓ APPROVE</button>
+         <button onclick="rejectPaymentRequest('${p.id}')" style="padding:6px 12px;background:var(--red);border:none;color:#fff;border-radius:6px;font-family:var(--font);font-size:10px;cursor:pointer;font-weight:700;margin-left:6px">✕ REJECT</button>`
+      : `<span style="color:${statusColor};font-weight:700;font-size:11px">${p.status.toUpperCase()}</span>`;
+    return `<div style="display:flex;gap:12px;align-items:flex-start;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg2)">
+      <img id="pay-img-${p.id}" style="width:90px;height:90px;object-fit:cover;border-radius:6px;cursor:pointer;flex-shrink:0;background:var(--bg)" onclick="window.open(this.src,'_blank')"/>
+      <div style="flex:1;font-size:12px">
+        <div><strong style="color:var(--text1)">${p.username}</strong> — requesting <strong>${p.days_requested} days</strong></div>
+        <div style="color:var(--text3);font-size:10px;margin-top:2px">${new Date(p.submitted_at).toLocaleString()}</div>
+        ${p.note ? `<div style="color:var(--text2);font-size:11px;margin-top:4px">Note: ${p.note}</div>` : ''}
+        <div style="margin-top:8px">${actions}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Load each image's blob URL after the <img> tags exist in the DOM
+  for (const p of r) {
+    const url = await _fetchAuthedImageUrl(`/api/admin/payment_requests/${p.id}/image`);
+    const img = document.getElementById(`pay-img-${p.id}`);
+    if (img && url) img.src = url;
+  }
+}
+
+async function approvePaymentRequest(id) {
+  const r = await apiFetch(`/api/admin/payment_requests/${id}/approve`, { method: 'POST' });
+  if (r.error) { toast(r.error, false); return; }
+  toast('Payment approved — client access extended', true);
+  loadAdminPaymentRequests();
+  loadAdminClients();
+}
+async function rejectPaymentRequest(id) {
+  const r = await apiFetch(`/api/admin/payment_requests/${id}/reject`, { method: 'POST' });
+  if (r.error) { toast(r.error, false); return; }
+  toast('Payment request rejected', true);
+  loadAdminPaymentRequests();
+}
+
 async function _afterAuthSuccess() {
   const role = _getAuthRole();
   _applyRoleUI(role);
@@ -4440,6 +4642,7 @@ async function _afterAuthSuccess() {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
     showPage('crypto', document.querySelector('.nav-item[onclick*="\'crypto\'"]'));
+    _renderExpiryBanner();
     return;
   }
   const r = await apiFetch('/api/account');

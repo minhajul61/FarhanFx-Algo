@@ -15,4 +15,7 @@ forex_bot_config.json
 forex_bot_status.json
 forex_bot_stop.flag
 server_local.log
+payment_proofs/
+payment_requests.json
+users.json
 Trading Meterial/
