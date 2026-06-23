@@ -3467,6 +3467,12 @@ function showPage(id, el) {
   } else {
     document.body.classList.remove('tv-mode');
   }
+  // MT5 is irrelevant inside the Crypto section — hide the badge there
+  // regardless of role (admin's own MT5 account has nothing to do with
+  // crypto bots), and restore it on every other page.
+  const connBar = document.getElementById('conn-bar');
+  if (connBar) connBar.style.display = (id === 'crypto') ? 'none' : '';
+
   stopAlgoRefresh();
   stopTradesRefresh();
   if (id === 'trades')      { startTradesRefresh(); }
