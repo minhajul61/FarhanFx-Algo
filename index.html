@@ -2195,7 +2195,9 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <button class="crypto-sub-tab active" id="cst-dashboard" onclick="showCryptoTab('dashboard',this)">DASHBOARD</button>
           <button class="crypto-sub-tab" id="cst-trade"     onclick="showCryptoTab('trade',this)">TRADE</button>
           <button class="crypto-sub-tab" id="cst-reports"   onclick="showCryptoTab('reports',this)">REPORTS</button>
-          <button class="crypto-sub-tab" id="cst-algo"      onclick="showCryptoTab('algo',this)">ALGO BOTS</button>
+          <button class="crypto-sub-tab" id="cst-algo"      onclick="showCryptoTab('algo',this)">ALGO BOTS (MY BOTS)</button>
+          <button class="crypto-sub-tab" id="cst-subscription" onclick="showCryptoTab('subscription',this)">SUBSCRIPTION</button>
+          <button class="crypto-sub-tab" id="cst-payhistory"   onclick="showCryptoTab('payhistory',this)">PAYMENT HISTORY</button>
         </div>
 
         <!-- ═══ DASHBOARD SUB-TAB ════════════════════════════════ -->
@@ -3038,6 +3040,54 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           </div>
 
         </div>
+
+        <!-- ═══ SUBSCRIPTION SUB-TAB ═══════════════════ -->
+        <div class="crypto-sub-page" id="csp-subscription" style="display:none">
+          <div class="panel" style="max-width:520px;margin:0 auto">
+            <div class="panel-title">📆 Subscription Status</div>
+            <div id="sub-status-box" style="background:var(--bg2);border-radius:10px;padding:16px;margin-bottom:16px;text-align:center">
+              <div style="font-size:11px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">ACCESS</div>
+              <div id="sub-status-text" style="font-size:22px;font-weight:800;color:var(--text3)">—</div>
+              <div id="sub-status-sub" style="font-size:11px;color:var(--text3);margin-top:6px"></div>
+            </div>
+
+            <div class="panel-title" style="margin-top:6px">💳 Renew / Extend Access</div>
+            <div class="field" style="margin-bottom:8px">
+              <label>Days requested</label>
+              <input type="number" id="sub-days" value="30" min="1" max="365" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"/>
+            </div>
+            <div class="field" style="margin-bottom:8px">
+              <label>Payment screenshot</label>
+              <input type="file" id="sub-proof-file" accept="image/*" style="width:100%;font-size:12px;color:var(--text3)"/>
+            </div>
+            <div class="field" style="margin-bottom:10px">
+              <label>Note (optional)</label>
+              <input type="text" id="sub-note" placeholder="e.g. bKash TXN ID" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"/>
+            </div>
+            <button class="sbtn" onclick="submitPaymentProof()" style="width:100%;padding:10px;background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700">SUBMIT FOR APPROVAL</button>
+            <div id="sub-submit-err" style="font-size:11px;color:var(--red);margin-top:8px;display:none"></div>
+            <div id="sub-submit-ok"  style="font-size:11px;color:var(--green);margin-top:8px;display:none"></div>
+          </div>
+        </div>
+
+        <!-- ═══ PAYMENT HISTORY SUB-TAB ════════════════ -->
+        <div class="crypto-sub-page" id="csp-payhistory" style="display:none">
+          <div class="panel">
+            <div class="panel-title">🧾 Payment Request History</div>
+            <table style="width:100%;border-collapse:collapse;font-size:12px">
+              <thead><tr style="color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">
+                <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)">Submitted</th>
+                <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)">Days Requested</th>
+                <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)">Note</th>
+                <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border)">Status</th>
+              </tr></thead>
+              <tbody id="payhistory-tbody">
+                <tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text3)">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
 
       <!-- FOREX BOT PAGE -->
@@ -4557,6 +4607,13 @@ function _applyRoleUI(role) {
   // underlying endpoints are blocked for them server-side anyway).
   const connBar = document.getElementById('conn-bar');
   if (connBar) connBar.style.display = (role === 'client') ? 'none' : '';
+  // The expiry/renewal banner is client-only. Explicitly hide it for admin —
+  // without this, a stale "visible" state left over from a previous client
+  // session in the same browser tab would otherwise keep showing for admin.
+  if (role !== 'client') {
+    const expBanner = document.getElementById('crypto-expiry-banner');
+    if (expBanner) expBanner.style.display = 'none';
+  }
 }
 
 // ── ADMIN: CLIENT EXPIRY MANAGEMENT ─────────────────────────────────────────────
@@ -9170,6 +9227,90 @@ function showCryptoTab(tab, el) {
     // Refresh bot list every 12s to show live PnL updates
     _algoRefTimer = setInterval(algoLoadBots, 8000);
   }
+  if (tab === 'subscription') {
+    loadSubscriptionStatus();
+  }
+  if (tab === 'payhistory') {
+    loadPaymentHistory();
+  }
+}
+
+// -- SUBSCRIPTION / PAYMENT PROOF (client self-service) --------------------
+async function loadSubscriptionStatus() {
+  const r = await apiFetch('/api/payment/my_status');
+  const textEl = document.getElementById('sub-status-text');
+  const subEl  = document.getElementById('sub-status-sub');
+  if (!textEl || r.error) return;
+  if (r.role === 'admin') {
+    textEl.textContent = 'Admin - no expiry';
+    textEl.style.color = 'var(--accent)';
+    subEl.textContent = '';
+    return;
+  }
+  if (r.expired) {
+    textEl.textContent = 'EXPIRED';
+    textEl.style.color = 'var(--red)';
+    subEl.textContent = r.expiry ? ('Expired on ' + new Date(r.expiry).toLocaleDateString()) : 'No active subscription';
+  } else {
+    textEl.textContent = r.days_left + (r.days_left===1 ? ' day left' : ' days left');
+    textEl.style.color = r.days_left <= 3 ? 'var(--amber)' : 'var(--green)';
+    subEl.textContent = 'Expires ' + new Date(r.expiry).toLocaleDateString();
+  }
+}
+
+function _fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function submitPaymentProof() {
+  const errEl = document.getElementById('sub-submit-err');
+  const okEl  = document.getElementById('sub-submit-ok');
+  errEl.style.display = 'none'; okEl.style.display = 'none';
+  const days = parseInt(document.getElementById('sub-days').value) || 0;
+  const note = document.getElementById('sub-note').value.trim();
+  const fileInput = document.getElementById('sub-proof-file');
+  const file = fileInput.files[0];
+  if (days <= 0) { errEl.textContent = 'Enter a valid number of days.'; errEl.style.display = 'block'; return; }
+  if (!file) { errEl.textContent = 'Attach a payment screenshot.'; errEl.style.display = 'block'; return; }
+  let image_base64;
+  try { image_base64 = await _fileToBase64(file); }
+  catch (e) { errEl.textContent = 'Could not read the image file.'; errEl.style.display = 'block'; return; }
+  const r = await apiFetch('/api/payment/submit', {
+    method: 'POST',
+    body: JSON.stringify({ days_requested: days, image_base64: image_base64, note: note })
+  });
+  if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+  okEl.textContent = 'Submitted - waiting for admin approval.';
+  okEl.style.display = 'block';
+  fileInput.value = '';
+  document.getElementById('sub-note').value = '';
+}
+
+async function loadPaymentHistory() {
+  const tbody = document.getElementById('payhistory-tbody');
+  const r = await apiFetch('/api/payment/my_requests');
+  if (!Array.isArray(r)) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--red);padding:14px">' + (r.error || 'Failed to load') + '</td></tr>';
+    return;
+  }
+  if (!r.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:14px">No payment requests yet</td></tr>';
+    return;
+  }
+  function statusColor(s) { return s === 'approved' ? 'var(--green)' : s === 'rejected' ? 'var(--red)' : 'var(--amber)'; }
+  tbody.innerHTML = r.map(function(req) {
+    return '<tr style="border-bottom:1px solid var(--border)">' +
+      '<td style="padding:6px 8px">' + new Date(req.submitted_at).toLocaleString() + '</td>' +
+      '<td style="padding:6px 8px">' + req.days_requested + '</td>' +
+      '<td style="padding:6px 8px;color:var(--text3)">' + (req.note || '-') + '</td>' +
+      '<td style="padding:6px 8px;text-align:center"><span style="color:' + statusColor(req.status) + ';font-weight:700;text-transform:uppercase;font-size:10px">' + req.status + '</span></td>' +
+      '</tr>';
+  }).join('');
 }
 
 // ── DASHBOARD ────────────────────────────────────────────────────────────────
