@@ -43,17 +43,10 @@ def _mt5_init(**kwargs) -> bool:
 
 
 def _mt5_worker():
-    """Runs forever on its own thread, executing MT5 calls."""
-    # timeout=8000ms — don't hang if MT5 terminal is not running yet
-    ok = _mt5_init(timeout=8000)
-    if ok:
-        info = mt5.account_info()
-        if info:
-            print(f"MT5 auto-connected — {info.login} | {info.balance} {info.currency}")
-        else:
-            print("MT5 ready — no account logged in yet")
-    else:
-        print(f"MT5 not available at startup — connect via UI | {mt5.last_error()}")
+    """Runs forever on its own thread, executing MT5 calls.
+    Does NOT auto-connect to MT5 on startup — connection only happens
+    when the user explicitly logs in via the UI (/api/connect)."""
+    print("MT5 worker ready — waiting for manual connect via UI")
 
     while True:
         fn, result_event, result_box = _cmd_queue.get()
