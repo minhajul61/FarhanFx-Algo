@@ -2255,20 +2255,23 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             </div>
           </div>
 
-          <!-- Exchange cards -->
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
-            <div class="cp-panel" style="margin:0">
+          <!-- Exchange cards — only the exchange(s) actually connected are shown -->
+          <div id="cxd-cards-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+            <div class="cp-panel" id="cxd-card-binance" style="margin:0;display:none">
               <div class="cp-panel-title"><span class="cp-dot" id="cxd-dot-binance"></span>BINANCE</div>
               <div id="cxd-inner-binance" style="color:var(--text3);font-size:12px;padding:4px 0">Not connected</div>
             </div>
-            <div class="cp-panel" style="margin:0">
+            <div class="cp-panel" id="cxd-card-bybit" style="margin:0;display:none">
               <div class="cp-panel-title"><span class="cp-dot" id="cxd-dot-bybit"></span>BYBIT</div>
               <div id="cxd-inner-bybit" style="color:var(--text3);font-size:12px;padding:4px 0">Not connected</div>
             </div>
-            <div class="cp-panel" style="margin:0">
+            <div class="cp-panel" id="cxd-card-coinswitch" style="margin:0;display:none">
               <div class="cp-panel-title"><span class="cp-dot" id="cxd-dot-coinswitch"></span>COINSWITCH</div>
               <div id="cxd-inner-coinswitch" style="color:var(--text3);font-size:12px;padding:4px 0">Not connected</div>
             </div>
+          </div>
+          <div id="cxd-empty-state" class="cp-panel" style="display:none;text-align:center;padding:24px 20px;margin-bottom:16px">
+            <div style="font-size:12px;color:var(--text2)">No exchange connected yet.</div>
           </div>
 
           <!-- All positions -->
@@ -9193,13 +9196,28 @@ async function cryptoDashboardLoad() {
   // Always reset position table before re-populating
   const allPosRows = [];
 
+  // Only show cards for exchanges actually connected — same pattern as the Trade tab.
+  const connectedNames = names.filter(n => status[n]);
+  const grid  = document.getElementById('cxd-cards-grid');
+  const empty = document.getElementById('cxd-empty-state');
+  if (connectedNames.length === 0) {
+    if (grid)  grid.style.display = 'none';
+    if (empty) empty.style.display = 'block';
+  } else {
+    if (grid)  { grid.style.display = 'grid'; grid.style.gridTemplateColumns = `repeat(${connectedNames.length}, 1fr)`; }
+    if (empty) empty.style.display = 'none';
+  }
+  names.forEach(n => {
+    const card = document.getElementById('cxd-card-' + n);
+    if (card) card.style.display = status[n] ? '' : 'none';
+  });
+
   for (const name of names) {
     const dot = document.getElementById('cxd-dot-' + name);
     const box = document.getElementById('cxd-inner-' + name);
     const on  = status[name];
-    if (dot) dot.className = 'ex-conn-dot' + (on ? ' online' : '');
-    if (!box) continue;
-    if (!on) { box.innerHTML = '<span style="color:var(--text3)">Not connected</span>'; continue; }
+    if (dot) dot.className = 'cp-dot' + (on ? ' on' : '');
+    if (!box || !on) continue;
 
     const [bal, pos] = await Promise.all([
       apiFetch('/api/crypto/balance?exchange=' + name),
