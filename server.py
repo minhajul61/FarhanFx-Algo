@@ -418,6 +418,26 @@ def payment_submit(req: PaymentSubmitRequest, current_user: dict = Depends(_get_
     _save_payment_requests(data)
     return {"success": True, "request_id": req_id}
 
+@app.get("/api/payment/my_status")
+def payment_my_status(current_user: dict = Depends(_get_current_user)):
+    users = _load_users()
+    user = next((u for u in users.get("users", []) if u["username"] == current_user["username"]), None)
+    if not user:
+        return JSONResponse({"error": "Account not found"}, status_code=404)
+    return {
+        "username":  user["username"],
+        "role":      user.get("role", "admin"),
+        "expiry":    user.get("expiry"),
+        "expired":   _is_client_expired(user),
+        "days_left": _days_left(user),
+    }
+
+@app.get("/api/payment/my_requests")
+def payment_my_requests(current_user: dict = Depends(_get_current_user)):
+    data = _load_payment_requests()
+    mine = [r for r in data.values() if r["username"] == current_user["username"]]
+    return sorted(mine, key=lambda r: r["submitted_at"], reverse=True)
+
 @app.get("/api/admin/payment_requests")
 def admin_list_payment_requests(admin: dict = Depends(_require_admin)):
     data = _load_payment_requests()
