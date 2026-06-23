@@ -2150,6 +2150,29 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
         <!-- ═══ DASHBOARD SUB-TAB ════════════════════════════════ -->
         <div class="crypto-sub-page" id="csp-dashboard">
+          <!-- My Performance (bot trade history, not raw exchange balance) -->
+          <div class="panel" style="margin:0 0 16px 0;background:linear-gradient(135deg,rgba(139,92,246,0.06),rgba(56,189,248,0.03));border-color:rgba(139,92,246,0.25)">
+            <div class="panel-title" style="color:var(--accent)">MY PERFORMANCE</div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:8px">
+              <div>
+                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">TOTAL PROFIT</div>
+                <div id="myperf-total-pnl" style="font-size:20px;font-weight:700;margin-top:2px">—</div>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">TODAY'S P&amp;L</div>
+                <div id="myperf-today-pnl" style="font-size:20px;font-weight:700;margin-top:2px">—</div>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">WIN RATE</div>
+                <div id="myperf-win-rate" style="font-size:20px;font-weight:700;margin-top:2px;color:var(--cyan)">—</div>
+              </div>
+              <div>
+                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">ACTIVE BOTS</div>
+                <div id="myperf-active-bots" style="font-size:20px;font-weight:700;margin-top:2px;color:var(--amber)">—</div>
+              </div>
+            </div>
+          </div>
+
           <!-- Total KPIs -->
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
             <div class="kpi" style="border-top:2px solid var(--green);padding:12px 16px">
@@ -4463,6 +4486,10 @@ function _applyRoleUI(role) {
   document.querySelectorAll('.nav-item').forEach(n => {
     n.style.display = (role === 'client' && n !== cryptoNav) ? 'none' : '';
   });
+  // Clients never touch MT5 — that badge/button is meaningless (and the
+  // underlying endpoints are blocked for them server-side anyway).
+  const connBar = document.getElementById('conn-bar');
+  if (connBar) connBar.style.display = (role === 'client') ? 'none' : '';
 }
 
 // ── ADMIN: CLIENT EXPIRY MANAGEMENT ─────────────────────────────────────────────
@@ -8283,6 +8310,9 @@ async function cryptoInit() {
   await cryptoCheckStatus();
   cryptoLoadMarkets();   // don't await — markets can load in background
   showCryptoTab('dashboard', document.getElementById('cst-dashboard'));
+  loadMyPerformance();
+  clearInterval(_myPerfTimer);
+  _myPerfTimer = setInterval(loadMyPerformance, 15000);
   // Telegram signal bot is an owner-only automation tool (not exposed to client
   // accounts), and its endpoints are blocked server-side for the client role anyway.
   if (_getAuthRole() !== 'client') {
@@ -8291,6 +8321,34 @@ async function cryptoInit() {
     clearInterval(_tgRefTimer);
     _tgRefTimer = setInterval(() => { tgLoadSignals(); tgLoadStatus(); }, 8000);
   }
+}
+
+// ── MY PERFORMANCE (bot trade history summary, on the Crypto Dashboard tab) ────
+let _myPerfTimer = null;
+async function loadMyPerformance() {
+  const [bots, history] = await Promise.all([
+    apiFetch('/api/crypto/algo/list'),
+    apiFetch('/api/crypto/algo/history'),
+  ]);
+  const setText = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  const setCol  = (id, c) => { const e = document.getElementById(id); if (e) e.style.color = c; };
+
+  const activeBots = Array.isArray(bots) ? bots.filter(b => b.status === 'active').length : 0;
+  setText('myperf-active-bots', activeBots);
+
+  const closed = Array.isArray(history) ? history.filter(t => t.status === 'closed' || t.exit_reason) : [];
+  const totalPnl = closed.reduce((s, t) => s + (t.pnl || 0), 0);
+  const wins = closed.filter(t => (t.pnl || 0) > 0);
+  const winRate = closed.length ? ((wins.length / closed.length) * 100).toFixed(1) + '%' : '—';
+  setText('myperf-total-pnl', closed.length ? (totalPnl >= 0 ? '+$' : '-$') + Math.abs(totalPnl).toFixed(2) : '—');
+  setCol('myperf-total-pnl', totalPnl >= 0 ? 'var(--green)' : 'var(--red)');
+  setText('myperf-win-rate', winRate);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayTrades = closed.filter(t => (t.time || '').startsWith(todayStr));
+  const todayPnl = todayTrades.reduce((s, t) => s + (t.pnl || 0), 0);
+  setText('myperf-today-pnl', todayTrades.length ? (todayPnl >= 0 ? '+$' : '-$') + Math.abs(todayPnl).toFixed(2) : '—');
+  setCol('myperf-today-pnl', todayPnl >= 0 ? 'var(--green)' : 'var(--red)');
 }
 
 // ── Exchange status dots ──
@@ -8954,6 +9012,7 @@ function _clearCryptoTimers() {
   if (_algoRefTimer) { clearInterval(_algoRefTimer); _algoRefTimer = null; }
   if (_rptRefTimer)  { clearInterval(_rptRefTimer);  _rptRefTimer  = null; }
   if (_tgRefTimer)   { clearInterval(_tgRefTimer);   _tgRefTimer   = null; }
+  if (_myPerfTimer)  { clearInterval(_myPerfTimer);  _myPerfTimer  = null; }
   if (_labAutoTimer) { clearInterval(_labAutoTimer); _labAutoTimer = null;
     const btn = document.getElementById('lab-auto-btn');
     if (btn) { btn.textContent = '⏵ AUTO'; btn.style.background = ''; btn.style.color = ''; }
