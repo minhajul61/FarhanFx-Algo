@@ -2720,6 +2720,15 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                   <input type="number" id="bot-leverage" value="10" min="1" max="100" style="font-size:12px"/>
                 </div>
               </div>
+              <div style="margin-bottom:8px">
+                <div class="field" style="margin:0">
+                  <label>Margin Mode</label>
+                  <select id="bot-margin-mode" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--font);font-size:12px;width:100%">
+                    <option value="isolated" selected>Isolated (safer)</option>
+                    <option value="cross">Cross</option>
+                  </select>
+                </div>
+              </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
                 <div class="field" style="margin:0">
                   <label>Risk per Trade (%)</label>
@@ -9275,6 +9284,7 @@ async function startAlgoBot() {
     strategy:       st,
     timeframe:      _gv('bot-timeframe', '1h'),
     leverage:       _gv('bot-leverage', 10, parseInt),
+    margin_mode:    _gv('bot-margin-mode', 'isolated'),
     risk_pct:       _gv('bot-risk', 1, parseFloat),
     adx_min:         _gv('bot-adx-min', 0, parseInt),
     max_open_trades: _gv('bot-max-trades', 2, parseInt),
