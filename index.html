@@ -133,6 +133,56 @@ body.tv-mode #page-tradingview.active{flex:1;display:flex!important;flex-directi
 .stat-row:last-child{border-bottom:none}
 .stat-label{font-size:12px;color:var(--text2)}
 .stat-val{font-size:13px;font-weight:700}
+
+/* ── CRYPTO PULSE — distinct visual identity for the Crypto Dashboard tab ──── */
+@keyframes pulse-sweep{0%{background-position:-200% 0}100%{background-position:200% 0}}
+@keyframes pulse-glow-buy{0%,100%{box-shadow:0 0 16px rgba(16,185,129,0.25),inset 0 0 20px rgba(16,185,129,0.04)}50%{box-shadow:0 0 34px rgba(16,185,129,0.5),inset 0 0 28px rgba(16,185,129,0.08)}}
+@keyframes pulse-glow-sell{0%,100%{box-shadow:0 0 16px rgba(239,68,68,0.25),inset 0 0 20px rgba(239,68,68,0.04)}50%{box-shadow:0 0 34px rgba(239,68,68,0.5),inset 0 0 28px rgba(239,68,68,0.08)}}
+@keyframes pulse-glow-neutral{0%,100%{box-shadow:0 0 14px rgba(34,211,238,0.2)}50%{box-shadow:0 0 26px rgba(34,211,238,0.4)}}
+@keyframes count-flicker{0%{opacity:0.4}100%{opacity:1}}
+
+.cp-hero{
+  position:relative;background:rgba(17,19,30,0.55);backdrop-filter:blur(14px);
+  border:1px solid rgba(34,211,238,0.18);clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);
+  padding:18px 20px 14px;margin-bottom:16px;overflow:hidden;
+}
+.cp-hero::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--cyan),var(--accent),var(--cyan),transparent);
+  background-size:200% 100%;animation:pulse-sweep 4s linear infinite;
+}
+.cp-hero-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
+.cp-metric{display:flex;flex-direction:column;gap:4px}
+.cp-metric-label{font-size:9px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase}
+.cp-metric-val{font-size:19px;font-weight:800;animation:count-flicker 0.4s ease-out}
+
+.cp-panel{
+  position:relative;background:rgba(17,19,30,0.5);backdrop-filter:blur(10px);
+  border:1px solid rgba(34,211,238,0.14);
+  clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);
+  padding:16px;margin-bottom:14px;
+}
+.cp-panel-title{font-size:10px;color:var(--cyan);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.cp-panel-title::before{content:'';width:8px;height:8px;background:var(--cyan);clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);box-shadow:0 0 8px var(--cyan)}
+
+.cp-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);display:inline-block;transition:all 0.3s}
+.cp-dot.on{background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+
+/* AI Pulse widget */
+.cp-ai-card{
+  position:relative;background:rgba(17,19,30,0.55);backdrop-filter:blur(12px);
+  clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);
+  border:1px solid rgba(34,211,238,0.2);padding:16px 18px;margin-bottom:16px;
+  animation:pulse-glow-neutral 3s ease-in-out infinite;
+}
+.cp-ai-card.signal-buy{border-color:rgba(16,185,129,0.35);animation:pulse-glow-buy 2.2s ease-in-out infinite}
+.cp-ai-card.signal-sell{border-color:rgba(239,68,68,0.35);animation:pulse-glow-sell 2.2s ease-in-out infinite}
+.cp-ai-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:1px}
+.cp-ai-pill.buy{background:rgba(16,185,129,0.15);color:var(--green)}
+.cp-ai-pill.sell{background:rgba(239,68,68,0.15);color:var(--red)}
+.cp-ai-pill.neutral{background:rgba(34,211,238,0.12);color:var(--cyan)}
+.cp-ai-bar-track{height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;margin-top:8px}
+.cp-ai-bar-fill{height:100%;border-radius:3px;transition:width 0.6s ease,background 0.4s}
 .bar-wrap{margin-bottom:10px}
 .bar-track{height:6px;background:var(--border);border-radius:3px;margin-top:4px}
 .bar-fill{height:100%;border-radius:3px}
@@ -2150,78 +2200,80 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
         <!-- ═══ DASHBOARD SUB-TAB ════════════════════════════════ -->
         <div class="crypto-sub-page" id="csp-dashboard">
-          <!-- My Performance (bot trade history, not raw exchange balance) -->
-          <div class="panel" style="margin:0 0 16px 0;background:linear-gradient(135deg,rgba(139,92,246,0.06),rgba(56,189,248,0.03));border-color:rgba(139,92,246,0.25)">
-            <div class="panel-title" style="color:var(--accent)">MY PERFORMANCE</div>
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:8px">
-              <div>
-                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">TOTAL PROFIT</div>
-                <div id="myperf-total-pnl" style="font-size:20px;font-weight:700;margin-top:2px">—</div>
+          <!-- Hero strip — merged performance + balance metrics, distinct glass/neon look -->
+          <div class="cp-hero">
+            <div class="cp-hero-grid">
+              <div class="cp-metric">
+                <div class="cp-metric-label">Total Balance</div>
+                <div class="cp-metric-val" id="cxd-total-usdt" style="color:var(--green)">—</div>
               </div>
-              <div>
-                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">TODAY'S P&amp;L</div>
-                <div id="myperf-today-pnl" style="font-size:20px;font-weight:700;margin-top:2px">—</div>
+              <div class="cp-metric">
+                <div class="cp-metric-label">Total Profit</div>
+                <div class="cp-metric-val" id="myperf-total-pnl">—</div>
               </div>
-              <div>
-                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">WIN RATE</div>
-                <div id="myperf-win-rate" style="font-size:20px;font-weight:700;margin-top:2px;color:var(--cyan)">—</div>
+              <div class="cp-metric">
+                <div class="cp-metric-label">Today's P&amp;L</div>
+                <div class="cp-metric-val" id="myperf-today-pnl">—</div>
               </div>
-              <div>
-                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">ACTIVE BOTS</div>
-                <div id="myperf-active-bots" style="font-size:20px;font-weight:700;margin-top:2px;color:var(--amber)">—</div>
+              <div class="cp-metric">
+                <div class="cp-metric-label">Win Rate</div>
+                <div class="cp-metric-val" id="myperf-win-rate" style="color:var(--cyan)">—</div>
+              </div>
+              <div class="cp-metric">
+                <div class="cp-metric-label">Open PnL</div>
+                <div class="cp-metric-val" id="cxd-open-pnl">—</div>
+              </div>
+              <div class="cp-metric">
+                <div class="cp-metric-label">Active Bots</div>
+                <div class="cp-metric-val" id="myperf-active-bots" style="color:var(--amber)">—</div>
               </div>
             </div>
           </div>
 
-          <!-- Total KPIs -->
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
-            <div class="kpi" style="border-top:2px solid var(--green);padding:12px 16px">
-              <div class="kpi-label">TOTAL BALANCE</div>
-              <div class="kpi-value green" id="cxd-total-usdt" style="font-size:20px">—</div>
-              <div style="font-size:10px;color:var(--text3);margin-top:2px">across all exchanges</div>
+          <!-- AI Pulse — condensed live signal widget (full multi-indicator Lab lives in Algo Bots) -->
+          <div class="cp-ai-card" id="cp-ai-card">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:11px;color:var(--cyan);letter-spacing:2px;font-weight:700">⬡ AI PULSE</span>
+                <span id="cp-ai-pill" class="cp-ai-pill neutral">SCANNING</span>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input id="cp-ai-symbol" class="sinput" value="BTC/USDT:USDT" style="width:120px;font-size:10px;padding:5px 8px" onchange="loadAiPulse()"/>
+                <select id="cp-ai-tf" class="sinput" style="width:56px;font-size:10px;padding:5px 6px" onchange="loadAiPulse()">
+                  <option value="15m">15m</option>
+                  <option value="1h" selected>1h</option>
+                  <option value="4h">4h</option>
+                  <option value="1d">1d</option>
+                </select>
+              </div>
             </div>
-            <div class="kpi" style="border-top:2px solid var(--accent);padding:12px 16px">
-              <div class="kpi-label">OPEN PnL</div>
-              <div class="kpi-value" id="cxd-open-pnl" style="font-size:20px">—</div>
-              <div style="font-size:10px;color:var(--text3);margin-top:2px">unrealized</div>
-            </div>
-            <div class="kpi" style="border-top:2px solid var(--cyan);padding:12px 16px">
-              <div class="kpi-label">OPEN POSITIONS</div>
-              <div class="kpi-value cyan" id="cxd-pos-count" style="font-size:20px">—</div>
-              <div style="font-size:10px;color:var(--text3);margin-top:2px">all exchanges</div>
-            </div>
-            <div class="kpi" style="border-top:2px solid var(--amber);padding:12px 16px">
-              <div class="kpi-label">ACTIVE BOTS</div>
-              <div class="kpi-value amber" id="cxd-bot-count" style="font-size:20px">—</div>
-              <div style="font-size:10px;color:var(--text3);margin-top:2px">running strategies</div>
+            <div id="cp-ai-insight" style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.5">Loading live market read…</div>
+            <div class="cp-ai-bar-track"><div id="cp-ai-bar" class="cp-ai-bar-fill" style="width:0%;background:var(--cyan)"></div></div>
+            <div style="display:flex;justify-content:space-between;margin-top:4px">
+              <span style="font-size:9px;color:var(--text3)">AI SCORE</span>
+              <span id="cp-ai-score" style="font-size:9px;color:var(--text3)">—/100</span>
             </div>
           </div>
 
           <!-- Exchange cards -->
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
-            <div class="panel" style="margin:0">
-              <div class="panel-title" style="display:flex;align-items:center;gap:8px">
-                <span class="ex-conn-dot" id="cxd-dot-binance"></span>BINANCE
-              </div>
+            <div class="cp-panel" style="margin:0">
+              <div class="cp-panel-title"><span class="cp-dot" id="cxd-dot-binance"></span>BINANCE</div>
               <div id="cxd-inner-binance" style="color:var(--text3);font-size:12px;padding:4px 0">Not connected</div>
             </div>
-            <div class="panel" style="margin:0">
-              <div class="panel-title" style="display:flex;align-items:center;gap:8px">
-                <span class="ex-conn-dot" id="cxd-dot-bybit"></span>BYBIT
-              </div>
+            <div class="cp-panel" style="margin:0">
+              <div class="cp-panel-title"><span class="cp-dot" id="cxd-dot-bybit"></span>BYBIT</div>
               <div id="cxd-inner-bybit" style="color:var(--text3);font-size:12px;padding:4px 0">Not connected</div>
             </div>
-            <div class="panel" style="margin:0">
-              <div class="panel-title" style="display:flex;align-items:center;gap:8px">
-                <span class="ex-conn-dot" id="cxd-dot-coinswitch"></span>COINSWITCH
-              </div>
+            <div class="cp-panel" style="margin:0">
+              <div class="cp-panel-title"><span class="cp-dot" id="cxd-dot-coinswitch"></span>COINSWITCH</div>
               <div id="cxd-inner-coinswitch" style="color:var(--text3);font-size:12px;padding:4px 0">Not connected</div>
             </div>
           </div>
 
           <!-- All positions -->
-          <div class="panel" style="margin:0">
-            <div class="panel-title">All Open Positions</div>
+          <div class="cp-panel" style="margin:0">
+            <div class="cp-panel-title">All Open Positions</div>
             <div style="overflow-x:auto">
               <table>
                 <thead><tr>
@@ -2236,8 +2288,8 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           </div>
 
           <!-- Recent signals -->
-          <div class="panel" style="margin-top:12px;margin-bottom:0">
-            <div class="panel-title">Recent Algo Signals</div>
+          <div class="cp-panel" style="margin-top:12px;margin-bottom:0">
+            <div class="cp-panel-title">Recent Algo Signals</div>
             <div id="cxd-signals" style="color:var(--text3);font-size:12px;padding:8px 0;min-height:40px">No active bots running</div>
           </div>
         </div>
@@ -8319,6 +8371,9 @@ async function cryptoInit() {
   loadMyPerformance();
   clearInterval(_myPerfTimer);
   _myPerfTimer = setInterval(loadMyPerformance, 15000);
+  loadAiPulse();
+  clearInterval(_aiPulseTimer);
+  _aiPulseTimer = setInterval(loadAiPulse, 30000);
   // Telegram signal bot is an owner-only automation tool (not exposed to client
   // accounts), and its endpoints are blocked server-side for the client role anyway.
   if (_getAuthRole() !== 'client') {
@@ -8357,13 +8412,62 @@ async function loadMyPerformance() {
   setCol('myperf-today-pnl', todayPnl >= 0 ? 'var(--green)' : 'var(--red)');
 }
 
+// ── AI PULSE — condensed live signal widget on the Crypto Dashboard tab.
+// Reuses the same /api/crypto/algo/analyze endpoint as the full "AI Signal Lab"
+// in the Algo Bots tab (public market data, no exchange connection required),
+// just summarized into one glanceable sentence + score bar instead of the
+// full 9-component breakdown. ──
+let _aiPulseTimer = null;
+async function loadAiPulse() {
+  const symbol = document.getElementById('cp-ai-symbol')?.value?.trim() || 'BTC/USDT:USDT';
+  const tf     = document.getElementById('cp-ai-tf')?.value || '1h';
+  const card   = document.getElementById('cp-ai-card');
+  const pill   = document.getElementById('cp-ai-pill');
+  const insightEl = document.getElementById('cp-ai-insight');
+  const bar    = document.getElementById('cp-ai-bar');
+  const scoreEl= document.getElementById('cp-ai-score');
+
+  const r = await apiFetch(`/api/crypto/algo/analyze?symbol=${encodeURIComponent(symbol)}&timeframe=${tf}`);
+  if (r.error) {
+    insightEl.textContent = r.error;
+    return;
+  }
+
+  const signal = r.signal || 'NEUTRAL';
+  const score  = r.ai_score ?? 50;
+  const isBuy  = signal.includes('BUY');
+  const isSell = signal.includes('SELL');
+
+  card.className = 'cp-ai-card' + (isBuy ? ' signal-buy' : isSell ? ' signal-sell' : '');
+  pill.className = 'cp-ai-pill ' + (isBuy ? 'buy' : isSell ? 'sell' : 'neutral');
+  pill.textContent = signal;
+
+  bar.style.width = score + '%';
+  bar.style.background = isBuy ? 'var(--green)' : isSell ? 'var(--red)' : 'var(--cyan)';
+  scoreEl.textContent = `${score}/100`;
+
+  // Build a 1-line insight from the two highest-scoring components' detail text
+  const comps = r.components || {};
+  const ranked = Object.values(comps)
+    .filter(c => c && c.detail)
+    .sort((a, b) => (b.score / (b.max || 1)) - (a.score / (a.max || 1)))
+    .slice(0, 2)
+    .map(c => c.detail);
+  insightEl.textContent = ranked.length
+    ? `${symbol.split('/')[0]} reads ${signal.toLowerCase()} (${r.confidence || 'MEDIUM'} confidence) — ${ranked.join('; ')}.`
+    : `${symbol.split('/')[0]} reads ${signal.toLowerCase()}.`;
+}
+
 // ── Exchange status dots ──
 async function cryptoCheckStatus() {
   const s = await apiFetch('/api/crypto/status');
   if (s.error) return;
   const setDot = (prefix, name, on) => {
     const d = document.getElementById(prefix + name);
-    if (d) d.className = 'ex-conn-dot' + (on ? ' online' : '');
+    if (!d) return;
+    // Dashboard tab uses the new "Crypto Pulse" cp-dot styling; Trade tab keeps its own.
+    if (prefix === 'cxd-dot-') d.className = 'cp-dot' + (on ? ' on' : '');
+    else                       d.className = 'ex-conn-dot' + (on ? ' online' : '');
   };
   const connected = [];
   ['binance','bybit','coinswitch'].forEach(n => {
@@ -8962,11 +9066,9 @@ async function doExchangeConnect() {
   statusEl.textContent = `✓ ${_cxModalEx} connected — Balance: $${r.balance} USDT`;
   document.getElementById('cxm-apikey').value = '';
   document.getElementById('cxm-secret').value = '';
-  // Update dots in both trade and dashboard tabs
-  ['cx-dot-', 'cxd-dot-'].forEach(p => {
-    const dot = document.getElementById(p + _cxModalEx);
-    if (dot) dot.className = 'ex-conn-dot online';
-  });
+  // Update dots in both trade and dashboard tabs (dashboard uses the cp-dot style)
+  document.getElementById('cx-dot-' + _cxModalEx)?.classList.add('online');
+  document.getElementById('cxd-dot-' + _cxModalEx)?.setAttribute('class', 'cp-dot on');
   _updateTpConnBtn(_cxModalEx, true);
   _refreshCxModalConnected();
   toast(`${_cxModalEx} connected ✓ — $${r.balance} USDT`, true);
@@ -9019,6 +9121,7 @@ function _clearCryptoTimers() {
   if (_rptRefTimer)  { clearInterval(_rptRefTimer);  _rptRefTimer  = null; }
   if (_tgRefTimer)   { clearInterval(_tgRefTimer);   _tgRefTimer   = null; }
   if (_myPerfTimer)  { clearInterval(_myPerfTimer);  _myPerfTimer  = null; }
+  if (_aiPulseTimer) { clearInterval(_aiPulseTimer); _aiPulseTimer = null; }
   if (_labAutoTimer) { clearInterval(_labAutoTimer); _labAutoTimer = null;
     const btn = document.getElementById('lab-auto-btn');
     if (btn) { btn.textContent = '⏵ AUTO'; btn.style.background = ''; btn.style.color = ''; }
