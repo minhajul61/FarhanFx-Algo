@@ -2297,7 +2297,13 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         <!-- ═══ TRADE SUB-TAB ════════════════════════════════════ -->
         <div class="crypto-sub-page" id="csp-trade" style="display:none">
 
-          <!-- Exchange Order Panels — only connected exchanges are shown (all 3 shown if none connected yet) -->
+          <!-- Empty state — shown only when no exchange is connected yet -->
+          <div id="tp-empty-state" class="cp-panel" style="display:none;text-align:center;padding:40px 20px">
+            <div style="font-size:13px;color:var(--text2);margin-bottom:14px">No exchange connected yet — connect one to start trading.</div>
+            <button onclick="openCxModal()" style="padding:10px 24px;background:var(--cyan);border:none;color:#000;font-weight:700;border-radius:6px;font-family:var(--font);font-size:12px;cursor:pointer">CONNECT EXCHANGE</button>
+          </div>
+
+          <!-- Exchange Order Panels — only the exchange(s) the client actually connected are shown -->
           <div id="tp-cards-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;min-width:0">
 
             <!-- ── BINANCE ── -->
@@ -8478,16 +8484,22 @@ async function cryptoCheckStatus() {
   });
   setCryptoConnStatus(connected);
 
-  // Show only connected exchange cards on the Trade tab (show all 3 if none connected yet)
-  const showAll = connected.length === 0;
-  ['binance','bybit','coinswitch'].forEach(n => {
-    const card = document.getElementById('tp-card-' + n);
-    if (card) card.style.display = (showAll || s[n]) ? '' : 'none';
-  });
-  const grid = document.getElementById('tp-cards-grid');
-  if (grid) {
-    const visibleCount = showAll ? 3 : connected.length;
-    grid.style.gridTemplateColumns = `repeat(${visibleCount}, 1fr)`;
+  // Trade tab: show only the exchange(s) actually connected. If none are
+  // connected yet, hide the grid entirely and show a single "connect" prompt
+  // instead of 3 placeholder cards nobody can use.
+  const grid  = document.getElementById('tp-cards-grid');
+  const empty = document.getElementById('tp-empty-state');
+  if (connected.length === 0) {
+    if (grid)  grid.style.display = 'none';
+    if (empty) empty.style.display = 'block';
+  } else {
+    if (grid)  grid.style.display = 'grid';
+    if (empty) empty.style.display = 'none';
+    ['binance','bybit','coinswitch'].forEach(n => {
+      const card = document.getElementById('tp-card-' + n);
+      if (card) card.style.display = s[n] ? '' : 'none';
+    });
+    if (grid) grid.style.gridTemplateColumns = `repeat(${connected.length}, 1fr)`;
   }
 }
 
