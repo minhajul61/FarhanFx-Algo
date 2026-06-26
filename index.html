@@ -498,9 +498,8 @@ tr:hover td{background:rgba(139,92,246,0.05)}
   </div>
   <div class="app-body">
     <div class="sidebar">
-      <div class="nav-item active" onclick="showPage('dashboard',this)"><i class="ti ti-layout-dashboard"></i> DASHBOARD</div>
+      <div class="nav-item active" onclick="showPage('crypto',this)"><i class="ti ti-layout-dashboard"></i> DASHBOARD</div>
       <div class="nav-item" onclick="showPage('algo',this)"><i class="ti ti-robot"></i> FOREX ALGO</div>
-      <div class="nav-item" onclick="showPage('crypto',this)"><i class="ti ti-currency-bitcoin"></i> CRYPTO</div>
       <div class="nav-item" onclick="showPage('forexbot',this)"><i class="ti ti-affiliate"></i> FOREX BOT</div>
       <div class="nav-item" onclick="showPage('trades',this)"><i class="ti ti-list"></i> TRADES</div>
       <div class="nav-item" onclick="showPage('journal',this)"><i class="ti ti-notebook"></i> JOURNAL</div>
@@ -514,7 +513,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
     <div class="content">
 
       <!-- DASHBOARD PAGE -->
-      <div class="page active" id="page-dashboard">
+      <div class="page" id="page-dashboard">
         <div class="page-title">Overview</div>
 
         <!-- ═══ LIVE ACCOUNT MONITOR ═══ -->
@@ -2177,7 +2176,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       </div>
 
       <!-- CRYPTO FUTURES PAGE -->
-      <div class="page" id="page-crypto">
+      <div class="page active" id="page-crypto">
         <div class="page-title" style="display:flex;justify-content:space-between;align-items:center">
           Crypto Futures
           <div style="display:flex;align-items:center;gap:6px">
@@ -2190,7 +2189,6 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         <div class="crypto-sub-tabs">
           <button class="crypto-sub-tab active" id="cst-dashboard" onclick="showCryptoTab('dashboard',this)">DASHBOARD</button>
           <button class="crypto-sub-tab" id="cst-trade"     onclick="showCryptoTab('trade',this)">TRADE</button>
-          <button class="crypto-sub-tab" id="cst-reports"   onclick="showCryptoTab('reports',this)">REPORTS</button>
           <button class="crypto-sub-tab" id="cst-algo"      onclick="showCryptoTab('algo',this)">ALGO BOTS (MY BOTS)</button>
           <button class="crypto-sub-tab" id="cst-subscription" onclick="showCryptoTab('subscription',this)">SUBSCRIPTION</button>
           <button class="crypto-sub-tab" id="cst-payhistory"   onclick="showCryptoTab('payhistory',this)">PAYMENT HISTORY</button>
@@ -2292,6 +2290,78 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <div class="cp-panel" style="margin-top:12px;margin-bottom:0">
             <div class="cp-panel-title">Recent Algo Signals</div>
             <div id="cxd-signals" style="color:var(--text3);font-size:12px;padding:8px 0;min-height:40px">No active bots running</div>
+          </div>
+
+          <!-- ==== Moved from the old separate Reports sub-tab ==== -->
+          <!-- Filters -->
+          <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
+            <div class="field" style="margin:0;min-width:160px">
+              <label>Exchange</label>
+              <select id="rpt-exchange" onchange="cryptoLoadReports()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--font);font-size:12px;width:100%">
+                <option value="binance">Binance</option>
+                <option value="bybit">Bybit</option>
+                <option value="coinswitch">CoinSwitch</option>
+              </select>
+            </div>
+            <div class="field" style="margin:0;min-width:160px">
+              <label>Symbol</label>
+              <input type="text" id="rpt-symbol" value="BTC/USDT:USDT" placeholder="BTC/USDT:USDT"
+                style="font-size:12px" onchange="cryptoLoadReports()"/>
+            </div>
+            <div class="field" style="margin:0;min-width:100px">
+              <label>Limit</label>
+              <select id="rpt-limit" onchange="cryptoLoadReports()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--font);font-size:12px;width:100%">
+                <option value="50">50 trades</option>
+                <option value="100" selected>100 trades</option>
+                <option value="250">250 trades</option>
+                <option value="500">500 trades</option>
+              </select>
+            </div>
+            <button class="sbtn" onclick="cryptoLoadReports()" style="padding:8px 18px;font-size:11px">LOAD REPORTS</button>
+          </div>
+
+          <!-- KPI Row -->
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+            <div class="kpi" style="border-top:2px solid var(--green);padding:12px 16px">
+              <div class="kpi-label">NET PnL</div>
+              <div class="kpi-value" id="rpt-net-pnl" style="font-size:20px">—</div>
+            </div>
+            <div class="kpi" style="border-top:2px solid var(--cyan);padding:12px 16px">
+              <div class="kpi-label">WIN RATE</div>
+              <div class="kpi-value cyan" id="rpt-win-rate" style="font-size:20px">—</div>
+            </div>
+            <div class="kpi" style="border-top:2px solid var(--accent);padding:12px 16px">
+              <div class="kpi-label">PROFIT FACTOR</div>
+              <div class="kpi-value" id="rpt-profit-factor" style="font-size:20px">—</div>
+            </div>
+            <div class="kpi" style="border-top:2px solid var(--amber);padding:12px 16px">
+              <div class="kpi-label">TOTAL TRADES</div>
+              <div class="kpi-value amber" id="rpt-total-trades" style="font-size:20px">—</div>
+            </div>
+          </div>
+
+          <!-- Monthly P&L Chart -->
+          <div class="panel" style="margin:0 0 12px 0">
+            <div class="panel-title">Monthly P&amp;L</div>
+            <div style="position:relative;height:200px">
+              <canvas id="rpt-monthly-chart"></canvas>
+            </div>
+          </div>
+
+          <!-- Trade history table -->
+          <div class="panel" style="margin:0">
+            <div class="panel-title">Trade History</div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead><tr>
+                  <th>DATE</th><th>SYMBOL</th><th>SIDE</th><th>AMOUNT</th>
+                  <th>PRICE</th><th>REALIZED PnL</th><th>FEE</th>
+                </tr></thead>
+                <tbody id="rpt-trades-tbody">
+                  <tr><td colspan="7" style="text-align:center;color:var(--text3);padding:24px">Select an exchange and click LOAD REPORTS</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -2593,79 +2663,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         </div>
 
         <!-- ═══ REPORTS SUB-TAB ══════════════════════════════════ -->
-        <div class="crypto-sub-page" id="csp-reports" style="display:none">
-          <!-- Filters -->
-          <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap">
-            <div class="field" style="margin:0;min-width:160px">
-              <label>Exchange</label>
-              <select id="rpt-exchange" onchange="cryptoLoadReports()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--font);font-size:12px;width:100%">
-                <option value="binance">Binance</option>
-                <option value="bybit">Bybit</option>
-                <option value="coinswitch">CoinSwitch</option>
-              </select>
-            </div>
-            <div class="field" style="margin:0;min-width:160px">
-              <label>Symbol</label>
-              <input type="text" id="rpt-symbol" value="BTC/USDT:USDT" placeholder="BTC/USDT:USDT"
-                style="font-size:12px" onchange="cryptoLoadReports()"/>
-            </div>
-            <div class="field" style="margin:0;min-width:100px">
-              <label>Limit</label>
-              <select id="rpt-limit" onchange="cryptoLoadReports()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--font);font-size:12px;width:100%">
-                <option value="50">50 trades</option>
-                <option value="100" selected>100 trades</option>
-                <option value="250">250 trades</option>
-                <option value="500">500 trades</option>
-              </select>
-            </div>
-            <button class="sbtn" onclick="cryptoLoadReports()" style="padding:8px 18px;font-size:11px">LOAD REPORTS</button>
-          </div>
-
-          <!-- KPI Row -->
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
-            <div class="kpi" style="border-top:2px solid var(--green);padding:12px 16px">
-              <div class="kpi-label">NET PnL</div>
-              <div class="kpi-value" id="rpt-net-pnl" style="font-size:20px">—</div>
-            </div>
-            <div class="kpi" style="border-top:2px solid var(--cyan);padding:12px 16px">
-              <div class="kpi-label">WIN RATE</div>
-              <div class="kpi-value cyan" id="rpt-win-rate" style="font-size:20px">—</div>
-            </div>
-            <div class="kpi" style="border-top:2px solid var(--accent);padding:12px 16px">
-              <div class="kpi-label">PROFIT FACTOR</div>
-              <div class="kpi-value" id="rpt-profit-factor" style="font-size:20px">—</div>
-            </div>
-            <div class="kpi" style="border-top:2px solid var(--amber);padding:12px 16px">
-              <div class="kpi-label">TOTAL TRADES</div>
-              <div class="kpi-value amber" id="rpt-total-trades" style="font-size:20px">—</div>
-            </div>
-          </div>
-
-          <!-- Monthly P&L Chart -->
-          <div class="panel" style="margin:0 0 12px 0">
-            <div class="panel-title">Monthly P&amp;L</div>
-            <div style="position:relative;height:200px">
-              <canvas id="rpt-monthly-chart"></canvas>
-            </div>
-          </div>
-
-          <!-- Trade history table -->
-          <div class="panel" style="margin:0">
-            <div class="panel-title">Trade History</div>
-            <div style="overflow-x:auto">
-              <table>
-                <thead><tr>
-                  <th>DATE</th><th>SYMBOL</th><th>SIDE</th><th>AMOUNT</th>
-                  <th>PRICE</th><th>REALIZED PnL</th><th>FEE</th>
-                </tr></thead>
-                <tbody id="rpt-trades-tbody">
-                  <tr><td colspan="7" style="text-align:center;color:var(--text3);padding:24px">Select an exchange and click LOAD REPORTS</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
+        
         <!-- ═══ ALGO BOTS SUB-TAB ════════════════════════════════ -->
         <div class="crypto-sub-page" id="csp-algo" style="display:none">
 
@@ -4706,6 +4704,9 @@ async function _afterAuthSuccess() {
   showApp(r.error ? {} : r);
   loadMT5Symbols();
   setTimeout(loadAccount, 500);
+  // Crypto is the default landing page — Forex Algo/Dashboard stay one click
+  // away in the sidebar for whoever still wants the MT5 view first.
+  showPage('crypto', document.querySelector('.nav-item[onclick*="\'crypto\'"]'));
 }
 
 async function doAuthLogout() {
@@ -9105,17 +9106,14 @@ function showCryptoTab(tab, el) {
   _clearCryptoTimers();
   if (tab === 'dashboard') {
     cryptoDashboardLoad();
-    // Refresh every 10s — live PnL, positions, bot status
+    cryptoLoadReports();
+    // Refresh every 10s — live PnL, positions, bot status; reports every 60s
     _dashRefTimer = setInterval(cryptoDashboardLoad, 10000);
+    _rptRefTimer = setInterval(cryptoLoadReports, 60000);
   }
   if (tab === 'trade') {
     tpInit();
     _dashRefTimer = setInterval(cryptoRefresh, 10000);
-  }
-  if (tab === 'reports') {
-    cryptoLoadReports();
-    // Refresh reports every 60s
-    _rptRefTimer = setInterval(cryptoLoadReports, 60000);
   }
   if (tab === 'algo') {
     algoLoadBots();
