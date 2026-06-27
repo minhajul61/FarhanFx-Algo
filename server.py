@@ -5161,23 +5161,34 @@ def _load_saved_bots():
         for bid, bot in data.items():
             if bid in _crypto_bots:
                 continue
-            # Migrate old bots missing new fields
-            bot.setdefault("max_open_trades", 2)
-            bot.setdefault("open_trade_count", 1 if bot.get("open_side") else 0)
-            bot.setdefault("username", "admin")  # pre-multi-tenant bots belong to the owner
-            bot.setdefault("margin_mode", "isolated")
-            bot.setdefault("mode", "live")   # pre-existing bots were all real-money; default accordingly
-            bot.setdefault("demo_balance", 1000.0)
-            bot.setdefault("demo_equity", bot.get("demo_balance", 1000.0))
-            bot.setdefault("open_amount", 0)
-            _crypto_bots[bid] = bot
-            if bot.get('status') == 'active':
-                delay = 15 + keys.index(bid) * 3
-                t = threading.Timer(delay, _bot_tick, args=[bid])
-                t.daemon = True
-                t.start()
-                _bot_timers[bid] = t
-                print(f"Algo bot {bid} ({bot.get('strategy')} {bot.get('symbol')}) resumed ✓")
+            # Each bot loads independently — one bad/corrupt entry must never
+            # abort the loop and silently drop every bot that comes after it
+            # (this happened in practice: a UnicodeEncodeError printing the
+            # "resumed" line for one bot killed the whole load on Windows
+            # consoles without UTF-8 stdout).
+            try:
+                # Migrate old bots missing new fields
+                bot.setdefault("max_open_trades", 2)
+                bot.setdefault("open_trade_count", 1 if bot.get("open_side") else 0)
+                bot.setdefault("username", "admin")  # pre-multi-tenant bots belong to the owner
+                bot.setdefault("margin_mode", "isolated")
+                bot.setdefault("mode", "live")   # pre-existing bots were all real-money; default accordingly
+                bot.setdefault("demo_balance", 1000.0)
+                bot.setdefault("demo_equity", bot.get("demo_balance", 1000.0))
+                bot.setdefault("open_amount", 0)
+                _crypto_bots[bid] = bot
+                if bot.get('status') == 'active':
+                    delay = 15 + keys.index(bid) * 3
+                    t = threading.Timer(delay, _bot_tick, args=[bid])
+                    t.daemon = True
+                    t.start()
+                    _bot_timers[bid] = t
+                    try:
+                        print(f"Algo bot {bid} ({bot.get('strategy')} {bot.get('symbol')}) resumed [OK]")
+                    except Exception:
+                        pass
+            except Exception as e:
+                print(f"_load_saved_bots: failed to load bot {bid}: {e}")
     except Exception as e:
         print(f"_load_saved_bots error: {e}")
 
@@ -6492,6 +6503,117 @@ def crypto_algo_history(current_user: dict = Depends(_get_current_user)):
             })
     rows.sort(key=lambda x: x.get("time", ""), reverse=True)
     return rows[:300]
+
+
+@app.get("/api/crypto/reports/summary")
+def crypto_reports_summary(mode: str = "live", current_user: dict = Depends(_get_current_user)):
+    """Full analytics across this user's crypto bots — by-session win rate,
+    by-symbol breakdown (for a pie chart), daily equity curve, best day/month.
+    Same shape regardless of mode so Demo and Live can be compared the same
+    way. mode: 'live' (default) | 'demo' | 'all'."""
+    uname = current_user["username"]
+    closed_trades = []
+    open_pnl_total = 0.0
+    for b in _crypto_bots.values():
+        if b.get("username") != uname:
+            continue
+        if mode != "all" and b.get("mode", "live") != mode:
+            continue
+        for t in b.get("trades", []):
+            if t.get("status") == "closed":
+                closed_trades.append({**t, "symbol": b.get("symbol", ""), "strategy": b.get("strategy", "")})
+        if b.get("open_side") and b.get("last_price"):
+            ep, amt, mark = b.get("open_entry_price", 0), b.get("open_amount", 0), b["last_price"]
+            if b.get("mode", "live") == "demo":
+                open_pnl_total += (mark - ep) * amt if b["open_side"] == "BUY" else (ep - mark) * amt
+            elif b.get("status") == "active":
+                ex = _active_ex.get(uname, {}).get(b["exchange"])
+                if ex:
+                    try:
+                        for p in ex.fetch_positions():
+                            if p.get("symbol") == b["symbol"] and float(p.get("contracts") or 0) > 0:
+                                open_pnl_total += float(p.get("unrealizedPnl") or 0)
+                                break
+                    except Exception:
+                        pass
+
+    if not closed_trades:
+        return {
+            "summary": {"total_trades": 0, "win_rate": None, "profit_factor": None, "net_pnl": 0.0,
+                        "open_pnl": round(open_pnl_total, 4)},
+            "by_session": [], "by_symbol": [], "daily": [], "monthly": [],
+            "best_day": {}, "best_month": {}, "equity_curve": [],
+        }
+
+    def _parse_time(t):
+        try:
+            return datetime.strptime(t["time"], "%Y-%m-%d %H:%M")
+        except Exception:
+            return datetime.now()
+
+    closed_trades.sort(key=lambda t: t.get("time", ""))
+
+    by_session = {s: {"session": s, "trades": 0, "wins": 0, "losses": 0, "pnl": 0.0}
+                  for s in ["Asian", "London", "New York", "Off-Hours"]}
+    by_symbol: dict = {}
+    daily:     dict = {}
+    monthly:   dict = {}
+    running = 0.0
+    equity_curve = []
+
+    for t in closed_trades:
+        pnl = t.get("pnl", 0.0)
+        dt  = _parse_time(t)
+        sess = _session_name(dt.hour)
+        by_session[sess]["trades"] += 1
+        by_session[sess]["pnl"]     = round(by_session[sess]["pnl"] + pnl, 4)
+        if pnl > 0: by_session[sess]["wins"]   += 1
+        else:       by_session[sess]["losses"] += 1
+
+        sym = t.get("symbol", "")
+        by_symbol.setdefault(sym, {"symbol": sym, "trades": 0, "wins": 0, "losses": 0, "pnl": 0.0})
+        by_symbol[sym]["trades"] += 1
+        by_symbol[sym]["pnl"]     = round(by_symbol[sym]["pnl"] + pnl, 4)
+        if pnl > 0: by_symbol[sym]["wins"]   += 1
+        else:       by_symbol[sym]["losses"] += 1
+
+        dkey = dt.strftime("%Y-%m-%d")
+        daily.setdefault(dkey, {"date": dkey, "trades": 0, "wins": 0, "losses": 0, "pnl": 0.0})
+        daily[dkey]["trades"] += 1
+        daily[dkey]["pnl"]     = round(daily[dkey]["pnl"] + pnl, 4)
+        if pnl > 0: daily[dkey]["wins"]   += 1
+        else:       daily[dkey]["losses"] += 1
+
+        mkey = dt.strftime("%Y-%m")
+        monthly.setdefault(mkey, {"month": mkey, "label": dt.strftime("%b %Y"), "trades": 0, "wins": 0, "pnl": 0.0})
+        monthly[mkey]["trades"] += 1
+        monthly[mkey]["pnl"]     = round(monthly[mkey]["pnl"] + pnl, 4)
+        if pnl > 0: monthly[mkey]["wins"] += 1
+
+        running += pnl
+        equity_curve.append({"time": t.get("time", ""), "equity": round(running, 4)})
+
+    for s in by_session.values():
+        s["win_rate"] = round(s["wins"] / s["trades"] * 100, 1) if s["trades"] else None
+    for s in by_symbol.values():
+        s["win_rate"] = round(s["wins"] / s["trades"] * 100, 1) if s["trades"] else None
+
+    daily_list   = sorted(daily.values(),   key=lambda x: x["date"])
+    monthly_list = sorted(monthly.values(), key=lambda x: x["month"])
+    best_day   = max(daily_list,   key=lambda x: x["pnl"]) if daily_list   else {}
+    best_month = max(monthly_list, key=lambda x: x["pnl"]) if monthly_list else {}
+
+    stats = _bot_stats(closed_trades)
+    return {
+        "summary": {**stats, "total_trades": len(closed_trades), "open_pnl": round(open_pnl_total, 4)},
+        "by_session": list(by_session.values()),
+        "by_symbol": sorted(by_symbol.values(), key=lambda x: x["trades"], reverse=True),
+        "daily": daily_list,
+        "monthly": monthly_list,
+        "best_day": best_day,
+        "best_month": best_month,
+        "equity_curve": equity_curve,
+    }
 
 
 def _bot_stats(trades: list) -> dict:
