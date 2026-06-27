@@ -5166,6 +5166,10 @@ def _load_saved_bots():
             bot.setdefault("open_trade_count", 1 if bot.get("open_side") else 0)
             bot.setdefault("username", "admin")  # pre-multi-tenant bots belong to the owner
             bot.setdefault("margin_mode", "isolated")
+            bot.setdefault("mode", "live")   # pre-existing bots were all real-money; default accordingly
+            bot.setdefault("demo_balance", 1000.0)
+            bot.setdefault("demo_equity", bot.get("demo_balance", 1000.0))
+            bot.setdefault("open_amount", 0)
             _crypto_bots[bid] = bot
             if bot.get('status') == 'active':
                 delay = 15 + keys.index(bid) * 3
@@ -5532,6 +5536,8 @@ class CryptoBotReq(BaseModel):
     risk_pct:       float = 1.0
     leverage:       int   = 10
     margin_mode:    str   = "isolated"   # "isolated" | "cross" — isolated limits blast radius to this position's margin
+    mode:           str   = "demo"        # "demo" (paper trade, no real orders) | "live" (real money)
+    demo_balance:   float = 1000.0         # virtual starting balance used for demo position sizing
     # EMA params
     fast_ema:       int   = 9
     slow_ema:       int   = 21
@@ -6085,10 +6091,129 @@ def _get_bot_signal(bot, ohlcv):
     return None
 
 
+def _bot_tick_demo(bot_id):
+    """Paper-trading tick: same signal/exit logic as the live bot, but every
+    fill is simulated against live public price data — no exchange API call,
+    no real order, no real money. Lets a brand-new strategy run forward on
+    real market conditions before anyone trusts it with an actual account."""
+    bot = _crypto_bots.get(bot_id)
+    if not bot or bot["status"] != "active":
+        return
+    try:
+        pm = _get_pub_mkt()
+        if not pm:
+            return
+        limit = max(100, (bot.get("slow_ema", 21) or 21) + 30)
+        ohlcv  = pm.fetch_ohlcv(bot["symbol"], bot["timeframe"], limit=limit)
+        signal = _get_bot_signal(bot, ohlcv)
+        price  = float(ohlcv[-1][4])
+        bot["last_run"]   = datetime.now().strftime("%H:%M:%S")
+        bot["last_price"] = price
+
+        atr = _atr_calc([c[2] for c in ohlcv], [c[3] for c in ohlcv], [c[4] for c in ohlcv], 14)
+
+        def _close_demo_position(exit_price, exit_reason):
+            ep    = bot.get("open_entry_price", exit_price)
+            oside = bot["open_side"]
+            amt   = bot.get("open_amount", 0)
+            pnl   = (exit_price - ep) * amt if oside == "BUY" else (ep - exit_price) * amt
+            bot["demo_equity"] = round(bot.get("demo_equity", bot.get("demo_balance", 1000)) + pnl, 4)
+            if bot.get("trades"):
+                bot["trades"][-1]["exit_reason"] = exit_reason
+                bot["trades"][-1]["exit_price"]  = round(exit_price, 4)
+                bot["trades"][-1]["pnl"]         = round(pnl, 4)
+                bot["trades"][-1]["status"]      = "closed"
+            bot["open_side"]        = None
+            bot["open_entry_price"] = None
+            bot["open_amount"]      = 0
+            bot["open_trade_count"] = 0
+
+        # Trailing stop / TP check (close simulated position if hit)
+        if bot.get("open_side") and (bot.get("trailing_atr", 0) > 0 or bot.get("tp_atr", 0) > 0):
+            ep    = bot.get("open_entry_price", price)
+            oside = bot["open_side"]
+            trail = bot.get("trailing_atr", 0) * atr
+            tp    = bot.get("tp_atr", 0) * atr
+            should_exit, exit_reason = False, ""
+            if oside == "BUY":
+                bot["open_peak"] = max(bot.get("open_peak", ep), price)
+                if trail > 0 and price < bot["open_peak"] - trail:
+                    should_exit, exit_reason = True, "trailing_stop"
+                if tp > 0 and price >= ep + tp:
+                    should_exit, exit_reason = True, "take_profit"
+            else:
+                bot["open_trough"] = min(bot.get("open_trough", ep), price)
+                if trail > 0 and price > bot["open_trough"] + trail:
+                    should_exit, exit_reason = True, "trailing_stop"
+                if tp > 0 and price <= ep - tp:
+                    should_exit, exit_reason = True, "take_profit"
+            if should_exit:
+                _close_demo_position(price, exit_reason)
+                threading.Thread(target=_save_bots, daemon=True).start()
+
+        if signal:
+            # Signal flip: close the open simulated position first
+            if bot.get("open_side") and bot["open_side"] != signal:
+                _close_demo_position(price, "signal_flip")
+
+            max_t = bot.get("max_open_trades", 2)
+            cur_t = bot.get("open_trade_count", 0)
+            if cur_t >= max_t:
+                bot["total_signals"] += 1
+                bot["last_signal"]    = signal
+                bot["last_error"]     = f"⏸ Max {max_t} trades open — waiting for SL/TP to close"
+                threading.Thread(target=_save_bots, daemon=True).start()
+                return
+
+            equity   = bot.get("demo_equity", bot.get("demo_balance", 1000))
+            risk_usd = equity * bot["risk_pct"] / 100
+            if price <= 0: return
+            atr_pct     = (atr / price) * 100 if price else 0
+            size_factor = min(1.0, 0.5 / atr_pct) if atr_pct > 0.5 else 1.0
+            amount      = round((risk_usd * bot["leverage"] * size_factor) / price, 4)
+            if amount <= 0: return
+
+            entry = {
+                "time":     datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "signal":   signal,
+                "price":    round(price, 4),
+                "amount":   amount,
+                "order_id": "demo",
+                "pnl":      0,
+                "status":   "open",
+            }
+            if bot.get("tp_atr", 0) > 0 or bot.get("trailing_atr", 0) > 0:
+                entry["sl"] = round(price - 2*atr, 4) if signal == "BUY" else round(price + 2*atr, 4)
+                entry["tp"] = round(price + bot["tp_atr"]*atr, 4) if signal == "BUY" else round(price - bot["tp_atr"]*atr, 4)
+            bot["trades"].append(entry)
+            bot["total_signals"]    += 1
+            bot["last_signal"]       = signal
+            bot["open_side"]         = signal
+            bot["open_entry_price"]  = price
+            bot["open_amount"]       = amount
+            bot["open_peak"]         = price
+            bot["open_trough"]       = price
+            bot["open_trade_count"]  = cur_t + 1
+            bot["last_error"]        = None
+            threading.Thread(target=_save_bots, daemon=True).start()
+
+    except Exception as e:
+        bot["last_error"] = str(e)[:200]
+    finally:
+        if _crypto_bots.get(bot_id, {}).get("status") == "active":
+            interval = _TF_SECONDS.get(bot.get("timeframe", "1h"), 3600)
+            t = threading.Timer(interval, _bot_tick_demo, args=[bot_id])
+            t.daemon = True
+            t.start()
+            _bot_timers[bot_id] = t
+
+
 def _bot_tick(bot_id):
     bot = _crypto_bots.get(bot_id)
     if not bot or bot["status"] != "active":
         return
+    if bot.get("mode", "live") == "demo":
+        return _bot_tick_demo(bot_id)
     try:
         pm = _get_pub_mkt()
         if not pm:
@@ -6236,15 +6361,21 @@ def _bot_tick(bot_id):
 @app.post("/api/crypto/algo/start")
 def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_current_user)):
     uname = current_user["username"]
-    ex = _active_ex.get(uname, {}).get(req.exchange.lower())
-    if not ex:
-        return JSONResponse(status_code=400, content={"error": f"{req.exchange} not connected"})
+    # Live mode needs a real connected exchange to place orders on. Demo mode
+    # runs purely off public market data — no exchange connection required,
+    # so a strategy can be paper-traded before the user ever adds API keys.
+    if req.mode == "live":
+        ex = _active_ex.get(uname, {}).get(req.exchange.lower())
+        if not ex:
+            return JSONResponse(status_code=400, content={"error": f"{req.exchange} not connected — connect it or switch this bot to Demo mode"})
     bid = str(_uuid.uuid4())[:8]
     _crypto_bots[bid] = {
         "id": bid, "username": uname, "exchange": req.exchange.lower(),
         "symbol": req.symbol, "strategy": req.strategy,
         "timeframe": req.timeframe, "risk_pct": req.risk_pct,
         "leverage": req.leverage, "margin_mode": req.margin_mode,
+        "mode": req.mode, "demo_balance": req.demo_balance,
+        "demo_equity": req.demo_balance,
         # EMA
         "fast_ema": req.fast_ema, "slow_ema": req.slow_ema,
         # RSI
@@ -6304,6 +6435,33 @@ def crypto_algo_stop(bot_id: str, current_user: dict = Depends(_get_current_user
     return {"success": True}
 
 
+@app.post("/api/crypto/algo/{bot_id}/promote")
+def crypto_algo_promote(bot_id: str, current_user: dict = Depends(_get_current_user)):
+    """Switch a demo (paper-trading) bot to live real-money trading. Requires
+    the exchange to be connected and closes out any open simulated position
+    first — a promoted bot always starts its live life flat."""
+    bot = _crypto_bots.get(bot_id)
+    if not bot or bot.get("username") != current_user["username"]:
+        return JSONResponse(status_code=404, content={"error": "Bot not found"})
+    if bot.get("mode", "live") != "demo":
+        return JSONResponse(status_code=400, content={"error": "Bot is already live"})
+    ex = _active_ex.get(current_user["username"], {}).get(bot["exchange"])
+    if not ex:
+        return JSONResponse(status_code=400, content={"error": f"{bot['exchange']} not connected — connect it before promoting to live"})
+    if bot.get("open_side"):
+        if bot.get("trades"):
+            bot["trades"][-1]["exit_reason"] = "promoted_to_live"
+            bot["trades"][-1]["exit_price"]  = bot.get("last_price")
+            bot["trades"][-1]["status"]      = "closed"
+        bot["open_side"]        = None
+        bot["open_entry_price"] = None
+        bot["open_amount"]      = 0
+        bot["open_trade_count"] = 0
+    bot["mode"] = "live"
+    _save_bots()
+    return {"success": True, "mode": "live"}
+
+
 @app.delete("/api/crypto/algo/{bot_id}")
 def crypto_algo_delete(bot_id: str, current_user: dict = Depends(_get_current_user)):
     bot = _crypto_bots.get(bot_id)
@@ -6336,6 +6494,22 @@ def crypto_algo_history(current_user: dict = Depends(_get_current_user)):
     return rows[:300]
 
 
+def _bot_stats(trades: list) -> dict:
+    """Win rate / profit factor / net PnL from a bot's closed trades — same
+    shape whether the trades are demo (simulated) or live (real fills)."""
+    closed = [t for t in trades if t.get("status") == "closed"]
+    if not closed:
+        return {"closed_trades": 0, "win_rate": None, "profit_factor": None, "net_pnl": 0.0}
+    wins   = [t["pnl"] for t in closed if t.get("pnl", 0) > 0]
+    losses = [t["pnl"] for t in closed if t.get("pnl", 0) <= 0]
+    gross_w, gross_l = sum(wins), abs(sum(losses))
+    return {
+        "closed_trades": len(closed),
+        "win_rate":      round(len(wins) / len(closed) * 100, 1),
+        "profit_factor": round(gross_w / gross_l, 2) if gross_l else (999 if gross_w else None),
+        "net_pnl":       round(sum(t.get("pnl", 0) for t in closed), 4),
+    }
+
 @app.get("/api/crypto/algo/list")
 def crypto_algo_list(live: bool = False, current_user: dict = Depends(_get_current_user)):
     result = []
@@ -6345,12 +6519,20 @@ def crypto_algo_list(live: bool = False, current_user: dict = Depends(_get_curre
         entry = {k: v for k, v in b.items() if k != "trades"} | {
             "trade_count":  len(b.get("trades", [])),
             "recent_trades": b.get("trades", [])[-5:],
+            "stats":        _bot_stats(b.get("trades", [])),
             "live_pnl":     None,
             "live_size":    None,
             "live_mark":    None,
         }
-        # Fetch live unrealized PnL for active in-position bots
-        if live and b.get("open_side") and b.get("status") == "active":
+        # Demo bots: show simulated unrealized P&L on the open paper position
+        if b.get("mode", "live") == "demo" and b.get("open_side") and b.get("last_price"):
+            ep, amt, mark = b.get("open_entry_price", 0), b.get("open_amount", 0), b["last_price"]
+            upnl = (mark - ep) * amt if b["open_side"] == "BUY" else (ep - mark) * amt
+            entry["live_pnl"]  = round(upnl, 4)
+            entry["live_size"] = amt
+            entry["live_mark"] = mark
+        # Fetch live unrealized PnL for active in-position LIVE bots
+        elif live and b.get("open_side") and b.get("status") == "active":
             ex = _active_ex.get(current_user["username"], {}).get(b["exchange"])
             if ex:
                 try:

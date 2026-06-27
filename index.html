@@ -2800,6 +2800,22 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                   <input type="number" id="bot-leverage" value="10" min="1" max="100" style="font-size:12px"/>
                 </div>
               </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                <div class="field" style="margin:0">
+                  <label>Mode</label>
+                  <select id="bot-mode" onchange="botModeChange()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--font);font-size:12px;width:100%">
+                    <option value="demo" selected>📝 Demo (paper trade)</option>
+                    <option value="live">🔴 Live (real money)</option>
+                  </select>
+                </div>
+                <div class="field" style="margin:0" id="bot-demo-balance-field">
+                  <label>Demo Balance ($)</label>
+                  <input type="number" id="bot-demo-balance" value="1000" min="10" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:var(--font);font-size:12px;outline:none;width:100%"/>
+                </div>
+              </div>
+              <div id="bot-mode-hint" style="font-size:10px;color:var(--text3);margin-bottom:8px;padding:5px 8px;background:rgba(34,197,94,0.06);border-radius:6px;border-left:2px solid var(--green)">
+                Demo mode trades live market data with a virtual balance — no exchange connection needed, no real money at risk. Promote to Live once you trust the results.
+              </div>
               <div style="margin-bottom:8px">
                 <div class="field" style="margin:0">
                   <label>Margin Mode</label>
@@ -9472,6 +9488,19 @@ const _strategyHints = {
   breakout:        'Price breaks above/below 20-candle high/low. Pure momentum breakout strategy.',
 };
 
+function botModeChange() {
+  const mode = document.getElementById('bot-mode')?.value;
+  const balField = document.getElementById('bot-demo-balance-field');
+  const hint = document.getElementById('bot-mode-hint');
+  if (balField) balField.style.display = mode === 'demo' ? '' : 'none';
+  if (hint) {
+    hint.textContent = mode === 'demo'
+      ? 'Demo mode trades live market data with a virtual balance — no exchange connection needed, no real money at risk. Promote to Live once you trust the results.'
+      : 'Live mode places real orders on your connected exchange with real money. Make sure the exchange is connected and the strategy has a demo track record you trust.';
+    hint.style.borderLeftColor = mode === 'demo' ? 'var(--green)' : 'var(--red)';
+  }
+}
+
 function botStrategyChange() {
   const st   = document.getElementById('bot-strategy')?.value;
   const hint = document.getElementById('bot-strategy-hint');
@@ -9517,6 +9546,8 @@ async function startAlgoBot() {
     timeframe:      _gv('bot-timeframe', '1h'),
     leverage:       _gv('bot-leverage', 10, parseInt),
     margin_mode:    _gv('bot-margin-mode', 'isolated'),
+    mode:           _gv('bot-mode', 'demo'),
+    demo_balance:   _gv('bot-demo-balance', 1000, parseFloat),
     risk_pct:       _gv('bot-risk', 1, parseFloat),
     adx_min:         _gv('bot-adx-min', 0, parseInt),
     max_open_trades: _gv('bot-max-trades', 2, parseInt),
@@ -9630,9 +9661,19 @@ async function algoLoadBots() {
           </div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-          <span class="badge" style="background:${stC}18;color:${stC};border:1px solid ${stC}40;font-size:9px">${b.status.toUpperCase()}</span>
+          <div style="display:flex;gap:4px">
+            <span class="badge" style="background:${b.mode==='demo'?'rgba(34,197,94,0.15)':'rgba(239,68,68,0.15)'};color:${b.mode==='demo'?'var(--green)':'var(--red)'};border:1px solid ${b.mode==='demo'?'var(--green)':'var(--red)'};font-size:9px">${b.mode==='demo'?'📝 DEMO':'🔴 LIVE'}</span>
+            <span class="badge" style="background:${stC}18;color:${stC};border:1px solid ${stC}40;font-size:9px">${b.status.toUpperCase()}</span>
+          </div>
           <span style="font-size:9px;color:var(--text3)">ID: ${b.id}</span>
         </div>
+      </div>
+
+      <!-- Performance stats (demo or live, same shape) -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;padding:8px 10px;background:${(b.stats.net_pnl||0)>=0?'rgba(16,185,129,0.06)':'rgba(239,68,68,0.06)'};border-radius:8px">
+        <div style="text-align:center"><div style="font-size:8px;color:var(--text3);letter-spacing:1px">WIN RATE</div><div style="font-size:14px;font-weight:900;color:var(--cyan)">${b.stats.win_rate!=null?b.stats.win_rate+'%':'—'}</div></div>
+        <div style="text-align:center"><div style="font-size:8px;color:var(--text3);letter-spacing:1px">PROFIT FACTOR</div><div style="font-size:14px;font-weight:900">${b.stats.profit_factor!=null?b.stats.profit_factor:'—'}</div></div>
+        <div style="text-align:center"><div style="font-size:8px;color:var(--text3);letter-spacing:1px">${b.mode==='demo'?'DEMO':'NET'} P&amp;L</div><div style="font-size:14px;font-weight:900;color:${(b.stats.net_pnl||0)>=0?'var(--green)':'var(--red)'}">${(b.stats.net_pnl>=0?'+':'')}$${(b.stats.net_pnl||0).toFixed(2)}</div></div>
       </div>
 
       ${tradeBar}
@@ -9655,6 +9696,7 @@ async function algoLoadBots() {
         ${b.status === 'active'
           ? `<button class="sbtn" onclick="algoBotStop('${b.id}')" style="font-size:10px;padding:4px 12px;color:var(--amber);border-color:var(--amber)">⏸ STOP</button>`
           : `<button class="sbtn" onclick="algoBotResume('${b.id}')" style="font-size:10px;padding:4px 12px;color:var(--green);border-color:var(--green)">▶ RESUME</button>`}
+        ${b.mode === 'demo' ? `<button class="sbtn" onclick="algoBotPromote('${b.id}')" style="font-size:10px;padding:4px 12px;color:var(--accent);border-color:var(--accent)">🚀 PROMOTE TO LIVE</button>` : ''}
         <button class="close-btn" onclick="algoBotDelete('${b.id}')">DELETE</button>
         <span style="font-size:9px;color:var(--text3);margin-left:auto">${b.last_run ? 'Last run: '+b.last_run : 'Not run yet'} · ${b.created}</span>
       </div>
@@ -9711,6 +9753,13 @@ async function algoBotStop(id) {
   toast('Bot stopped', true); algoLoadBots();
 }
 
+async function algoBotPromote(id) {
+  if (!confirm('Switch this bot to LIVE? It will start placing real orders with real money on the connected exchange.')) return;
+  const r = await apiFetch('/api/crypto/algo/' + id + '/promote', { method: 'POST' });
+  if (r.error) { toastErr(r.error); return; }
+  toast('🚀 Bot promoted to LIVE', true); algoLoadBots();
+}
+
 async function algoBotResume(id) {
   const r = await apiFetch('/api/crypto/algo/stop/' + id, { method: 'POST' });
   // Re-activate
@@ -9727,6 +9776,8 @@ async function algoBotResume(id) {
     bb_std: bot.bb_std, atr_period: bot.atr_period, st_multiplier: bot.st_multiplier,
     ai_min_score: bot.ai_min_score, trailing_atr: bot.trailing_atr, tp_atr: bot.tp_atr,
     adx_min: bot.adx_min, max_open_trades: bot.max_open_trades || 2,
+    margin_mode: bot.margin_mode || 'isolated', mode: bot.mode || 'demo',
+    demo_balance: bot.demo_equity ?? bot.demo_balance ?? 1000,
   };
   await apiFetch('/api/crypto/algo/' + id, { method: 'DELETE' });
   const rr = await apiFetch('/api/crypto/algo/start', { method: 'POST', body: JSON.stringify(body) });
