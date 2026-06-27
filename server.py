@@ -6044,6 +6044,25 @@ def _bot_tick_demo(bot_id):
             amount      = round((risk_usd * bot["leverage"] * size_factor) / price, 4)
             if amount <= 0: return
 
+            if bot.get("open_side") == signal and cur_t > 0:
+                # Reinforcing the same side — fold into the existing position
+                # (weighted-average entry) instead of leaving an earlier
+                # "open" trade record that would never get closed or priced.
+                old_amt, old_entry = bot["open_amount"], bot["open_entry_price"]
+                total_amt = old_amt + amount
+                avg_entry = (old_entry*old_amt + price*amount) / total_amt if total_amt else price
+                bot["open_amount"]      = round(total_amt, 6)
+                bot["open_entry_price"] = round(avg_entry, 4)
+                if bot["trades"]:
+                    bot["trades"][-1]["amount"] = bot["open_amount"]
+                    bot["trades"][-1]["price"]  = bot["open_entry_price"]
+                bot["open_trade_count"] = cur_t + 1
+                bot["total_signals"]   += 1
+                bot["last_signal"]      = signal
+                bot["last_error"]       = None
+                threading.Thread(target=_save_bots, daemon=True).start()
+                return
+
             entry = {
                 "time":     datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "signal":   signal,
@@ -6195,6 +6214,26 @@ def _bot_tick(bot_id):
             # Step 4: Place order
             side  = "buy" if signal == "BUY" else "sell"
             order = ex.create_order(bot["symbol"], "market", side, amount)
+
+            if bot.get("open_side") == signal and cur_t > 0:
+                # Reinforcing the same side — fold into the existing position
+                # (weighted-average entry) instead of leaving an earlier
+                # "open" trade record that would never get closed or priced.
+                old_amt, old_entry = bot.get("open_amount", 0), bot.get("open_entry_price", price)
+                total_amt = old_amt + amount
+                avg_entry = (old_entry*old_amt + price*amount) / total_amt if total_amt else price
+                bot["open_amount"]      = round(total_amt, 6)
+                bot["open_entry_price"] = round(avg_entry, 4)
+                if bot["trades"]:
+                    bot["trades"][-1]["amount"] = bot["open_amount"]
+                    bot["trades"][-1]["price"]  = bot["open_entry_price"]
+                bot["open_trade_count"] = cur_t + 1
+                bot["total_signals"]   += 1
+                bot["last_signal"]      = signal
+                bot["last_error"]       = None
+                threading.Thread(target=_save_bots, daemon=True).start()
+                return
+
             entry = {
                 "time":     datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "signal":   signal,
@@ -6212,6 +6251,7 @@ def _bot_tick(bot_id):
             bot["last_signal"]       = signal
             bot["open_side"]         = signal
             bot["open_entry_price"]  = price
+            bot["open_amount"]       = amount
             bot["open_peak"]         = price
             bot["open_trough"]       = price
             bot["open_trade_count"]  = cur_t + 1
@@ -6638,7 +6678,20 @@ def _run_backtest_strategy(strategy: str, ohlcv: list, symbol: str, timeframe: s
                 atr_pct     = (atr / price) * 100 if price else 0
                 size_factor = min(1.0, 0.5 / atr_pct) if atr_pct > 0.5 else 1.0
                 amount      = round((risk_usd * bot["leverage"] * size_factor) / price, 6)
-                if amount > 0:
+                if amount > 0 and bot["open_side"] == signal and bot["open_trade_count"] > 0:
+                    # Reinforcing the same side — fold into the existing
+                    # position instead of leaving an earlier "open" trade
+                    # record that would never get closed/priced.
+                    old_amt, old_entry = bot["open_amount"], bot["open_entry_price"]
+                    total_amt = old_amt + amount
+                    avg_entry = (old_entry*old_amt + price*amount) / total_amt if total_amt else price
+                    bot["open_amount"]      = round(total_amt, 6)
+                    bot["open_entry_price"] = round(avg_entry, 4)
+                    if bot["trades"]:
+                        bot["trades"][-1]["amount"] = bot["open_amount"]
+                        bot["trades"][-1]["price"]  = bot["open_entry_price"]
+                    bot["open_trade_count"] += 1
+                elif amount > 0:
                     bot["trades"].append({
                         "time":     datetime.utcfromtimestamp(ts / 1000).strftime("%Y-%m-%d %H:%M"),
                         "signal":   signal,

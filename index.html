@@ -524,6 +524,8 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           </select>
         </div>
 
+        <div id="dr-status-line" style="font-size:11px;color:var(--text3);margin-bottom:14px;padding:8px 12px;background:var(--bg2);border-radius:8px"></div>
+
         <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:14px">
           <div class="kpi" style="border-top:2px solid var(--accent)"><div class="kpi-label">TOTAL TRADES</div><div class="kpi-value" id="dr-total-trades">—</div></div>
           <div class="kpi" style="border-top:2px solid var(--cyan)"><div class="kpi-label">WIN RATE</div><div class="kpi-value cyan" id="dr-win-rate">—</div></div>
@@ -8180,12 +8182,6 @@ async function cryptoInit() {
   await cryptoCheckStatus();
   cryptoLoadMarkets();   // don't await — markets can load in background
   showCryptoTab('trade', document.getElementById('cst-trade'));
-  loadMyPerformance();
-  clearInterval(_myPerfTimer);
-  _myPerfTimer = setInterval(loadMyPerformance, 15000);
-  loadAiPulse();
-  clearInterval(_aiPulseTimer);
-  _aiPulseTimer = setInterval(loadAiPulse, 30000);
   // Telegram signal bot is an owner-only automation tool (not exposed to client
   // accounts), and its endpoints are blocked server-side for the client role anyway.
   if (_getAuthRole() !== 'client') {
@@ -8194,80 +8190,6 @@ async function cryptoInit() {
     clearInterval(_tgRefTimer);
     _tgRefTimer = setInterval(() => { tgLoadSignals(); tgLoadStatus(); }, 8000);
   }
-}
-
-// ── MY PERFORMANCE (bot trade history summary, on the Crypto Dashboard tab) ────
-let _myPerfTimer = null;
-async function loadMyPerformance() {
-  const [bots, history] = await Promise.all([
-    apiFetch('/api/crypto/algo/list'),
-    apiFetch('/api/crypto/algo/history'),
-  ]);
-  const setText = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
-  const setCol  = (id, c) => { const e = document.getElementById(id); if (e) e.style.color = c; };
-
-  const activeBots = Array.isArray(bots) ? bots.filter(b => b.status === 'active').length : 0;
-  setText('myperf-active-bots', activeBots);
-
-  const closed = Array.isArray(history) ? history.filter(t => t.status === 'closed' || t.exit_reason) : [];
-  const totalPnl = closed.reduce((s, t) => s + (t.pnl || 0), 0);
-  const wins = closed.filter(t => (t.pnl || 0) > 0);
-  const winRate = closed.length ? ((wins.length / closed.length) * 100).toFixed(1) + '%' : '—';
-  setText('myperf-total-pnl', closed.length ? (totalPnl >= 0 ? '+$' : '-$') + Math.abs(totalPnl).toFixed(2) : '—');
-  setCol('myperf-total-pnl', totalPnl >= 0 ? 'var(--green)' : 'var(--red)');
-  setText('myperf-win-rate', winRate);
-
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const todayTrades = closed.filter(t => (t.time || '').startsWith(todayStr));
-  const todayPnl = todayTrades.reduce((s, t) => s + (t.pnl || 0), 0);
-  setText('myperf-today-pnl', todayTrades.length ? (todayPnl >= 0 ? '+$' : '-$') + Math.abs(todayPnl).toFixed(2) : '—');
-  setCol('myperf-today-pnl', todayPnl >= 0 ? 'var(--green)' : 'var(--red)');
-}
-
-// ── AI PULSE — condensed live signal widget on the Crypto Dashboard tab.
-// Reuses the same /api/crypto/algo/analyze endpoint as the full "AI Signal Lab"
-// in the Algo Bots tab (public market data, no exchange connection required),
-// just summarized into one glanceable sentence + score bar instead of the
-// full 9-component breakdown. ──
-let _aiPulseTimer = null;
-async function loadAiPulse() {
-  const symbol = document.getElementById('cp-ai-symbol')?.value?.trim() || 'BTC/USDT:USDT';
-  const tf     = document.getElementById('cp-ai-tf')?.value || '1h';
-  const card   = document.getElementById('cp-ai-card');
-  const pill   = document.getElementById('cp-ai-pill');
-  const insightEl = document.getElementById('cp-ai-insight');
-  const bar    = document.getElementById('cp-ai-bar');
-  const scoreEl= document.getElementById('cp-ai-score');
-
-  const r = await apiFetch(`/api/crypto/algo/analyze?symbol=${encodeURIComponent(symbol)}&timeframe=${tf}`);
-  if (r.error) {
-    insightEl.textContent = r.error;
-    return;
-  }
-
-  const signal = r.signal || 'NEUTRAL';
-  const score  = r.ai_score ?? 50;
-  const isBuy  = signal.includes('BUY');
-  const isSell = signal.includes('SELL');
-
-  card.className = 'cp-ai-card' + (isBuy ? ' signal-buy' : isSell ? ' signal-sell' : '');
-  pill.className = 'cp-ai-pill ' + (isBuy ? 'buy' : isSell ? 'sell' : 'neutral');
-  pill.textContent = signal;
-
-  bar.style.width = score + '%';
-  bar.style.background = isBuy ? 'var(--green)' : isSell ? 'var(--red)' : 'var(--cyan)';
-  scoreEl.textContent = `${score}/100`;
-
-  // Build a 1-line insight from the two highest-scoring components' detail text
-  const comps = r.components || {};
-  const ranked = Object.values(comps)
-    .filter(c => c && c.detail)
-    .sort((a, b) => (b.score / (b.max || 1)) - (a.score / (a.max || 1)))
-    .slice(0, 2)
-    .map(c => c.detail);
-  insightEl.textContent = ranked.length
-    ? `${symbol.split('/')[0]} reads ${signal.toLowerCase()} (${r.confidence || 'MEDIUM'} confidence) — ${ranked.join('; ')}.`
-    : `${symbol.split('/')[0]} reads ${signal.toLowerCase()}.`;
 }
 
 // ── Exchange status dots ──
@@ -8938,8 +8860,6 @@ function _clearCryptoTimers() {
   if (_algoRefTimer) { clearInterval(_algoRefTimer); _algoRefTimer = null; }
   if (_rptRefTimer)  { clearInterval(_rptRefTimer);  _rptRefTimer  = null; }
   if (_tgRefTimer)   { clearInterval(_tgRefTimer);   _tgRefTimer   = null; }
-  if (_myPerfTimer)  { clearInterval(_myPerfTimer);  _myPerfTimer  = null; }
-  if (_aiPulseTimer) { clearInterval(_aiPulseTimer); _aiPulseTimer = null; }
   if (_labAutoTimer) { clearInterval(_labAutoTimer); _labAutoTimer = null;
     const btn = document.getElementById('lab-auto-btn');
     if (btn) { btn.textContent = '⏵ AUTO'; btn.style.background = ''; btn.style.color = ''; }
@@ -8950,8 +8870,21 @@ function _clearCryptoTimers() {
 let _drCharts = {};
 async function loadDashboardReport() {
   const mode = document.getElementById('dash-mode')?.value || 'live';
-  const r = await apiFetch('/api/crypto/reports/summary?mode=' + mode);
+  const [r, bots] = await Promise.all([
+    apiFetch('/api/crypto/reports/summary?mode=' + mode),
+    apiFetch('/api/crypto/algo/list'),
+  ]);
   if (!r || r.error) return;
+
+  const statusEl = document.getElementById('dr-status-line');
+  if (statusEl) {
+    const relevant = (Array.isArray(bots) ? bots : []).filter(b => mode === 'all' || b.mode === mode);
+    const active   = relevant.filter(b => b.status === 'active');
+    const openCt   = relevant.filter(b => b.open_side).length;
+    statusEl.textContent = active.length
+      ? `● ${active.length} ${mode} bot${active.length !== 1 ? 's' : ''} active (${active.map(b => b.strategy).join(', ')}) · ${openCt} open position${openCt !== 1 ? 's' : ''} · ${r.summary?.total_trades ?? 0} closed trade${(r.summary?.total_trades ?? 0) !== 1 ? 's' : ''} so far`
+      : `No active ${mode} bots right now — start one from Crypto → Algo Bots.`;
+  }
 
   const s = r.summary || {};
   const setText = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
@@ -9650,7 +9583,7 @@ async function algoLoadBots() {
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;padding:8px 10px;background:${(b.stats.net_pnl||0)>=0?'rgba(16,185,129,0.06)':'rgba(239,68,68,0.06)'};border-radius:8px">
         <div style="text-align:center"><div style="font-size:8px;color:var(--text3);letter-spacing:1px">WIN RATE</div><div style="font-size:14px;font-weight:900;color:var(--cyan)">${b.stats.win_rate!=null?b.stats.win_rate+'%':'—'}</div></div>
         <div style="text-align:center"><div style="font-size:8px;color:var(--text3);letter-spacing:1px">PROFIT FACTOR</div><div style="font-size:14px;font-weight:900">${b.stats.profit_factor!=null?b.stats.profit_factor:'—'}</div></div>
-        <div style="text-align:center"><div style="font-size:8px;color:var(--text3);letter-spacing:1px">${b.mode==='demo'?'DEMO':'NET'} P&amp;L</div><div style="font-size:14px;font-weight:900;color:${(b.stats.net_pnl||0)>=0?'var(--green)':'var(--red)'}">${(b.stats.net_pnl>=0?'+':'')}$${(b.stats.net_pnl||0).toFixed(2)}</div></div>
+        <div style="text-align:center"><div style="font-size:8px;color:var(--text3);letter-spacing:1px" title="Realized P&amp;L from closed trades only — open position P&amp;L is shown separately above">CLOSED P&amp;L</div><div style="font-size:14px;font-weight:900;color:${(b.stats.net_pnl||0)>=0?'var(--green)':'var(--red)'}">${(b.stats.net_pnl>=0?'+':'')}$${(b.stats.net_pnl||0).toFixed(2)}</div></div>
       </div>
 
       ${tradeBar}
