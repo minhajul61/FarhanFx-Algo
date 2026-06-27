@@ -5176,6 +5176,7 @@ def _load_saved_bots():
                 bot.setdefault("demo_balance", 1000.0)
                 bot.setdefault("demo_equity", bot.get("demo_balance", 1000.0))
                 bot.setdefault("open_amount", 0)
+                bot.setdefault("bo_lookback", 20)
                 _crypto_bots[bid] = bot
                 if bot.get('status') == 'active':
                     delay = 15 + keys.index(bid) * 3
@@ -5542,32 +5543,34 @@ _TF_SECONDS = {
 class CryptoBotReq(BaseModel):
     exchange:       str
     symbol:         str
-    strategy:       str          # ema_cross|rsi|breakout|macd_cross|bb_squeeze|supertrend|scalp|ai_score
+    strategy:       str          # rsi|macd_cross|bb_squeeze|false_breakout — the only 4 with a validated edge
     timeframe:      str   = "1h"
     risk_pct:       float = 1.0
     leverage:       int   = 10
     margin_mode:    str   = "isolated"   # "isolated" | "cross" — isolated limits blast radius to this position's margin
     mode:           str   = "demo"        # "demo" (paper trade, no real orders) | "live" (real money)
     demo_balance:   float = 1000.0         # virtual starting balance used for demo position sizing
-    # EMA params
+    # EMA params (legacy — ema_cross strategy removed, kept only for lookback sizing)
     fast_ema:       int   = 9
     slow_ema:       int   = 21
-    # RSI params
-    rsi_period:     int   = 14
-    rsi_ob:         int   = 70
-    rsi_os:         int   = 30
-    # MACD params
+    # RSI params — tuned via 2.3yr out-of-sample grid search (train PF 1.52, val PF 1.57)
+    rsi_period:     int   = 7
+    rsi_ob:         int   = 75
+    rsi_os:         int   = 25
+    # MACD params — tuned via 2.3yr out-of-sample grid search (train PF 1.10, val PF 1.06)
     macd_fast:      int   = 12
-    macd_slow:      int   = 26
-    macd_signal:    int   = 9
-    # BB params
-    bb_period:      int   = 20
-    bb_std:         float = 2.0
+    macd_slow:      int   = 21
+    macd_signal:    int   = 5
+    # BB params — tuned via 2.3yr out-of-sample grid search (train PF 3.08, val PF 1.28)
+    bb_period:      int   = 30
+    bb_std:         float = 2.5
     # Supertrend / Scalp params
     atr_period:     int   = 14
     st_multiplier:  float = 3.0
     # AI strategy
     ai_min_score:   int   = 65   # 0-100, only trade if AI score >= this
+    # Breakout
+    bo_lookback:    int   = 20   # bars to look back for the high/low channel
     # Risk management (ATR-based)
     trailing_atr:   float = 0.0  # 0=off, e.g. 2.0 = trail by 2*ATR
     tp_atr:         float = 0.0  # 0=off, e.g. 3.0 = TP at 3*ATR
@@ -5888,6 +5891,10 @@ def _ai_full_analysis(ohlcv, bot_params=None):
     }
 
 
+def _bot_lookback_bars(bot) -> int:
+    return max(100, (bot.get("slow_ema", 21) or 21) + 30)
+
+
 # ── STRATEGY SIGNAL ENGINE ───────────────────────────────────────────────────────
 def _get_bot_signal(bot, ohlcv):
     closes  = [c[4] for c in ohlcv]
@@ -5904,29 +5911,16 @@ def _get_bot_signal(bot, ohlcv):
         if adx < adx_min:
             return None   # choppy market, no trade
 
-    if strategy == "ema_cross":
-        fe = _ema_calc(closes, bot["fast_ema"])
-        se = _ema_calc(closes, bot["slow_ema"])
-        if len(fe) < 2 or len(se) < 2:
-            return None
-        if fe[-2] <= se[-2] and fe[-1] > se[-1]:
-            return "BUY"
-        if fe[-2] >= se[-2] and fe[-1] < se[-1]:
-            return "SELL"
-
-    elif strategy == "rsi":
+    # 2.3yr out-of-sample grid search (see research_crypto_all_strategies.py)
+    # validated only these 4 — ema_cross, breakout, supertrend, scalp, ai_score,
+    # btc_momentum_breakout, pin_bar_sr, engulfing_trend and pa_confluence were
+    # all removed after showing no real edge (or zero trades) on real data.
+    if strategy == "rsi":
         rsi = _rsi_calc(closes, bot["rsi_period"])
         bot["last_rsi"] = rsi
         if rsi <= bot["rsi_os"]:
             return "BUY"
         if rsi >= bot["rsi_ob"]:
-            return "SELL"
-
-    elif strategy == "breakout":
-        lb = min(20, len(closes) - 1)
-        if closes[-1] > max(highs[-lb-1:-1]):
-            return "BUY"
-        if closes[-1] < min(lows[-lb-1:-1]):
             return "SELL"
 
     elif strategy == "macd_cross":
@@ -5939,33 +5933,6 @@ def _get_bot_signal(bot, ohlcv):
         if hist[-2] <= 0 and hist[-1] > 0:
             return "BUY"
         if hist[-2] >= 0 and hist[-1] < 0:
-            return "SELL"
-
-    elif strategy == "btc_momentum_breakout":
-        # MACD cross + EMA200 trend + volume confirmation + EMA50 trend-strength
-        # filter. Backtested on BTC/USDT 1h, Binance, 2023-06→2025-10 (21000 bars):
-        # 302 trades, 42.7% WR, PF 1.40. Out-of-sample split-half validated
-        # (41.6%/1.32 then 43.6%/1.44 — consistent, not overfit). See
-        # research_crypto_btc.py for the full grid search.
-        macd_l, sig_l, hist = _macd_calc(closes, bot.get("macd_fast",12), bot.get("macd_slow",26), bot.get("macd_signal",9))
-        if not hist or len(hist) < 2 or len(closes) < 220:
-            return None
-        ema200 = _ema_calc(closes, min(200, len(closes)-1))
-        ema50  = _ema_calc(closes, 50)
-        atr_v  = _atr_calc(highs, lows, closes, 14)
-        if len(ema50) < 11 or not ema200:
-            return None
-        vol_avg = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else volumes[-1]
-        slope   = (ema50[-1] - ema50[-11]) / atr_v if atr_v else 0
-        vol_ok  = volumes[-1] > vol_avg * 1.2
-        cross_up = hist[-2] <= 0 and hist[-1] > 0
-        cross_dn = hist[-2] >= 0 and hist[-1] < 0
-        bot["last_macd"]   = round(macd_l[-1], 2)
-        bot["last_slope"]  = round(slope, 2)
-        bot["last_vol_x"]  = round(volumes[-1] / vol_avg, 2) if vol_avg else 0
-        if cross_up and closes[-1] > ema200[-1] and vol_ok and slope > 0:
-            return "BUY"
-        if cross_dn and closes[-1] < ema200[-1] and vol_ok and slope < 0:
             return "SELL"
 
     elif strategy == "bb_squeeze":
@@ -5983,87 +5950,6 @@ def _get_bot_signal(bot, ohlcv):
         if closes[-2] >= upper * 0.998 and closes[-1] < upper and rsi > 55 and vol_ok:
             return "SELL"
 
-    elif strategy == "supertrend":
-        prev_dir, _ = _supertrend_calc(highs[:-1], lows[:-1], closes[:-1],
-                                       bot.get("atr_period", 10), bot.get("st_multiplier", 3.0))
-        curr_dir, _ = _supertrend_calc(highs, lows, closes,
-                                       bot.get("atr_period", 10), bot.get("st_multiplier", 3.0))
-        if prev_dir == -1 and curr_dir == 1:
-            return "BUY"
-        if prev_dir == 1 and curr_dir == -1:
-            return "SELL"
-
-    elif strategy == "scalp":
-        # Fast scalp: 3/8 EMA cross + RSI momentum zone + volume
-        fe3  = _ema_calc(closes, 3)
-        fe8  = _ema_calc(closes, 8)
-        fe21 = _ema_calc(closes, 21)
-        rsi  = _rsi_calc(closes, 7)  # fast RSI
-        avg_vol = sum(volumes[-10:]) / 10 if len(volumes) >= 10 else 1
-        vol_ok  = volumes[-1] > avg_vol
-        if (len(fe3) < 2 or len(fe8) < 2): return None
-        # BUY: 3 crosses above 8, price > 21 EMA, RSI 45-65, volume ok
-        if fe3[-2] <= fe8[-2] and fe3[-1] > fe8[-1] and closes[-1] > fe21[-1] and 45 < rsi < 65 and vol_ok:
-            return "BUY"
-        # SELL: 3 crosses below 8, price < 21 EMA, RSI 35-55
-        if fe3[-2] >= fe8[-2] and fe3[-1] < fe8[-1] and closes[-1] < fe21[-1] and 35 < rsi < 55 and vol_ok:
-            return "SELL"
-
-    elif strategy == "ai_score":
-        analysis = _ai_full_analysis(ohlcv, bot)
-        bot["last_ai_score"]  = analysis["ai_score"]
-        bot["last_ai_signal"] = analysis["signal"]
-        threshold = bot.get("ai_min_score", 65)
-        if analysis["ai_score"] >= threshold:
-            return "BUY"
-        if analysis["ai_score"] <= (100 - threshold):
-            return "SELL"
-
-    elif strategy == "pin_bar_sr":
-        # Pin Bar at Key Level — 3-pillar (Candlestick Bible): Trend + Level + PA
-        opens_a = [c[1] for c in ohlcv]
-        atr_v = _atr_calc(highs, lows, closes, 14)
-        price = closes[-1]
-        fe50  = _ema_calc(closes, 50)
-        fe200 = _ema_calc(closes, min(200, len(closes)-1))
-        trend_bull = price > fe50[-1] > fe200[-1] if (fe50 and fe200) else False
-        trend_bear = price < fe50[-1] < fe200[-1] if (fe50 and fe200) else False
-        fib_dir, _ = _check_fibonacci_level(highs, lows, price, atr_v)
-        ema_dir, _ = _check_21ema_bounce(closes, highs, lows, price, atr_v)
-        # Simple SR: recent high/low proximity
-        w = min(40, len(highs)); rh = max(highs[-w:]); rl = min(lows[-w:])
-        tol = atr_v * 1.5
-        sr_dir = "BUY" if abs(price-rl)<tol else ("SELL" if abs(price-rh)<tol else "NEUTRAL")
-        level_bull = (sr_dir=="BUY" or fib_dir=="BUY" or ema_dir=="BUY")
-        level_bear = (sr_dir=="SELL" or fib_dir=="SELL" or ema_dir=="SELL")
-        pa = _detect_price_action(opens_a, closes, highs, lows)
-        pb_bull = any(p[0] in ("Bullish Pin Bar","Hammer","Tweezer Bottom") and p[1]=="BUY"  for p in pa)
-        pb_bear = any(p[0] in ("Bearish Pin Bar","Shooting Star","Tweezer Top") and p[1]=="SELL" for p in pa)
-        if trend_bull and level_bull and pb_bull: return "BUY"
-        if trend_bear and level_bear and pb_bear: return "SELL"
-
-    elif strategy == "engulfing_trend":
-        # Engulfing Bar at key level with trend
-        opens_a = [c[1] for c in ohlcv]
-        atr_v = _atr_calc(highs, lows, closes, 14)
-        price = closes[-1]
-        fe50  = _ema_calc(closes, 50)
-        fe200 = _ema_calc(closes, min(200, len(closes)-1))
-        trend_bull = price > fe50[-1] > fe200[-1] if (fe50 and fe200) else False
-        trend_bear = price < fe50[-1] < fe200[-1] if (fe50 and fe200) else False
-        fib_dir, _ = _check_fibonacci_level(highs, lows, price, atr_v)
-        ema_dir, _ = _check_21ema_bounce(closes, highs, lows, price, atr_v)
-        w = min(40, len(highs)); rh = max(highs[-w:]); rl = min(lows[-w:])
-        tol = atr_v * 1.5
-        sr_dir = "BUY" if abs(price-rl)<tol else ("SELL" if abs(price-rh)<tol else "NEUTRAL")
-        level_bull = (sr_dir=="BUY" or fib_dir=="BUY" or ema_dir=="BUY")
-        level_bear = (sr_dir=="SELL" or fib_dir=="SELL" or ema_dir=="SELL")
-        pa = _detect_price_action(opens_a, closes, highs, lows)
-        eng_bull = any(p[0] in ("Bullish Engulfing","Morning Star","Piercing Pattern") and p[1]=="BUY"  for p in pa)
-        eng_bear = any(p[0] in ("Bearish Engulfing","Evening Star","Dark Cloud Cover") and p[1]=="SELL" for p in pa)
-        if trend_bull and level_bull and eng_bull: return "BUY"
-        if trend_bear and level_bear and eng_bear: return "SELL"
-
     elif strategy == "false_breakout":
         # Inside Bar False Breakout — institutional stop hunt trap (highest WR)
         opens_a = [c[1] for c in ohlcv]
@@ -6072,32 +5958,6 @@ def _get_bot_signal(bot, ohlcv):
         fbo_bear = any(p[0] == "IB False Breakout" and p[1] == "SELL" for p in pa)
         if fbo_bull: return "BUY"
         if fbo_bear: return "SELL"
-
-    elif strategy == "pa_confluence":
-        # Full 3-Pillar PA: Trend + Key Level + PA Signal (all books synthesis)
-        opens_a = [c[1] for c in ohlcv]
-        atr_v = _atr_calc(highs, lows, closes, 14)
-        price = closes[-1]
-        fe50  = _ema_calc(closes, 50)
-        fe200 = _ema_calc(closes, min(200, len(closes)-1))
-        fe21  = _ema_calc(closes, 21)
-        curr_dir, _ = _supertrend_calc(highs, lows, closes)
-        trend_bull = (price > fe50[-1] > fe200[-1] if (fe50 and fe200) else False) and curr_dir == 1
-        trend_bear = (price < fe50[-1] < fe200[-1] if (fe50 and fe200) else False) and curr_dir == -1
-        fib_dir, _ = _check_fibonacci_level(highs, lows, price, atr_v)
-        ema_dir, _ = _check_21ema_bounce(closes, highs, lows, price, atr_v)
-        dt_dir, _  = _detect_double_top_bottom(highs, lows, closes, atr_v)
-        w = min(40, len(highs)); rh = max(highs[-w:]); rl = min(lows[-w:])
-        tol = atr_v * 1.5
-        sr_dir = "BUY" if abs(price-rl)<tol else ("SELL" if abs(price-rh)<tol else "NEUTRAL")
-        level_bull = (sr_dir=="BUY" or fib_dir=="BUY" or ema_dir=="BUY" or dt_dir=="BUY")
-        level_bear = (sr_dir=="SELL" or fib_dir=="SELL" or ema_dir=="SELL" or dt_dir=="SELL")
-        pa = _detect_price_action(opens_a, closes, highs, lows)
-        pa_bull_str = max((p[2] for p in pa if p[1]=="BUY"),  default=0)
-        pa_bear_str = max((p[2] for p in pa if p[1]=="SELL"), default=0)
-        pa_bull = pa_bull_str >= 0.70; pa_bear = pa_bear_str >= 0.70
-        if sum([trend_bull, level_bull, pa_bull]) == 3: return "BUY"
-        if sum([trend_bear, level_bear, pa_bear]) == 3: return "SELL"
 
     return None
 
@@ -6114,7 +5974,7 @@ def _bot_tick_demo(bot_id):
         pm = _get_pub_mkt()
         if not pm:
             return
-        limit = max(100, (bot.get("slow_ema", 21) or 21) + 30)
+        limit = _bot_lookback_bars(bot)
         ohlcv  = pm.fetch_ohlcv(bot["symbol"], bot["timeframe"], limit=limit)
         signal = _get_bot_signal(bot, ohlcv)
         price  = float(ohlcv[-1][4])
@@ -6229,7 +6089,7 @@ def _bot_tick(bot_id):
         pm = _get_pub_mkt()
         if not pm:
             return
-        limit = max(100, (bot.get("slow_ema", 21) or 21) + 30)
+        limit = _bot_lookback_bars(bot)
         ohlcv  = pm.fetch_ohlcv(bot["symbol"], bot["timeframe"], limit=limit)
         signal = _get_bot_signal(bot, ohlcv)
         price  = float(ohlcv[-1][4])
@@ -6399,6 +6259,8 @@ def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_curre
         "atr_period": req.atr_period, "st_multiplier": req.st_multiplier,
         # AI
         "ai_min_score": req.ai_min_score,
+        # Breakout
+        "bo_lookback": req.bo_lookback,
         # Risk management
         "trailing_atr": req.trailing_atr, "tp_atr": req.tp_atr, "adx_min": req.adx_min,
         # Risk management
@@ -6545,13 +6407,31 @@ def crypto_reports_summary(mode: str = "live", current_user: dict = Depends(_get
             "best_day": {}, "best_month": {}, "equity_curve": [],
         }
 
+    report = _aggregate_trade_report(closed_trades)
+    return {
+        "summary": {**report["stats"], "total_trades": len(closed_trades), "open_pnl": round(open_pnl_total, 4)},
+        "by_session": report["by_session"],
+        "by_symbol": report["by_symbol"],
+        "daily": report["daily"],
+        "monthly": report["monthly"],
+        "best_day": report["best_day"],
+        "best_month": report["best_month"],
+        "equity_curve": report["equity_curve"],
+    }
+
+
+def _aggregate_trade_report(closed_trades: list) -> dict:
+    """Shared aggregation: turns a flat list of closed trades (each needs at
+    least time/pnl/symbol) into session/symbol/daily/monthly breakdowns, best
+    day/month, an equity curve, and win-rate/profit-factor/net-pnl stats.
+    Used by both the live/demo reports endpoint and the strategy backtester."""
     def _parse_time(t):
         try:
             return datetime.strptime(t["time"], "%Y-%m-%d %H:%M")
         except Exception:
             return datetime.now()
 
-    closed_trades.sort(key=lambda t: t.get("time", ""))
+    closed_trades = sorted(closed_trades, key=lambda t: t.get("time", ""))
 
     by_session = {s: {"session": s, "trades": 0, "wins": 0, "losses": 0, "pnl": 0.0}
                   for s in ["Asian", "London", "New York", "Off-Hours"]}
@@ -6603,9 +6483,8 @@ def crypto_reports_summary(mode: str = "live", current_user: dict = Depends(_get
     best_day   = max(daily_list,   key=lambda x: x["pnl"]) if daily_list   else {}
     best_month = max(monthly_list, key=lambda x: x["pnl"]) if monthly_list else {}
 
-    stats = _bot_stats(closed_trades)
     return {
-        "summary": {**stats, "total_trades": len(closed_trades), "open_pnl": round(open_pnl_total, 4)},
+        "stats": _bot_stats(closed_trades),
         "by_session": list(by_session.values()),
         "by_symbol": sorted(by_symbol.values(), key=lambda x: x["trades"], reverse=True),
         "daily": daily_list,
@@ -6631,6 +6510,213 @@ def _bot_stats(trades: list) -> dict:
         "profit_factor": round(gross_w / gross_l, 2) if gross_l else (999 if gross_w else None),
         "net_pnl":       round(sum(t.get("pnl", 0) for t in closed), 4),
     }
+
+
+# ── STRATEGY BACKTESTER — 1-year historical run, all strategies at once ──────
+_ALL_CRYPTO_STRATEGIES = ["rsi", "macd_cross", "bb_squeeze", "false_breakout"]
+
+_backtest_data_cache: dict = {}   # f"{symbol}:{timeframe}:{days}" -> {"data": [...], "fetched_at": ts}
+
+
+def _fetch_backtest_ohlcv(symbol: str = "BTC/USDT", timeframe: str = "1h", days: int = 365) -> list:
+    """1 year (default) of historical OHLCV from Binance public spot data —
+    cached for an hour since a full fetch takes a while and the same window
+    is reused across all 13 strategies in one backtest run."""
+    cache_key = f"{symbol}:{timeframe}:{days}"
+    cached = _backtest_data_cache.get(cache_key)
+    if cached and (_time.time() - cached["fetched_at"]) < 3600:
+        return cached["data"]
+
+    ex = _ccxt.binance()
+    since = ex.parse8601((datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    all_rows = []
+    while True:
+        batch = ex.fetch_ohlcv(symbol, timeframe=timeframe, since=since, limit=1000)
+        if not batch:
+            break
+        all_rows += batch
+        if len(batch) < 1000:
+            break
+        since = batch[-1][0] + 1
+        if len(all_rows) > 20000:
+            break
+    _backtest_data_cache[cache_key] = {"data": all_rows, "fetched_at": _time.time()}
+    return all_rows
+
+
+def _run_backtest_strategy(strategy: str, ohlcv: list, symbol: str, timeframe: str,
+                            demo_balance: float = 1000.0, risk_pct: float = 1.0,
+                            leverage: int = 10, param_overrides: dict | None = None) -> dict:
+    """Synchronous, bar-by-bar replay of the exact same signal + demo-fill
+    logic the live paper-trading bot uses (_bot_tick_demo), but over historical
+    candles instead of a live feed. Every bar only sees a bounded trailing
+    window — the same size a live/demo bot would actually fetch for this
+    strategy (see _bot_lookback_bars) — so there's no lookahead bias and the
+    backtest is a faithful preview of how the bot behaves for real.
+    param_overrides lets the strategy-research grid search reuse this exact
+    simulation loop with different indicator settings instead of duplicating it."""
+    bot = {
+        "strategy": strategy, "symbol": symbol, "timeframe": timeframe,
+        "risk_pct": risk_pct, "leverage": leverage, "max_open_trades": 2,
+        "demo_balance": demo_balance, "demo_equity": demo_balance,
+        "fast_ema": 9, "slow_ema": 21,
+        "rsi_period": 7, "rsi_ob": 75, "rsi_os": 25,
+        "macd_fast": 12, "macd_slow": 21, "macd_signal": 5,
+        "bb_period": 30, "bb_std": 2.5,
+        "atr_period": 14, "st_multiplier": 3.0,
+        "ai_min_score": 65, "trailing_atr": 0.0, "tp_atr": 0.0, "adx_min": 0,
+        "bo_lookback": 20,
+        "open_side": None, "open_entry_price": None, "open_amount": 0,
+        "open_trade_count": 0, "open_peak": None, "open_trough": None,
+        "trades": [],
+    }
+    if param_overrides:
+        bot.update(param_overrides)
+    window = _bot_lookback_bars(bot)
+
+    def _close(exit_price, exit_reason):
+        ep, oside, amt = bot["open_entry_price"], bot["open_side"], bot["open_amount"]
+        pnl = (exit_price - ep) * amt if oside == "BUY" else (ep - exit_price) * amt
+        bot["demo_equity"] = round(bot["demo_equity"] + pnl, 4)
+        if bot["trades"]:
+            bot["trades"][-1]["exit_reason"] = exit_reason
+            bot["trades"][-1]["exit_price"]  = round(exit_price, 4)
+            bot["trades"][-1]["pnl"]         = round(pnl, 4)
+            bot["trades"][-1]["status"]      = "closed"
+        bot["open_side"] = None
+        bot["open_entry_price"] = None
+        bot["open_amount"] = 0
+        bot["open_trade_count"] = 0
+
+    equity_peak = demo_balance
+    max_dd_pct  = 0.0
+    n = len(ohlcv)
+
+    for i in range(window - 1, n):
+        win = ohlcv[i - window + 1:i + 1]
+        closes = [c[4] for c in win]
+        highs  = [c[2] for c in win]
+        lows   = [c[3] for c in win]
+        price  = closes[-1]
+        ts     = win[-1][0]
+
+        try:
+            signal = _get_bot_signal(bot, win)
+        except Exception:
+            signal = None
+        try:
+            atr = _atr_calc(highs, lows, closes, 14)
+        except Exception:
+            atr = 0
+
+        if bot["open_side"] and (bot["trailing_atr"] > 0 or bot["tp_atr"] > 0):
+            ep, oside = bot["open_entry_price"], bot["open_side"]
+            trail = bot["trailing_atr"] * atr
+            tp    = bot["tp_atr"] * atr
+            should_exit, exit_reason = False, ""
+            if oside == "BUY":
+                bot["open_peak"] = max(bot["open_peak"], price)
+                if trail > 0 and price < bot["open_peak"] - trail:
+                    should_exit, exit_reason = True, "trailing_stop"
+                if tp > 0 and price >= ep + tp:
+                    should_exit, exit_reason = True, "take_profit"
+            else:
+                bot["open_trough"] = min(bot["open_trough"], price)
+                if trail > 0 and price > bot["open_trough"] + trail:
+                    should_exit, exit_reason = True, "trailing_stop"
+                if tp > 0 and price <= ep - tp:
+                    should_exit, exit_reason = True, "take_profit"
+            if should_exit:
+                _close(price, exit_reason)
+
+        if signal:
+            if bot["open_side"] and bot["open_side"] != signal:
+                _close(price, "signal_flip")
+            if bot["open_trade_count"] < bot["max_open_trades"] and price > 0:
+                equity      = bot["demo_equity"]
+                risk_usd    = equity * bot["risk_pct"] / 100
+                atr_pct     = (atr / price) * 100 if price else 0
+                size_factor = min(1.0, 0.5 / atr_pct) if atr_pct > 0.5 else 1.0
+                amount      = round((risk_usd * bot["leverage"] * size_factor) / price, 6)
+                if amount > 0:
+                    bot["trades"].append({
+                        "time":     datetime.utcfromtimestamp(ts / 1000).strftime("%Y-%m-%d %H:%M"),
+                        "signal":   signal,
+                        "price":    round(price, 4),
+                        "amount":   amount,
+                        "order_id": "backtest",
+                        "pnl":      0,
+                        "status":   "open",
+                    })
+                    bot["open_side"]        = signal
+                    bot["open_entry_price"] = price
+                    bot["open_amount"]      = amount
+                    bot["open_peak"]        = price
+                    bot["open_trough"]      = price
+                    bot["open_trade_count"] += 1
+
+        if bot["demo_equity"] > equity_peak:
+            equity_peak = bot["demo_equity"]
+        elif equity_peak > 0:
+            dd = (equity_peak - bot["demo_equity"]) / equity_peak * 100
+            if dd > max_dd_pct:
+                max_dd_pct = dd
+
+    closed = [t for t in bot["trades"] if t.get("status") == "closed"]
+    report = _aggregate_trade_report([{**t, "symbol": symbol} for t in closed]) if closed else {
+        "stats": {"closed_trades": 0, "win_rate": None, "profit_factor": None, "net_pnl": 0.0},
+        "best_day": {}, "best_month": {}, "equity_curve": [],
+    }
+    return {
+        "strategy":         strategy,
+        "total_trades":     len(closed),
+        "win_rate":         report["stats"]["win_rate"],
+        "profit_factor":    report["stats"]["profit_factor"],
+        "net_pnl":          report["stats"]["net_pnl"],
+        "net_pnl_pct":      round(report["stats"]["net_pnl"] / demo_balance * 100, 2) if demo_balance else 0,
+        "final_equity":     bot["demo_equity"],
+        "max_drawdown_pct": round(max_dd_pct, 2),
+        "best_day":         report["best_day"],
+        "best_month":       report["best_month"],
+        "equity_curve":     report["equity_curve"],
+    }
+
+
+@app.get("/api/crypto/backtest/all")
+def crypto_backtest_all(symbol: str = "BTC/USDT", timeframe: str = "1h", days: int = 365,
+                         current_user: dict = Depends(_get_current_user)):
+    """Run every crypto strategy through a 1-year (default) historical replay
+    in paper-trading mode and return a side-by-side performance report — lets
+    you pick a strategy before pointing real money (or even a live demo bot)
+    at it."""
+    if not _CCXT_OK:
+        return JSONResponse(status_code=503, content={"error": "ccxt not available on this server"})
+    try:
+        ohlcv = _fetch_backtest_ohlcv(symbol, timeframe, days)
+    except Exception as e:
+        return JSONResponse(status_code=502, content={"error": f"Failed to fetch historical data: {e}"})
+    if len(ohlcv) < 250:
+        return JSONResponse(status_code=502, content={"error": "Not enough historical data returned"})
+
+    results = []
+    for strategy in _ALL_CRYPTO_STRATEGIES:
+        try:
+            results.append(_run_backtest_strategy(strategy, ohlcv, symbol, timeframe))
+        except Exception as e:
+            results.append({"strategy": strategy, "error": str(e)[:200]})
+
+    results.sort(key=lambda r: r.get("net_pnl", -1e18) if "error" not in r else -1e18, reverse=True)
+
+    return {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "days": days,
+        "bars": len(ohlcv),
+        "data_from": datetime.utcfromtimestamp(ohlcv[0][0] / 1000).strftime("%Y-%m-%d"),
+        "data_to":   datetime.utcfromtimestamp(ohlcv[-1][0] / 1000).strftime("%Y-%m-%d"),
+        "results": results,
+    }
+
 
 @app.get("/api/crypto/algo/list")
 def crypto_algo_list(live: bool = False, current_user: dict = Depends(_get_current_user)):
@@ -6839,7 +6925,30 @@ _TG_CFG_DEF = {
     "enabled":        False,
     "notify_enabled": True,          # outgoing alerts: trade open/close, errors, drawdown
     "drawdown_pct":   5.0,           # alert when equity drops this % below session peak
+    "mode":           "demo",        # "demo" (paper trade, no real orders) | "live" (real money)
+    "demo_balance":   1000.0,        # virtual starting balance for demo mode
 }
+
+# ── Telegram demo (paper-trade) state — separate file since it's runtime
+# state, not configuration, and grows over time as signals come in.
+_TG_DEMO_FILE = "telegram_demo_state.json"
+
+
+def _load_tg_demo_state() -> dict:
+    try:
+        with open(_TG_DEMO_FILE) as f:
+            st = json.load(f)
+    except Exception:
+        st = {}
+    st.setdefault("equity", _TG_CFG_DEF["demo_balance"])
+    st.setdefault("positions", {})   # symbol -> {side, entry, amount}
+    st.setdefault("trades", [])      # closed trades: {time, symbol, side, entry, exit, amount, pnl}
+    return st
+
+
+def _save_tg_demo_state(st: dict):
+    with open(_TG_DEMO_FILE, "w") as f:
+        json.dump(st, f, indent=2)
 
 
 def _load_tg_cfg() -> dict:
@@ -7176,6 +7285,41 @@ def _tg_execute_signal(sig: dict, cfg: dict) -> list:
     return results
 
 
+def _tg_execute_signal_demo(sig: dict, cfg: dict) -> list:
+    """Paper-trade version of _tg_execute_signal — same fixed-contract sizing
+    and same flip-on-opposite-signal behaviour, but fills against the live
+    public price instead of placing a real order. Lets you see how a
+    Telegram channel's signals would have performed before risking money on
+    them."""
+    pm = _get_pub_mkt()
+    if not pm:
+        return [{"exchange": "demo", "ok": False, "error": "Market data not available"}]
+    try:
+        last = pm.fetch_ohlcv(sig["symbol"], "1m", limit=1)
+        price = float(last[-1][4])
+    except Exception as e:
+        return [{"exchange": "demo", "ok": False, "error": f"Price fetch failed: {e}"[:150]}]
+
+    st = _load_tg_demo_state()
+    sym = sig["symbol"]
+    pos = st["positions"].get(sym)
+
+    if pos and pos["side"] != sig["side"]:
+        pnl = (price - pos["entry"]) * pos["amount"] if pos["side"] == "buy" else (pos["entry"] - price) * pos["amount"]
+        st["equity"] = round(st["equity"] + pnl, 4)
+        st["trades"].append({
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M"), "symbol": sym,
+            "side": pos["side"], "entry": pos["entry"], "exit": price,
+            "amount": pos["amount"], "pnl": round(pnl, 4), "status": "closed",
+        })
+        del st["positions"][sym]
+
+    amt = cfg.get("amount", 0.01)
+    st["positions"][sym] = {"side": sig["side"], "entry": price, "amount": amt}
+    _save_tg_demo_state(st)
+    return [{"exchange": "demo", "ok": True, "order_id": "demo", "side": sig["side"], "amount": amt}]
+
+
 def _tg_poll_loop():
     global _TG_OFFSET, _TG_RUNNING
     print("Telegram bot: polling started")
@@ -7235,9 +7379,11 @@ def _tg_poll_loop():
             }
 
             if cfg.get("auto_trade") and cfg.get("enabled"):
-                results = _tg_execute_signal(sig, cfg)
+                is_demo = cfg.get("mode", "demo") == "demo"
+                results = _tg_execute_signal_demo(sig, cfg) if is_demo else _tg_execute_signal(sig, cfg)
                 rec["results"] = results
-                rec["status"]  = "executed" if any(r["ok"] for r in results) else "failed"
+                rec["mode"]    = "demo" if is_demo else "live"
+                rec["status"]  = ("demo_executed" if is_demo else "executed") if any(r["ok"] for r in results) else "failed"
             else:
                 rec["status"] = "signal"   # received but not auto-traded
 
@@ -7283,6 +7429,8 @@ class TgConfigReq(BaseModel):
     enabled:         bool  = True
     notify_enabled:  bool  = True
     drawdown_pct:    float = 5.0
+    mode:            str   = "demo"        # "demo" (paper trade) | "live" (real money)
+    demo_balance:    float = 1000.0
 
 
 @app.post("/api/telegram/config")
@@ -7311,12 +7459,16 @@ def tg_config_get():
 def tg_status():
     cfg = _load_tg_cfg()
     return {
-        "running":    _TG_RUNNING,
-        "enabled":    cfg.get("enabled", False),
-        "auto_trade": cfg.get("auto_trade", False),
-        "exchanges":  cfg.get("exchanges", []),
-        "chat_id":    cfg.get("chat_id", ""),
-        "has_token":  bool(cfg.get("token")),
+        "running":      _TG_RUNNING,
+        "enabled":      cfg.get("enabled", False),
+        "auto_trade":   cfg.get("auto_trade", False),
+        "exchanges":    cfg.get("exchanges", []),
+        "chat_id":      cfg.get("chat_id", ""),
+        "has_token":    bool(cfg.get("token")),
+        "mode":         cfg.get("mode", "demo"),
+        "demo_balance": cfg.get("demo_balance", 1000.0),
+        "drawdown_pct": cfg.get("drawdown_pct", 5.0),
+        "notify_enabled": cfg.get("notify_enabled", True),
     }
 
 
@@ -7346,10 +7498,25 @@ def tg_execute_manual(idx: int):
         "side":     rec["side"],
         "leverage": rec.get("leverage", 10),
     }
-    results = _tg_execute_signal(sig, cfg)
+    is_demo = cfg.get("mode", "demo") == "demo"
+    results = _tg_execute_signal_demo(sig, cfg) if is_demo else _tg_execute_signal(sig, cfg)
     rec["results"] = results
-    rec["status"]  = "executed" if any(r["ok"] for r in results) else "failed"
+    rec["mode"]    = "demo" if is_demo else "live"
+    rec["status"]  = ("demo_executed" if is_demo else "executed") if any(r["ok"] for r in results) else "failed"
     return {"ok": True, "results": results}
+
+
+@app.get("/api/telegram/demo_stats")
+def tg_demo_stats():
+    st = _load_tg_demo_state()
+    closed = st.get("trades", [])
+    stats = _bot_stats(closed)
+    open_positions = [{"symbol": sym, **pos} for sym, pos in st.get("positions", {}).items()]
+    return {
+        "equity": st.get("equity", 1000.0),
+        "open_positions": open_positions,
+        **stats,
+    }
 
 
 if __name__ == "__main__":

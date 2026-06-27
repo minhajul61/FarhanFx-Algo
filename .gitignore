@@ -10,6 +10,7 @@ server_out.log
 server_err.log
 watchdog_local.log
 telegram_cfg.json
+telegram_demo_state.json
 capital_protection.json
 forex_bot_config.json
 forex_bot_status.json
