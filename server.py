@@ -6962,6 +6962,15 @@ import re as _re
 import urllib.request as _urllib_req
 import urllib.error   as _urllib_err
 
+try:
+    from telethon import TelegramClient as _TelethonClient
+    from telethon import events as _telethon_events
+    _TELETHON_OK = True
+except ImportError:
+    _TelethonClient = None
+    _telethon_events = None
+    _TELETHON_OK = False
+
 _TG_FILE     = "telegram_cfg.json"
 _TG_SIGNALS  : list = []          # last 100 parsed signals
 _TG_RUNNING  = False
@@ -7018,6 +7027,77 @@ def _load_tg_cfg() -> dict:
 def _save_tg_cfg(cfg: dict):
     with open(_TG_FILE, "w") as f:
         json.dump(cfg, f, indent=2)
+
+
+# ── TELEGRAM USERBOT — reads channels the user is a member of but not an
+# admin of (the Bot API can only read channels a bot is an admin in). Logs
+# in once as the user's own Telegram account (see telegram_userbot_cfg.json
+# + telegram_userbot_session.session, created by a one-time interactive
+# login), then listens for new posts in one specific channel and feeds them
+# into the exact same parse → demo/live execution pipeline as the Bot API
+# poller, so both sources show up in the same Signal Log / reports.
+_TG_USERBOT_FILE = "telegram_userbot_cfg.json"
+_TG_USERBOT_SESSION = "telegram_userbot_session"
+
+
+def _load_tg_userbot_cfg() -> dict | None:
+    try:
+        with open(_TG_USERBOT_FILE, encoding="utf-8") as f:
+            cfg = json.load(f)
+        if cfg.get("api_id") and cfg.get("api_hash") and cfg.get("channel"):
+            return cfg
+    except Exception:
+        pass
+    return None
+
+
+def _tg_userbot_thread():
+    if not _TELETHON_OK:
+        print("Telegram userbot: telethon not installed, skipping")
+        return
+    cfg = _load_tg_userbot_cfg()
+    if not cfg:
+        return
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    client = _TelethonClient(_TG_USERBOT_SESSION, cfg["api_id"], cfg["api_hash"], loop=loop)
+
+    @client.on(_telethon_events.NewMessage(chats=cfg["channel"]))
+    async def _on_message(event):
+        try:
+            text = event.message.message or ""
+            sig = _parse_tg_signal(text)
+            if not sig:
+                return
+            tg_cfg = _load_tg_cfg()
+            if not (tg_cfg.get("auto_trade") and tg_cfg.get("enabled")):
+                return
+            rec = {
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "symbol": sig["symbol"], "side": sig["side"], "entry": sig.get("entry"),
+                "tp": sig.get("tp"), "sl": sig.get("sl"), "leverage": sig.get("leverage"),
+                "raw": sig.get("raw", "")[:200], "status": "received", "results": [],
+                "chat_id": str(cfg["channel"]), "source": "userbot",
+            }
+            is_demo = tg_cfg.get("mode", "demo") == "demo"
+            results = _tg_execute_signal_demo(sig, tg_cfg) if is_demo else _tg_execute_signal(sig, tg_cfg)
+            rec["results"] = results
+            rec["mode"]    = "demo" if is_demo else "live"
+            rec["status"]  = ("demo_executed" if is_demo else "executed") if any(r["ok"] for r in results) else "failed"
+            _TG_SIGNALS.insert(0, rec)
+            if len(_TG_SIGNALS) > 100:
+                _TG_SIGNALS.pop()
+            print(f"Telegram userbot signal: {sig['side'].upper()} {sig['symbol']} → {rec['status']}")
+        except Exception as e:
+            print(f"Telegram userbot handler error: {e}")
+
+    try:
+        client.start()
+        print(f"Telegram userbot: listening on channel {cfg.get('channel_title', cfg['channel'])}")
+        client.run_until_disconnected()
+    except Exception as e:
+        print(f"Telegram userbot error: {e}")
 
 
 def _tg_api(token: str, method: str, params: dict | None = None) -> dict:
@@ -7429,6 +7509,7 @@ def _tg_poll_loop():
                 "status":   "received",
                 "results":  [],
                 "chat_id":  chat_id,
+                "source":   "bot_api",
             }
 
             if cfg.get("auto_trade") and cfg.get("enabled"):
@@ -7468,6 +7549,14 @@ try:
     _tg_startup_cfg = _load_tg_cfg()
     if _tg_startup_cfg.get("token") and _tg_startup_cfg.get("enabled"):
         _start_tg_bot()
+except Exception:
+    pass
+
+# Auto-start the userbot channel listener if it's configured (separate from
+# the Bot API poller above — see _tg_userbot_thread's docstring)
+try:
+    if _load_tg_userbot_cfg():
+        threading.Thread(target=_tg_userbot_thread, daemon=True).start()
 except Exception:
     pass
 

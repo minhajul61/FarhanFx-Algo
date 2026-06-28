@@ -2,3 +2,4 @@ MetaTrader5
 fastapi
 uvicorn[standard]
 pydantic
+telethon

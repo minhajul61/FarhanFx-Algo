@@ -11,6 +11,9 @@ server_err.log
 watchdog_local.log
 telegram_cfg.json
 telegram_demo_state.json
+telegram_userbot_cfg.json
+*.session
+*.session-journal
 capital_protection.json
 forex_bot_config.json
 forex_bot_status.json
