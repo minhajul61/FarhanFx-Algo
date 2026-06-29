@@ -2971,6 +2971,11 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px">
               <!-- Left: bot settings -->
               <div>
+                <div id="tg-connected-banner" style="display:none;background:rgba(34,197,94,0.08);border:1px solid var(--green);border-radius:8px;padding:10px 12px;margin-bottom:12px;align-items:center;justify-content:space-between">
+                  <span style="color:var(--green);font-weight:700;font-size:12px">✅ Telegram Connected — LIVE</span>
+                  <button onclick="tgToggleEditSettings()" style="padding:4px 10px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">EDIT SETTINGS</button>
+                </div>
+                <div id="tg-config-section">
                 <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:8px">BOT CONFIGURATION</div>
                 <div class="field" style="margin-bottom:8px">
                   <label>Bot Token <span style="color:var(--text3);font-size:9px">(from @BotFather)</span></label>
@@ -2982,6 +2987,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 <div class="field" style="margin-bottom:8px">
                   <label>Allowed Chat ID <span style="color:var(--text3);font-size:9px">(blank = accept all)</span></label>
                   <input id="tg-chat-id" class="sinput" style="width:100%;font-family:monospace" placeholder="-1001234567890"/>
+                </div>
                 </div>
                 <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:6px;margin-top:10px">TRADE SETTINGS</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
@@ -7666,12 +7672,41 @@ async function tgSaveConfig(enable) {
   tgLoadStatus();
 }
 
+let _tgEditMode = false;   // manually forced open via the "EDIT SETTINGS" button
+
+function tgToggleEditSettings() {
+  _tgEditMode = !_tgEditMode;
+  if (_tgEditMode) {
+    const cfg = document.getElementById('tg-config-section');
+    const banner = document.getElementById('tg-connected-banner');
+    if (cfg) cfg.style.display = 'block';
+    if (banner) banner.style.display = 'none';
+  } else {
+    tgLoadStatus();
+  }
+}
+
 async function tgLoadStatus() {
   const r = await apiFetch('/api/telegram/status');
   if (r.error) return;
   _tgHasToken = !!r.has_token;
   const tokenEl = document.getElementById('tg-token');
   if (tokenEl) tokenEl.placeholder = _tgHasToken ? 'Saved — leave blank to keep it' : '123456789:ABCDefgh...';
+
+  // Once successfully connected, swap the token/chat-id fields for a clean
+  // "Connected" banner — re-show them via EDIT SETTINGS, or automatically
+  // if the connection drops.
+  const connected = !!(r.running && r.has_token);
+  const cfgSection = document.getElementById('tg-config-section');
+  const banner = document.getElementById('tg-connected-banner');
+  if (connected && !_tgEditMode) {
+    if (cfgSection) cfgSection.style.display = 'none';
+    if (banner) banner.style.display = 'flex';
+  } else {
+    if (cfgSection) cfgSection.style.display = 'block';
+    if (banner) banner.style.display = 'none';
+  }
+
   const badge = document.getElementById('tg-status-badge');
   if (badge) {
     if (r.running && r.enabled) {
