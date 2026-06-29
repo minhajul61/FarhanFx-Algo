@@ -7229,10 +7229,12 @@ import urllib.error   as _urllib_err
 try:
     from telethon import TelegramClient as _TelethonClient
     from telethon import events as _telethon_events
+    from telethon.tl.types import PeerChannel as _TelethonPeerChannel
     _TELETHON_OK = True
 except ImportError:
     _TelethonClient = None
     _telethon_events = None
+    _TelethonPeerChannel = None
     _TELETHON_OK = False
 
 _TG_FILE     = "telegram_cfg.json"
@@ -7326,8 +7328,13 @@ def _tg_userbot_thread():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     client = _TelethonClient(_TG_USERBOT_SESSION, cfg["api_id"], cfg["api_hash"], loop=loop)
+    # A bare int channel ID is ambiguous to Telethon (it can't tell a channel
+    # ID from a user ID without a hint) and silently fails to resolve, which
+    # means the filter below never actually matches anything — wrap it in
+    # PeerChannel so it's unambiguous.
+    channel_peer = _TelethonPeerChannel(cfg["channel"])
 
-    @client.on(_telethon_events.NewMessage(chats=cfg["channel"]))
+    @client.on(_telethon_events.NewMessage(chats=channel_peer))
     async def _on_message(event):
         try:
             text = event.message.message or ""
@@ -7364,7 +7371,8 @@ def _tg_userbot_thread():
 
     try:
         client.start()
-        print(f"Telegram userbot: listening on channel {cfg.get('channel_title', cfg['channel'])}")
+        entity = loop.run_until_complete(client.get_entity(channel_peer))
+        print(f"Telegram userbot: listening on channel {getattr(entity, 'title', cfg['channel'])}")
         client.run_until_disconnected()
     except Exception as e:
         print(f"Telegram userbot error: {e}")
@@ -7608,29 +7616,46 @@ def _parse_tg_signal(text: str) -> dict | None:
         m = _re.search(r'#([A-Z]{2,10})', t, _re.I)
         if m:
             sym_raw = m.group(1).upper()
+        else:
+            # Some channels just write the bare ticker with no "/USDT" suffix
+            # and no hashtag, e.g. "SCALP TRADE - WIF" or "WLD SCALP TRADE".
+            # Scan the headline (first line) for an all-caps 2-6 letter token
+            # that isn't common signal-post jargon.
+            _SYM_STOPWORDS = {
+                "SCALP","TRADE","TRADES","LONG","SHORT","BUY","SELL","ENTRY","TARGET","TARGETS",
+                "LEVERAGE","STOP","LOSS","TYPE","DIRECTION","DONE","PROFIT","BOOK","SHIFT","NOW",
+                "ZOOM","LIVE","FOR","AND","JOIN","WE","ARE","USDT","BUSD","USDC","BTC","SETUP",
+                "SIGNAL","SIGNALS","NEW","USERS","WELCOME","EVENT","REWARD","REWARDS","TOTAL",
+                "POOL","CAMPAIGN","EXCLUSIVE","STEP","VALID","ON","IN","TO","AT","SL","TP",
+            }
+            first_line = t.split("\n", 1)[0]
+            for tok in _re.findall(r'\b[A-Z]{2,6}\b', first_line):
+                if tok not in _SYM_STOPWORDS:
+                    sym_raw = tok
+                    break
     if not sym_raw:
         return None
 
     symbol = _normalise_symbol(sym_raw)
 
-    # Entry — take first number in entry range
+    # Entry — take first number in entry range (some channels write "$0.081")
     entry = None
-    m = _re.search(r'entry\s*[:\-–]?\s*([\d,.]+)', t, _re.I)
+    m = _re.search(r'entry\s*[:\-–]?\s*\$?\s*([\d,.]+)', t, _re.I)
     if m:
         entry = float(m.group(1).replace(",", ""))
     else:
         # Try "@ 63500"
-        m = _re.search(r'@\s*([\d,.]+)', t, _re.I)
+        m = _re.search(r'@\s*\$?\s*([\d,.]+)', t, _re.I)
         if m:
             entry = float(m.group(1).replace(",", ""))
 
     # TP — collect all TP values, use first
-    tps = _re.findall(r'(?:tp\d*|take\s*profit)\s*[:\-–]?\s*([\d,.]+)', t, _re.I)
+    tps = _re.findall(r'(?:tp\d*|take\s*profit|targets?\d*)\s*[:\-–]?\s*\$?\s*([\d,.]+)', t, _re.I)
     tp = float(tps[0].replace(",", "")) if tps else None
 
     # SL
     sl = None
-    m = _re.search(r'(?:sl|stop\s*loss)\s*[:\-–]?\s*([\d,.]+)', t, _re.I)
+    m = _re.search(r'(?:sl|stop\s*loss)\s*[:\-–]?\s*\$?\s*([\d,.]+)', t, _re.I)
     if m:
         sl = float(m.group(1).replace(",", ""))
 
