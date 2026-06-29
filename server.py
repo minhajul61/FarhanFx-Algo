@@ -5179,6 +5179,7 @@ def _load_saved_bots():
                 bot.setdefault("bo_lookback", 20)
                 bot.setdefault("dc_period", 55)
                 bot.setdefault("dc_ema", 150)
+                bot.setdefault("fixed_amount", 0.0)
                 _crypto_bots[bid] = bot
                 if bot.get('status') == 'active':
                     delay = 15 + keys.index(bid) * 3
@@ -5548,6 +5549,7 @@ class CryptoBotReq(BaseModel):
     strategy:       str          # rsi|macd_cross|bb_squeeze|false_breakout|trend_breakout — validated strategies
     timeframe:      str   = "1h"
     risk_pct:       float = 1.0
+    fixed_amount:   float = 0.0   # 0=off (use risk_pct sizing) | >0 = always trade this many contracts/coins
     leverage:       int   = 10
     margin_mode:    str   = "isolated"   # "isolated" | "cross" — isolated limits blast radius to this position's margin
     mode:           str   = "demo"        # "demo" (paper trade, no real orders) | "live" (real money)
@@ -6156,12 +6158,15 @@ def _bot_tick_demo(bot_id):
                 threading.Thread(target=_save_bots, daemon=True).start()
                 return
 
-            equity   = bot.get("demo_equity", bot.get("demo_balance", 1000))
-            risk_usd = equity * bot["risk_pct"] / 100
             if price <= 0: return
-            atr_pct     = (atr / price) * 100 if price else 0
-            size_factor = min(1.0, 0.5 / atr_pct) if atr_pct > 0.5 else 1.0
-            amount      = round((risk_usd * bot["leverage"] * size_factor) / price, 4)
+            if bot.get("fixed_amount", 0) > 0:
+                amount = bot["fixed_amount"]
+            else:
+                equity      = bot.get("demo_equity", bot.get("demo_balance", 1000))
+                risk_usd    = equity * bot["risk_pct"] / 100
+                atr_pct     = (atr / price) * 100 if price else 0
+                size_factor = min(1.0, 0.5 / atr_pct) if atr_pct > 0.5 else 1.0
+                amount      = round((risk_usd * bot["leverage"] * size_factor) / price, 4)
             if amount <= 0: return
 
             if bot.get("open_side") == signal and cur_t > 0:
@@ -6338,13 +6343,16 @@ def _bot_tick(bot_id):
                 return
 
             # Step 3: Size the order
-            bal      = ex.fetch_balance()
-            free     = float((bal.get("USDT") or {}).get("free") or 0)
-            risk_usd = free * bot["risk_pct"] / 100
             if price <= 0: return
-            atr_pct     = (atr / price) * 100 if price else 0
-            size_factor = min(1.0, 0.5 / atr_pct) if atr_pct > 0.5 else 1.0
-            amount      = round((risk_usd * bot["leverage"] * size_factor) / price, 4)
+            if bot.get("fixed_amount", 0) > 0:
+                amount = bot["fixed_amount"]
+            else:
+                bal         = ex.fetch_balance()
+                free        = float((bal.get("USDT") or {}).get("free") or 0)
+                risk_usd    = free * bot["risk_pct"] / 100
+                atr_pct     = (atr / price) * 100 if price else 0
+                size_factor = min(1.0, 0.5 / atr_pct) if atr_pct > 0.5 else 1.0
+                amount      = round((risk_usd * bot["leverage"] * size_factor) / price, 4)
             if amount <= 0: return
 
             try:
@@ -6432,6 +6440,7 @@ def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_curre
         "id": bid, "username": uname, "exchange": req.exchange.lower(),
         "symbol": req.symbol, "strategy": req.strategy,
         "timeframe": req.timeframe, "risk_pct": req.risk_pct,
+        "fixed_amount": req.fixed_amount,
         "leverage": req.leverage, "margin_mode": req.margin_mode,
         "mode": req.mode, "demo_balance": req.demo_balance,
         "demo_equity": req.demo_balance,
@@ -6755,7 +6764,7 @@ def _run_backtest_strategy(strategy: str, ohlcv: list, symbol: str, timeframe: s
         "bb_period": 30, "bb_std": 2.5,
         "atr_period": 14, "st_multiplier": 3.0,
         "ai_min_score": 65, "trailing_atr": 0.0, "tp_atr": 0.0, "adx_min": 0,
-        "bo_lookback": 20, "dc_period": 55, "dc_ema": 150,
+        "bo_lookback": 20, "dc_period": 55, "dc_ema": 150, "fixed_amount": 0.0,
         "open_side": None, "open_entry_price": None, "open_amount": 0,
         "open_trade_count": 0, "open_peak": None, "open_trough": None,
         "trades": [],
@@ -6825,11 +6834,14 @@ def _run_backtest_strategy(strategy: str, ohlcv: list, symbol: str, timeframe: s
             if bot["open_side"] and bot["open_side"] != signal:
                 _close(price, "signal_flip")
             if bot["open_trade_count"] < bot["max_open_trades"] and price > 0:
-                equity      = bot["demo_equity"]
-                risk_usd    = equity * bot["risk_pct"] / 100
-                atr_pct     = (atr / price) * 100 if price else 0
-                size_factor = min(1.0, 0.5 / atr_pct) if atr_pct > 0.5 else 1.0
-                amount      = round((risk_usd * bot["leverage"] * size_factor) / price, 6)
+                if bot.get("fixed_amount", 0) > 0:
+                    amount = bot["fixed_amount"]
+                else:
+                    equity      = bot["demo_equity"]
+                    risk_usd    = equity * bot["risk_pct"] / 100
+                    atr_pct     = (atr / price) * 100 if price else 0
+                    size_factor = min(1.0, 0.5 / atr_pct) if atr_pct > 0.5 else 1.0
+                    amount      = round((risk_usd * bot["leverage"] * size_factor) / price, 6)
                 if amount > 0 and bot["open_side"] == signal and bot["open_trade_count"] > 0:
                     # Reinforcing the same side — fold into the existing
                     # position instead of leaving an earlier "open" trade
