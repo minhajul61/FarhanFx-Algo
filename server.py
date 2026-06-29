@@ -7584,6 +7584,20 @@ def _normalise_symbol(raw: str) -> str:
     return raw
 
 
+# Words that show up in nearly every signal-channel post but are never the
+# coin itself — disclaimer hashtags, trade jargon, promo-post fluff. Used to
+# stop both the hashtag and the headline-scan symbol fallbacks from grabbing
+# the wrong token (e.g. "#nfa" = "not financial advice", not a ticker).
+_TG_SYM_STOPWORDS = {
+    "SCALP", "TRADE", "TRADES", "LONG", "SHORT", "BUY", "SELL", "ENTRY", "TARGET", "TARGETS",
+    "LEVERAGE", "STOP", "LOSS", "TYPE", "DIRECTION", "DONE", "PROFIT", "BOOK", "SHIFT", "NOW",
+    "ZOOM", "LIVE", "FOR", "AND", "JOIN", "WE", "ARE", "USDT", "BUSD", "USDC", "BTC", "SETUP",
+    "SIGNAL", "SIGNALS", "NEW", "USERS", "WELCOME", "EVENT", "REWARD", "REWARDS", "TOTAL",
+    "POOL", "CAMPAIGN", "EXCLUSIVE", "STEP", "VALID", "ON", "IN", "TO", "AT", "SL", "TP",
+    "NFA", "DYOR", "ATH", "ATL", "RIP", "FOMO", "ALL", "DONE", "TRADER", "ALGO", "PRIME",
+}
+
+
 def _parse_tg_signal(text: str) -> dict | None:
     """
     Parse common Telegram signal formats. Returns dict or None.
@@ -7595,6 +7609,12 @@ def _parse_tg_signal(text: str) -> dict | None:
     Leverage: 10x
     """
     t = text.strip()
+
+    # Status updates on an already-open trade ("TARGET 3 ✅ ... ALL TARGETS
+    # DONE") mention LONG/SHORT too but are not a new entry — skip them
+    # before they get mistaken for one.
+    if _re.search(r'\b(all\s+targets?|target\s*\d*)\b.{0,15}\b(done|hit|achieved)\b', t, _re.I):
+        return None
 
     # Direction
     side = None
@@ -7612,25 +7632,21 @@ def _parse_tg_signal(text: str) -> dict | None:
     if m:
         sym_raw = m.group(1).upper() + "/" + m.group(2).upper()
     else:
-        # Try: "#BTCUSDT" or "BTC" standalone near LONG/SHORT
-        m = _re.search(r'#([A-Z]{2,10})', t, _re.I)
-        if m:
-            sym_raw = m.group(1).upper()
-        else:
+        # Try a "#COIN" hashtag — but skip disclaimer hashtags every signal
+        # channel tacks on (#nfa #dyor etc.), which would otherwise get
+        # mistaken for the coin itself.
+        for tok in _re.findall(r'#([A-Z]{2,10})', t, _re.I):
+            if tok.upper() not in _TG_SYM_STOPWORDS:
+                sym_raw = tok.upper()
+                break
+        if not sym_raw:
             # Some channels just write the bare ticker with no "/USDT" suffix
             # and no hashtag, e.g. "SCALP TRADE - WIF" or "WLD SCALP TRADE".
             # Scan the headline (first line) for an all-caps 2-6 letter token
             # that isn't common signal-post jargon.
-            _SYM_STOPWORDS = {
-                "SCALP","TRADE","TRADES","LONG","SHORT","BUY","SELL","ENTRY","TARGET","TARGETS",
-                "LEVERAGE","STOP","LOSS","TYPE","DIRECTION","DONE","PROFIT","BOOK","SHIFT","NOW",
-                "ZOOM","LIVE","FOR","AND","JOIN","WE","ARE","USDT","BUSD","USDC","BTC","SETUP",
-                "SIGNAL","SIGNALS","NEW","USERS","WELCOME","EVENT","REWARD","REWARDS","TOTAL",
-                "POOL","CAMPAIGN","EXCLUSIVE","STEP","VALID","ON","IN","TO","AT","SL","TP",
-            }
             first_line = t.split("\n", 1)[0]
             for tok in _re.findall(r'\b[A-Z]{2,6}\b', first_line):
-                if tok not in _SYM_STOPWORDS:
+                if tok not in _TG_SYM_STOPWORDS:
                     sym_raw = tok
                     break
     if not sym_raw:
