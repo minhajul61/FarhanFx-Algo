@@ -5998,6 +5998,12 @@ def _bot_tick_demo(bot_id):
             bot["open_entry_price"] = None
             bot["open_amount"]      = 0
             bot["open_trade_count"] = 0
+            _tg_notify(
+                f"<b>FarhanFX Crypto — Position Closed (Demo)</b>\n"
+                f"📊 <b>{bot['strategy']}</b> | {bot['symbol']}\n"
+                f"{'✅' if pnl >= 0 else '❌'} PnL: <code>${pnl:.2f}</code> ({exit_reason})\n"
+                f"Equity: <code>${bot['demo_equity']:.2f}</code>"
+            )
 
         # Trailing stop / TP check (close simulated position if hit)
         if bot.get("open_side") and (bot.get("trailing_atr", 0) > 0 or bot.get("tp_atr", 0) > 0):
@@ -6085,6 +6091,12 @@ def _bot_tick_demo(bot_id):
             bot["open_trough"]       = price
             bot["open_trade_count"]  = cur_t + 1
             bot["last_error"]        = None
+            _tg_notify(
+                f"<b>FarhanFX Crypto — Trade Opened (Demo)</b>\n"
+                f"📊 <b>{bot['strategy']}</b> | {bot['symbol']}\n"
+                f"{'🟢 BUY' if signal == 'BUY' else '🔴 SELL'} @ <code>${price:.4f}</code>\n"
+                f"Amount: <code>{amount}</code>"
+            )
             threading.Thread(target=_save_bots, daemon=True).start()
 
     except Exception as e:
@@ -6141,8 +6153,10 @@ def _bot_tick(bot_id):
                 if should_exit:
                     try:
                         close_side = "sell" if oside == "BUY" else "buy"
+                        closed_pnl = 0.0
                         for p in ex.fetch_positions():
                             if p.get("symbol") == bot["symbol"] and float(p.get("contracts") or 0) > 0:
+                                closed_pnl = float(p.get("unrealizedPnl") or 0)
                                 ex.create_order(bot["symbol"], "market", close_side,
                                                 float(p["contracts"]), params={"reduceOnly": True})
                         bot["open_side"]        = None
@@ -6151,7 +6165,13 @@ def _bot_tick(bot_id):
                         if bot.get("trades"):
                             bot["trades"][-1]["exit_reason"] = exit_reason
                             bot["trades"][-1]["exit_price"]  = round(price, 4)
+                            bot["trades"][-1]["pnl"]         = round(closed_pnl, 4)
                             bot["trades"][-1]["status"]      = "closed"
+                        _tg_notify(
+                            f"<b>FarhanFX Crypto — Position Closed (LIVE)</b>\n"
+                            f"📊 <b>{bot['strategy']}</b> | {bot['symbol']}\n"
+                            f"{'✅' if closed_pnl >= 0 else '❌'} PnL: <code>${closed_pnl:.2f}</code> ({exit_reason})"
+                        )
                         threading.Thread(target=_save_bots, daemon=True).start()
                     except Exception:
                         pass
@@ -6163,6 +6183,7 @@ def _bot_tick(bot_id):
 
             # Step 1: Close any opposite-side positions (signal flip)
             opp_closed = False
+            opp_pnl    = 0.0
             try:
                 for p in ex.fetch_positions():
                     sym_ok = p.get("symbol") == bot["symbol"]
@@ -6170,6 +6191,7 @@ def _bot_tick(bot_id):
                     sz     = float(p.get("contracts") or 0)
                     if sym_ok and sz > 0:
                         if (signal == "BUY" and pside == "short") or (signal == "SELL" and pside == "long"):
+                            opp_pnl = float(p.get("unrealizedPnl") or 0)
                             cs = "buy" if pside == "short" else "sell"
                             ex.create_order(bot["symbol"], "market", cs, sz, params={"reduceOnly": True})
                             opp_closed = True
@@ -6181,9 +6203,15 @@ def _bot_tick(bot_id):
                 if bot.get("trades"):
                     bot["trades"][-1]["exit_reason"] = "signal_flip"
                     bot["trades"][-1]["exit_price"]  = round(price, 4)
+                    bot["trades"][-1]["pnl"]         = round(opp_pnl, 4)
                     bot["trades"][-1]["status"]      = "closed"
                 bot["open_trade_count"] = 0
                 bot["open_side"]        = None
+                _tg_notify(
+                    f"<b>FarhanFX Crypto — Position Closed (LIVE)</b>\n"
+                    f"📊 <b>{bot['strategy']}</b> | {bot['symbol']}\n"
+                    f"{'✅' if opp_pnl >= 0 else '❌'} PnL: <code>${opp_pnl:.2f}</code> (signal_flip)"
+                )
 
             # Step 2: Gate — if already at max open trades, skip opening new one
             max_t = bot.get("max_open_trades", 2)
@@ -6256,6 +6284,12 @@ def _bot_tick(bot_id):
             bot["open_trough"]       = price
             bot["open_trade_count"]  = cur_t + 1
             bot["last_error"]        = None
+            _tg_notify(
+                f"<b>FarhanFX Crypto — Trade Opened (LIVE)</b>\n"
+                f"📊 <b>{bot['strategy']}</b> | {bot['symbol']}\n"
+                f"{'🟢 BUY' if signal == 'BUY' else '🔴 SELL'} @ <code>${price:.4f}</code>\n"
+                f"Amount: <code>{amount}</code>"
+            )
             threading.Thread(target=_save_bots, daemon=True).start()
 
     except Exception as e:
@@ -7089,6 +7123,12 @@ def _tg_userbot_thread():
             if len(_TG_SIGNALS) > 100:
                 _TG_SIGNALS.pop()
             print(f"Telegram userbot signal: {sig['side'].upper()} {sig['symbol']} → {rec['status']}")
+            if any(r["ok"] for r in results):
+                _tg_notify(
+                    f"<b>FarhanFX — Signal Executed ({'Demo' if is_demo else 'LIVE'})</b>\n"
+                    f"📨 Source: userbot ({cfg.get('channel_title', 'channel')})\n"
+                    f"{'🟢 BUY' if sig['side']=='buy' else '🔴 SELL'} {sig['symbol']}"
+                )
         except Exception as e:
             print(f"Telegram userbot handler error: {e}")
 
@@ -7518,6 +7558,12 @@ def _tg_poll_loop():
                 rec["results"] = results
                 rec["mode"]    = "demo" if is_demo else "live"
                 rec["status"]  = ("demo_executed" if is_demo else "executed") if any(r["ok"] for r in results) else "failed"
+                if any(r["ok"] for r in results):
+                    _tg_notify(
+                        f"<b>FarhanFX — Signal Executed ({'Demo' if is_demo else 'LIVE'})</b>\n"
+                        f"📨 Source: bot\n"
+                        f"{'🟢 BUY' if sig['side']=='buy' else '🔴 SELL'} {sig['symbol']}"
+                    )
             else:
                 rec["status"] = "signal"   # received but not auto-traded
 
