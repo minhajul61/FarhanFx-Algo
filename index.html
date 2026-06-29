@@ -4334,14 +4334,16 @@ function resetSettings() {
 function getSettings() { return loadSettings(); }
 
 // ── AUTH HELPERS ───────────────────────────────────────────────────────────────
-function _getAuthToken() { return sessionStorage.getItem('fx_auth_token') || ''; }
-function _setAuthToken(t) { sessionStorage.setItem('fx_auth_token', t); }
-function _clearAuthToken() { sessionStorage.removeItem('fx_auth_token'); }
-function _getAuthRole()  { return sessionStorage.getItem('fx_role') || 'admin'; }
-function _setAuthRole(r) { sessionStorage.setItem('fx_role', r || 'admin'); }
-function _clearAuthRole(){ sessionStorage.removeItem('fx_role'); }
-function _getDaysLeft()  { const v = sessionStorage.getItem('fx_days_left'); return v === null || v === 'null' ? null : parseInt(v); }
-function _setDaysLeft(d) { if (d === null || d === undefined) sessionStorage.removeItem('fx_days_left'); else sessionStorage.setItem('fx_days_left', d); }
+// localStorage (not sessionStorage) so closing the browser/tab doesn't force
+// a fresh login every time — it only clears on explicit logout now.
+function _getAuthToken() { return localStorage.getItem('fx_auth_token') || ''; }
+function _setAuthToken(t) { localStorage.setItem('fx_auth_token', t); }
+function _clearAuthToken() { localStorage.removeItem('fx_auth_token'); }
+function _getAuthRole()  { return localStorage.getItem('fx_role') || 'admin'; }
+function _setAuthRole(r) { localStorage.setItem('fx_role', r || 'admin'); }
+function _clearAuthRole(){ localStorage.removeItem('fx_role'); }
+function _getDaysLeft()  { const v = localStorage.getItem('fx_days_left'); return v === null || v === 'null' ? null : parseInt(v); }
+function _setDaysLeft(d) { if (d === null || d === undefined) localStorage.removeItem('fx_days_left'); else localStorage.setItem('fx_days_left', d); }
 
 function showAuthRegister() {
   document.getElementById('auth-card-login').style.display = 'none';

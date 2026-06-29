@@ -148,8 +148,30 @@ def get_account():
 
 # ── USER AUTH ───────────────────────────────────────────────────────────────────
 
-_USERS_FILE    = "users.json"
-_auth_sessions: dict = {}   # token -> {"username": str, "created": str}
+_USERS_FILE         = "users.json"
+_AUTH_SESSIONS_FILE = "auth_sessions.json"
+
+
+def _load_auth_sessions() -> dict:
+    try:
+        with open(_AUTH_SESSIONS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_auth_sessions():
+    try:
+        with open(_AUTH_SESSIONS_FILE, "w", encoding="utf-8") as f:
+            json.dump(_auth_sessions, f, indent=2)
+    except Exception:
+        pass
+
+
+# Sessions used to live in memory only, so every server restart (e.g. every
+# deploy) silently logged everyone out — persisting them here means a
+# restart no longer forces a fresh login.
+_auth_sessions: dict = _load_auth_sessions()   # token -> {"username": str, "created": str}
 
 class AuthLoginRequest(BaseModel):
     username: str
@@ -234,6 +256,7 @@ def _make_session(username: str, display_name: str, role: str) -> str:
     token = secrets.token_urlsafe(32)
     _auth_sessions[token] = {"username": username, "display_name": display_name,
                               "role": role, "created": datetime.now().isoformat()}
+    _save_auth_sessions()
     return token
 
 @app.post("/api/auth/login")
@@ -294,6 +317,7 @@ def auth_verify(authorization: str = Header(default=None)):
     user = next((u for u in data.get("users", []) if u["username"] == sess["username"]), None)
     if user and _is_client_expired(user):
         _auth_sessions.pop(token, None)
+        _save_auth_sessions()
         return JSONResponse({"error": "Service expired — contact admin to renew"}, status_code=403)
     return {"username": sess["username"], "display_name": sess.get("display_name", sess["username"]),
             "role": sess.get("role", "admin"), "days_left": _days_left(user) if user else None}
@@ -302,6 +326,7 @@ def auth_verify(authorization: str = Header(default=None)):
 def auth_logout(authorization: str = Header(default=None)):
     token = (authorization or "").replace("Bearer ", "").strip()
     _auth_sessions.pop(token, None)
+    _save_auth_sessions()
     return {"ok": True}
 
 @app.post("/api/auth/change_password")

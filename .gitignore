@@ -22,4 +22,5 @@ server_local.log
 payment_proofs/
 payment_requests.json
 users.json
+auth_sessions.json
 Trading Meterial/
