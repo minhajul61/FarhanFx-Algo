@@ -5557,10 +5557,11 @@ class CryptoBotReq(BaseModel):
     rsi_period:     int   = 7
     rsi_ob:         int   = 75
     rsi_os:         int   = 25
-    # MACD params — tuned via 2.3yr out-of-sample grid search (train PF 1.10, val PF 1.06)
+    # MACD params — re-tuned for 15m (the timeframe these bots actually run on)
+    # via a 7-month out-of-sample grid search: train PF 1.18, val PF 1.07
     macd_fast:      int   = 12
-    macd_slow:      int   = 21
-    macd_signal:    int   = 5
+    macd_slow:      int   = 17
+    macd_signal:    int   = 9
     # BB params — tuned via 2.3yr out-of-sample grid search (train PF 3.08, val PF 1.28)
     bb_period:      int   = 30
     bb_std:         float = 2.5
@@ -6635,7 +6636,7 @@ def _run_backtest_strategy(strategy: str, ohlcv: list, symbol: str, timeframe: s
         "demo_balance": demo_balance, "demo_equity": demo_balance,
         "fast_ema": 9, "slow_ema": 21,
         "rsi_period": 7, "rsi_ob": 75, "rsi_os": 25,
-        "macd_fast": 12, "macd_slow": 21, "macd_signal": 5,
+        "macd_fast": 12, "macd_slow": 17, "macd_signal": 9,
         "bb_period": 30, "bb_std": 2.5,
         "atr_period": 14, "st_multiplier": 3.0,
         "ai_min_score": 65, "trailing_atr": 0.0, "tp_atr": 0.0, "adx_min": 0,

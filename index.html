@@ -2519,7 +2519,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                   <option value="rsi">📉 RSI(7) Mean Reversion — val PF 1.57, 71% WR</option>
                   <option value="bb_squeeze">⚡ BB Squeeze(30,2.5) + Volume — val PF 1.28</option>
                   <option value="false_breakout">🎣 False Breakout Trap — PF 1.15, 55% WR</option>
-                  <option value="macd_cross">📈 MACD(12,21,5) Crossover — val PF 1.06</option>
+                  <option value="macd_cross">📈 MACD(12,17,9) Crossover — val PF 1.07</option>
                 </select>
               </div>
               <div id="bot-strategy-hint" style="font-size:10px;color:var(--text3);margin-bottom:10px;line-height:1.5;padding:5px 8px;background:rgba(139,92,246,0.05);border-radius:6px;border-left:2px solid var(--accent)">
@@ -2615,8 +2615,8 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 <div style="font-size:10px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;font-weight:700">MACD SETTINGS</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
                   <div class="field" style="margin:0"><label>Fast</label><input type="number" id="bot-macd-fast" value="12" style="font-size:12px"/></div>
-                  <div class="field" style="margin:0"><label>Slow</label><input type="number" id="bot-macd-slow" value="21" style="font-size:12px"/></div>
-                  <div class="field" style="margin:0"><label>Signal</label><input type="number" id="bot-macd-signal" value="5" style="font-size:12px"/></div>
+                  <div class="field" style="margin:0"><label>Slow</label><input type="number" id="bot-macd-slow" value="17" style="font-size:12px"/></div>
+                  <div class="field" style="margin:0"><label>Signal</label><input type="number" id="bot-macd-signal" value="9" style="font-size:12px"/></div>
                 </div>
               </div>
               <div id="bot-bb-params" style="display:none">
@@ -9421,7 +9421,7 @@ async function cryptoLoadReports() {
 // engulfing_trend, pa_confluence) showed no validated edge and were removed.
 const _strategyHints = {
   rsi:         'RSI(7) oversold ≤25 → BUY, overbought ≥75 → SELL. 2.3yr out-of-sample validated: train PF 1.52, validation PF 1.57, 66-71% WR.',
-  macd_cross:  'MACD(12,21,5) histogram crosses zero line. 2.3yr out-of-sample validated: train PF 1.10, validation PF 1.06 — modest but real edge, high trade count.',
+  macd_cross:  'MACD(12,17,9) histogram crosses zero line. Re-tuned for 15m out-of-sample: train PF 1.18, validation PF 1.07 — modest but real edge, high trade count.',
   bb_squeeze:  'BB(30, 2.5σ) band touch + RSI + volume confirmation. 2.3yr out-of-sample validated: train PF 3.08, validation PF 1.28.',
   false_breakout: 'IB False Breakout — institutions break an Inside Bar to hunt stops, then reverse. PF 1.15, 55% WR, low drawdown over 2.3yrs.',
 };
@@ -9480,8 +9480,8 @@ async function startAlgoBot() {
     tp_atr:          _gv('bot-tp-atr', 0, parseFloat),
     // MACD
     macd_fast:      _gv('bot-macd-fast', 12, parseInt),
-    macd_slow:      _gv('bot-macd-slow', 21, parseInt),
-    macd_signal:    _gv('bot-macd-signal', 5, parseInt),
+    macd_slow:      _gv('bot-macd-slow', 17, parseInt),
+    macd_signal:    _gv('bot-macd-signal', 9, parseInt),
     // BB
     bb_period:      _gv('bot-bb-period', 30, parseInt),
     bb_std:         _gv('bot-bb-std', 2.5, parseFloat),
