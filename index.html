@@ -502,6 +502,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       <div class="nav-item" onclick="showPage('crypto',this)"><i class="ti ti-currency-bitcoin"></i> CRYPTO</div>
       <div class="nav-item" onclick="showPage('algo',this)"><i class="ti ti-robot"></i> FOREX ALGO</div>
       <div class="nav-item" onclick="showPage('forexbot',this)"><i class="ti ti-affiliate"></i> FOREX BOT</div>
+      <div class="nav-item" onclick="showPage('telegram',this)"><i class="ti ti-brand-telegram"></i> TELEGRAM BOT</div>
       <div class="nav-item" onclick="showPage('trades',this)"><i class="ti ti-list"></i> TRADES</div>
       <div class="nav-item" onclick="showPage('journal',this)"><i class="ti ti-notebook"></i> JOURNAL</div>
       <div class="nav-item" onclick="showPage('reports',this)"><i class="ti ti-chart-bar"></i> REPORTS</div>
@@ -2698,106 +2699,6 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             </div>
           </div>
 
-          <!-- ── TELEGRAM SIGNAL BOT ───────────────────────────────────────── -->
-          <div class="panel" style="margin-top:14px;border-color:var(--cyan)">
-            <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;color:var(--cyan)">
-              <div style="display:flex;align-items:center;gap:10px">
-                <span>📨 Telegram Signal Bot</span>
-                <span id="tg-status-badge" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--card2);color:var(--text3);border:1px solid var(--border)">OFFLINE</span>
-              </div>
-              <button class="sbtn" onclick="tgLoadSignals()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
-            </div>
-
-            <!-- Config row -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px">
-              <!-- Left: bot settings -->
-              <div>
-                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:8px">BOT CONFIGURATION</div>
-                <div class="field" style="margin-bottom:8px">
-                  <label>Bot Token <span style="color:var(--text3);font-size:9px">(from @BotFather)</span></label>
-                  <div style="display:flex;gap:6px">
-                    <input id="tg-token" class="sinput" style="flex:1;font-family:monospace;font-size:11px" type="password" placeholder="123456789:ABCDefgh..."/>
-                    <button onclick="tgTestToken()" style="padding:5px 10px;background:transparent;border:1px solid var(--cyan);color:var(--cyan);border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">TEST</button>
-                  </div>
-                </div>
-                <div class="field" style="margin-bottom:8px">
-                  <label>Allowed Chat ID <span style="color:var(--text3);font-size:9px">(blank = accept all)</span></label>
-                  <input id="tg-chat-id" class="sinput" style="width:100%;font-family:monospace" placeholder="-1001234567890"/>
-                </div>
-                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:6px;margin-top:10px">TRADE SETTINGS</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-                  <div class="field" style="margin-bottom:0"><label>Amount (contracts)</label><input id="tg-amount" class="sinput" style="width:100%" type="number" value="0.01" step="0.001" min="0.001"/></div>
-                  <div class="field" style="margin-bottom:0"><label>Leverage</label><input id="tg-leverage" class="sinput" style="width:100%" type="number" value="10" min="1" max="125"/></div>
-                </div>
-                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">EXECUTE ON EXCHANGES</div>
-                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-                  <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer">
-                    <input type="checkbox" id="tg-ex-binance" style="accent-color:var(--accent)"/> <span style="color:#f0b90b;font-weight:700">Binance</span>
-                  </label>
-                  <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer">
-                    <input type="checkbox" id="tg-ex-bybit" style="accent-color:var(--accent)"/> <span style="color:#ff6a00;font-weight:700">Bybit</span>
-                  </label>
-                  <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer">
-                    <input type="checkbox" id="tg-ex-coinswitch" style="accent-color:var(--accent)"/> <span style="color:var(--accent);font-weight:700">CoinSwitch</span>
-                  </label>
-                </div>
-                <!-- Auto trade toggle -->
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px">
-                    <input type="checkbox" id="tg-auto-trade" onchange="tgModeChange()" style="accent-color:var(--accent);width:16px;height:16px"/>
-                    <span style="color:var(--accent);font-weight:700">AUTO TRADE</span>
-                    <span style="color:var(--text3);font-size:10px">— execute immediately on signal</span>
-                  </label>
-                </div>
-                <!-- Demo / Live mode -->
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px" id="tg-mode-row">
-                  <div class="field" style="margin-bottom:0">
-                    <label>Mode</label>
-                    <select id="tg-mode" onchange="tgModeChange()" class="sinput" style="width:100%">
-                      <option value="demo" selected>📝 Demo (paper trade)</option>
-                      <option value="live">🔴 Live (real money)</option>
-                    </select>
-                  </div>
-                  <div class="field" style="margin-bottom:0" id="tg-demo-balance-field">
-                    <label>Demo Balance</label>
-                    <input id="tg-demo-balance" class="sinput" style="width:100%" type="number" value="1000" min="10" step="10"/>
-                  </div>
-                </div>
-                <div id="tg-mode-hint" style="font-size:10px;color:var(--text3);margin-bottom:10px;line-height:1.5;padding:5px 8px;background:rgba(34,197,94,0.06);border-radius:6px;border-left:2px solid var(--green)">
-                  Demo mode fills signals against the live price with a virtual balance — no exchange order, no real money. Watch the win rate here before switching to Live.
-                </div>
-                <div id="tg-demo-stats" style="display:none;background:var(--bg2);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:11px;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center"></div>
-                <!-- Outgoing notification settings -->
-                <div style="border-top:1px solid var(--border);margin:10px 0 8px"></div>
-                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">OUTGOING ALERTS (TRADE OPEN / CLOSE / ERROR)</div>
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px">
-                    <input type="checkbox" id="tg-notify-enabled" style="accent-color:var(--accent);width:16px;height:16px" checked/>
-                    <span style="color:var(--accent);font-weight:700">SEND ALERTS TO THIS CHAT</span>
-                  </label>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-                  <label style="font-size:11px;color:var(--text2);white-space:nowrap">Drawdown alert at</label>
-                  <input id="tg-drawdown-pct" class="sinput" type="number" value="5" min="1" max="50" step="0.5" style="width:70px;text-align:center"/>
-                  <span style="font-size:11px;color:var(--text3)">% from peak equity</span>
-                </div>
-                <div style="display:flex;gap:8px">
-                  <button onclick="tgSaveConfig(true)" style="flex:1;padding:8px;background:linear-gradient(135deg,var(--cyan),#0ea5e9);border:none;color:#000;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font)">▶ START BOT</button>
-                  <button onclick="tgSaveConfig(false)" style="padding:8px 14px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font)">■ STOP</button>
-                </div>
-                <div id="tg-config-err" style="font-size:11px;color:var(--red);margin-top:8px;display:none"></div>
-              </div>
-
-              <!-- Right: signal log -->
-              <div>
-                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:8px">SIGNAL LOG <span id="tg-sig-count" style="color:var(--accent)"></span></div>
-                <div id="tg-signal-log" style="background:#0a0c13;border-radius:8px;min-height:220px;max-height:360px;overflow-y:auto;padding:8px">
-                  <div style="color:var(--text3);font-size:11px;text-align:center;padding:40px">No signals yet. Start the bot and wait for signals from your channel.</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
         </div>
 
         <!-- ═══ BACKTEST SUB-TAB ═══════════════════════ -->
@@ -3051,6 +2952,110 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <div style="color:var(--text3);text-align:center;padding:40px">Not started yet.</div>
           </div>
         </div>
+      </div>
+
+      <!-- TELEGRAM BOT PAGE -->
+      <div class="page" id="page-telegram">
+        <div class="page-title">Telegram Signal Bot</div>
+          <!-- ── TELEGRAM SIGNAL BOT ───────────────────────────────────────── -->
+          <div class="panel" style="margin-top:14px;border-color:var(--cyan)">
+            <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;color:var(--cyan)">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span>📨 Telegram Signal Bot</span>
+                <span id="tg-status-badge" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--card2);color:var(--text3);border:1px solid var(--border)">OFFLINE</span>
+              </div>
+              <button class="sbtn" onclick="tgLoadSignals()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
+            </div>
+
+            <!-- Config row -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px">
+              <!-- Left: bot settings -->
+              <div>
+                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:8px">BOT CONFIGURATION</div>
+                <div class="field" style="margin-bottom:8px">
+                  <label>Bot Token <span style="color:var(--text3);font-size:9px">(from @BotFather)</span></label>
+                  <div style="display:flex;gap:6px">
+                    <input id="tg-token" class="sinput" style="flex:1;font-family:monospace;font-size:11px" type="password" placeholder="123456789:ABCDefgh..."/>
+                    <button onclick="tgTestToken()" style="padding:5px 10px;background:transparent;border:1px solid var(--cyan);color:var(--cyan);border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">TEST</button>
+                  </div>
+                </div>
+                <div class="field" style="margin-bottom:8px">
+                  <label>Allowed Chat ID <span style="color:var(--text3);font-size:9px">(blank = accept all)</span></label>
+                  <input id="tg-chat-id" class="sinput" style="width:100%;font-family:monospace" placeholder="-1001234567890"/>
+                </div>
+                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:6px;margin-top:10px">TRADE SETTINGS</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                  <div class="field" style="margin-bottom:0"><label>Amount (contracts)</label><input id="tg-amount" class="sinput" style="width:100%" type="number" value="0.01" step="0.001" min="0.001"/></div>
+                  <div class="field" style="margin-bottom:0"><label>Leverage</label><input id="tg-leverage" class="sinput" style="width:100%" type="number" value="10" min="1" max="125"/></div>
+                </div>
+                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">EXECUTE ON EXCHANGES</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+                  <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer">
+                    <input type="checkbox" id="tg-ex-binance" style="accent-color:var(--accent)"/> <span style="color:#f0b90b;font-weight:700">Binance</span>
+                  </label>
+                  <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer">
+                    <input type="checkbox" id="tg-ex-bybit" style="accent-color:var(--accent)"/> <span style="color:#ff6a00;font-weight:700">Bybit</span>
+                  </label>
+                  <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer">
+                    <input type="checkbox" id="tg-ex-coinswitch" style="accent-color:var(--accent)"/> <span style="color:var(--accent);font-weight:700">CoinSwitch</span>
+                  </label>
+                </div>
+                <!-- Auto trade toggle -->
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px">
+                    <input type="checkbox" id="tg-auto-trade" onchange="tgModeChange()" style="accent-color:var(--accent);width:16px;height:16px"/>
+                    <span style="color:var(--accent);font-weight:700">AUTO TRADE</span>
+                    <span style="color:var(--text3);font-size:10px">— execute immediately on signal</span>
+                  </label>
+                </div>
+                <!-- Demo / Live mode -->
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px" id="tg-mode-row">
+                  <div class="field" style="margin-bottom:0">
+                    <label>Mode</label>
+                    <select id="tg-mode" onchange="tgModeChange()" class="sinput" style="width:100%">
+                      <option value="demo" selected>📝 Demo (paper trade)</option>
+                      <option value="live">🔴 Live (real money)</option>
+                    </select>
+                  </div>
+                  <div class="field" style="margin-bottom:0" id="tg-demo-balance-field">
+                    <label>Demo Balance</label>
+                    <input id="tg-demo-balance" class="sinput" style="width:100%" type="number" value="1000" min="10" step="10"/>
+                  </div>
+                </div>
+                <div id="tg-mode-hint" style="font-size:10px;color:var(--text3);margin-bottom:10px;line-height:1.5;padding:5px 8px;background:rgba(34,197,94,0.06);border-radius:6px;border-left:2px solid var(--green)">
+                  Demo mode fills signals against the live price with a virtual balance — no exchange order, no real money. Watch the win rate here before switching to Live.
+                </div>
+                <div id="tg-demo-stats" style="display:none;background:var(--bg2);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:11px;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center"></div>
+                <!-- Outgoing notification settings -->
+                <div style="border-top:1px solid var(--border);margin:10px 0 8px"></div>
+                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">OUTGOING ALERTS (TRADE OPEN / CLOSE / ERROR)</div>
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px">
+                    <input type="checkbox" id="tg-notify-enabled" style="accent-color:var(--accent);width:16px;height:16px" checked/>
+                    <span style="color:var(--accent);font-weight:700">SEND ALERTS TO THIS CHAT</span>
+                  </label>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                  <label style="font-size:11px;color:var(--text2);white-space:nowrap">Drawdown alert at</label>
+                  <input id="tg-drawdown-pct" class="sinput" type="number" value="5" min="1" max="50" step="0.5" style="width:70px;text-align:center"/>
+                  <span style="font-size:11px;color:var(--text3)">% from peak equity</span>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button onclick="tgSaveConfig(true)" style="flex:1;padding:8px;background:linear-gradient(135deg,var(--cyan),#0ea5e9);border:none;color:#000;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font)">▶ START BOT</button>
+                  <button onclick="tgSaveConfig(false)" style="padding:8px 14px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font)">■ STOP</button>
+                </div>
+                <div id="tg-config-err" style="font-size:11px;color:var(--red);margin-top:8px;display:none"></div>
+              </div>
+
+              <!-- Right: signal log -->
+              <div>
+                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:8px">SIGNAL LOG <span id="tg-sig-count" style="color:var(--accent)"></span></div>
+                <div id="tg-signal-log" style="background:#0a0c13;border-radius:8px;min-height:220px;max-height:360px;overflow-y:auto;padding:8px">
+                  <div style="color:var(--text3);font-size:11px;text-align:center;padding:40px">No signals yet. Start the bot and wait for signals from your channel.</div>
+                </div>
+              </div>
+            </div>
+          </div>
       </div>
 
       <!-- SETTINGS PAGE -->
@@ -3420,6 +3425,7 @@ function showPage(id, el) {
   if (id === 'dashboard')   { loadDashboardReport(); }
   if (id === 'settings')    { applySettingsToUI(loadSettings()); if (_getAuthRole() === 'admin') { document.getElementById('admin-clients-panel').style.display = 'block'; document.getElementById('admin-payments-panel').style.display = 'block'; loadAdminClients(); loadAdminPaymentRequests(); } }
   if (id === 'forexbot')    { fbStartPolling(); } else { fbStopPolling(); }
+  if (id === 'telegram')   { telegramInit(); } else { clearInterval(_tgRefTimer); }
 }
 
 function tvExitFullPage() {
@@ -8244,14 +8250,17 @@ async function cryptoInit() {
   await cryptoCheckStatus();
   cryptoLoadMarkets();   // don't await — markets can load in background
   showCryptoTab('trade', document.getElementById('cst-trade'));
-  // Telegram signal bot is an owner-only automation tool (not exposed to client
-  // accounts), and its endpoints are blocked server-side for the client role anyway.
-  if (_getAuthRole() !== 'client') {
-    tgLoadStatus();
-    tgLoadSignals();
-    clearInterval(_tgRefTimer);
-    _tgRefTimer = setInterval(() => { tgLoadSignals(); tgLoadStatus(); }, 8000);
-  }
+}
+
+// Telegram signal bot is its own top-level page now (was a panel inside
+// Crypto → Algo Bots) — owner-only automation tool, not exposed to client
+// accounts, whose endpoints are blocked server-side for the client role anyway.
+function telegramInit() {
+  clearInterval(_tgRefTimer);
+  if (_getAuthRole() === 'client') return;
+  tgLoadStatus();
+  tgLoadSignals();
+  _tgRefTimer = setInterval(() => { tgLoadSignals(); tgLoadStatus(); }, 8000);
 }
 
 // ── Exchange status dots ──
