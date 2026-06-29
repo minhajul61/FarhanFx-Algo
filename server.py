@@ -7624,6 +7624,11 @@ class TgConfigReq(BaseModel):
 @app.post("/api/telegram/config")
 def tg_config_save(req: TgConfigReq):
     cfg = req.model_dump()
+    if not cfg.get("token"):
+        # Token is never sent back to the browser (tg_config_get strips it),
+        # so a blank token here means "keep the existing one", not "clear it" —
+        # otherwise every settings change would force re-pasting the token.
+        cfg["token"] = _load_tg_cfg().get("token", "")
     _save_tg_cfg(cfg)
     if cfg["enabled"] and cfg["token"]:
         _stop_tg_bot()

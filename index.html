@@ -7566,6 +7566,8 @@ async function tgLoadDemoStats() {
   `;
 }
 
+let _tgHasToken = false;
+
 async function tgSaveConfig(enable) {
   const token          = document.getElementById('tg-token').value.trim();
   const chatId         = document.getElementById('tg-chat-id').value.trim();
@@ -7579,7 +7581,10 @@ async function tgSaveConfig(enable) {
   const errEl          = document.getElementById('tg-config-err');
   errEl.style.display  = 'none';
 
-  if (enable && !token) { errEl.textContent = 'Bot token required'; errEl.style.display='block'; return; }
+  // The token is never sent back from the server once saved (security), so
+  // leaving the field blank on a later save means "keep the existing one" —
+  // only block if there's truly no token saved yet anywhere.
+  if (enable && !token && !_tgHasToken) { errEl.textContent = 'Bot token required'; errEl.style.display='block'; return; }
 
   const exchanges = [];
   if (document.getElementById('tg-ex-binance').checked)    exchanges.push('binance');
@@ -7602,6 +7607,9 @@ async function tgSaveConfig(enable) {
 async function tgLoadStatus() {
   const r = await apiFetch('/api/telegram/status');
   if (r.error) return;
+  _tgHasToken = !!r.has_token;
+  const tokenEl = document.getElementById('tg-token');
+  if (tokenEl) tokenEl.placeholder = _tgHasToken ? 'Saved — leave blank to keep it' : '123456789:ABCDefgh...';
   const badge = document.getElementById('tg-status-badge');
   if (badge) {
     if (r.running && r.enabled) {
