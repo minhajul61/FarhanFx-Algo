@@ -2858,6 +2858,40 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <div id="bt2-loading" style="display:none;text-align:center;padding:40px;color:var(--text3);font-size:12px">
             ⏳ Fetching 1 year of historical data &amp; running 13 strategies... এটা ২০-৪০ সেকেন্ড সময় নিতে পারে।
           </div>
+
+          <div class="panel" style="margin-top:16px">
+            <div class="panel-title">🔍 Coin Screener — Top Volume Coins, Re-Validated</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:14px">শুধু volume বেশি মানেই profitable না — BTC-এ validated প্রতিটা strategy আলাদাভাবে প্রতিটা top-volume coin-এর নিজের history-তে train/validation backtest করে দেখায় কোনটা আসলে কাজ করে। এটা শুধু report — কোনো bot automatic চালু হয় না, decision তোমার।</div>
+            <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+              <div class="field" style="margin-bottom:0">
+                <label>Coins to Scan</label>
+                <select id="scr-limit" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:var(--font);font-size:12px;outline:none">
+                  <option value="8">Top 8</option>
+                  <option value="12" selected>Top 12</option>
+                  <option value="20">Top 20</option>
+                </select>
+              </div>
+              <button id="scr-run-btn" onclick="runCoinScreener()" style="padding:9px 22px;background:var(--accent);border:none;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:0.5px">🔍 SCAN NOW</button>
+            </div>
+            <div id="scr-meta" style="font-size:10px;color:var(--text3);margin-top:10px"></div>
+          </div>
+
+          <div class="panel" id="scr-results-panel" style="display:none;margin-top:16px">
+            <div class="panel-title">Results — sorted by approved strategy count</div>
+            <table style="width:100%;border-collapse:collapse;font-size:12px">
+              <thead><tr style="color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">
+                <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)">Coin</th>
+                <th style="padding:6px 8px;border-bottom:1px solid var(--border)">24h Volume</th>
+                <th style="padding:6px 8px;border-bottom:1px solid var(--border)">24h Change</th>
+                <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)">Approved Strategies (train PF / val PF)</th>
+              </tr></thead>
+              <tbody id="scr-results-tbody"></tbody>
+            </table>
+          </div>
+
+          <div id="scr-loading" style="display:none;text-align:center;padding:40px;color:var(--text3);font-size:12px">
+            ⏳ Top coins scan করে প্রতিটায় ৫টা strategy train/validation backtest চলছে... এটা ২-৫ মিনিট সময় নিতে পারে।
+          </div>
         </div>
 
         <!-- ═══ SUBSCRIPTION SUB-TAB ═══════════════════ -->
@@ -9103,6 +9137,49 @@ async function runCryptoBacktestAll() {
     toastErr('Backtest failed: ' + e.message);
   } finally {
     btn.disabled = false; btn.textContent = '▶ RUN BACKTEST'; btn.style.opacity = '1';
+    loading.style.display = 'none';
+  }
+}
+
+async function runCoinScreener() {
+  const btn = document.getElementById('scr-run-btn');
+  const loading = document.getElementById('scr-loading');
+  const resultsPanel = document.getElementById('scr-results-panel');
+  const limit = document.getElementById('scr-limit').value;
+
+  btn.disabled = true; btn.textContent = '⏳ SCANNING...'; btn.style.opacity = '0.6';
+  loading.style.display = 'block';
+  resultsPanel.style.display = 'none';
+
+  try {
+    const r = await apiFetch(`/api/crypto/screener/scan?limit=${limit}&days=120`);
+    if (!r || r.error) { toastErr('Screener failed: ' + (r && r.error || 'unknown error')); return; }
+
+    document.getElementById('scr-meta').textContent = `${r.scanned} coins scanned · ${r.days} days of history per coin`;
+
+    const tbody = document.getElementById('scr-results-tbody');
+    tbody.innerHTML = r.coins.map(c => {
+      const chg = c.change_24h;
+      const chgColor = chg >= 0 ? 'var(--green)' : 'var(--red)';
+      const volStr = c.volume_24h >= 1e9 ? '$' + (c.volume_24h/1e9).toFixed(2) + 'B' : '$' + (c.volume_24h/1e6).toFixed(1) + 'M';
+      const approvedHtml = c.approved_strategies.length
+        ? c.approved_strategies.map(s => {
+            const v = c.validation[s];
+            return `<span style="display:inline-block;background:rgba(34,197,94,0.12);color:var(--green);border-radius:5px;padding:2px 8px;margin:2px;font-size:10px;font-weight:700">${s} (${v.train_pf}/${v.val_pf})</span>`;
+          }).join('')
+        : '<span style="color:var(--text3);font-size:11px">কোনোটাই pass করেনি</span>';
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:6px 8px;color:var(--cyan);font-weight:700">${c.base}</td>
+        <td style="padding:6px 8px;text-align:center">${volStr}</td>
+        <td style="padding:6px 8px;text-align:center;color:${chgColor}">${chg>=0?'+':''}${chg}%</td>
+        <td style="padding:6px 8px">${approvedHtml}</td>
+      </tr>`;
+    }).join('');
+    resultsPanel.style.display = 'block';
+  } catch (e) {
+    toastErr('Screener failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '🔍 SCAN NOW'; btn.style.opacity = '1';
     loading.style.display = 'none';
   }
 }

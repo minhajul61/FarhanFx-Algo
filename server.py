@@ -6943,6 +6943,98 @@ def crypto_backtest_all(symbol: str = "BTC/USDT", timeframe: str = "1h", days: i
     }
 
 
+# ── COIN SCREENER — finds high-volume coins, then re-validates every
+# strategy's already-known-good params against THAT coin's own history
+# before calling anything "approved". Volume alone never implies edge (see
+# the multi-symbol research earlier this engagement: BTC-validated params
+# failed train/validation on ETH/SOL/BNB/XRP) — this is read-only and never
+# starts a bot by itself; that decision stays manual. ─────────────────────
+_STRATEGY_DEFAULTS = {
+    "rsi":            ("15m", {"rsi_period": 7, "rsi_ob": 75, "rsi_os": 25}),
+    "macd_cross":     ("15m", {"macd_fast": 12, "macd_slow": 17, "macd_signal": 9}),
+    "bb_squeeze":     ("1h",  {"bb_period": 30, "bb_std": 2.5}),
+    "false_breakout": ("1h",  {}),
+    "trend_breakout": ("15m", {"dc_period": 55, "dc_ema": 150, "trailing_atr": 2.0, "tp_atr": 0.0}),
+}
+_SCREENER_EXCLUDE_BASES = {
+    "XAU", "XAG", "CL", "UKOIL", "USOIL",                      # commodities
+    "SOXL", "SKHYNIX", "MU", "NVDA", "TSLA", "MSFT", "AAPL",   # tokenized stocks
+}
+
+
+def _screener_top_coins(limit: int = 12) -> list:
+    """Top USDT-margined perpetual futures by 24h quote volume — excludes
+    BTC/ETH (already have dedicated bots) and non-crypto commodity perps
+    Binance also lists alongside them."""
+    ex = _ccxt.binanceusdm()
+    tickers = ex.fetch_tickers()
+    rows = []
+    for sym, t in tickers.items():
+        if not sym.endswith("/USDT:USDT"):
+            continue
+        base = sym.split("/")[0]
+        if base in ("BTC", "ETH") or base in _SCREENER_EXCLUDE_BASES:
+            continue
+        vol = t.get("quoteVolume") or 0
+        if vol > 0:
+            rows.append({"symbol": sym, "base": base, "volume_24h": round(vol, 0),
+                         "change_24h": t.get("percentage")})
+    rows.sort(key=lambda x: x["volume_24h"], reverse=True)
+    return rows[:limit]
+
+
+def _screener_validate_coin(symbol: str, days: int = 120) -> dict:
+    """Re-run every strategy's validated params against this coin's own
+    recent history (train/validation split) — same pass bar used throughout
+    this engagement: PF > 1.1 on both halves with a minimum trade count."""
+    results = {}
+    for strategy, (tf, params) in _STRATEGY_DEFAULTS.items():
+        try:
+            ohlcv = _fetch_backtest_ohlcv(symbol, tf, days)
+            if len(ohlcv) < 300:
+                results[strategy] = {"status": "insufficient_data"}
+                continue
+            half = len(ohlcv) // 2
+            train, val = ohlcv[:half], ohlcv[half:]
+            train_r = _run_backtest_strategy(strategy, train, symbol, tf, param_overrides=params)
+            val_r   = _run_backtest_strategy(strategy, val, symbol, tf, param_overrides=params)
+            passed = (train_r["total_trades"] >= 10 and val_r["total_trades"] >= 5 and
+                      (train_r["profit_factor"] or 0) > 1.1 and (val_r["profit_factor"] or 0) > 1.1)
+            results[strategy] = {
+                "status": "pass" if passed else "fail",
+                "timeframe": tf,
+                "train_pf": train_r["profit_factor"], "val_pf": val_r["profit_factor"],
+                "train_trades": train_r["total_trades"], "val_trades": val_r["total_trades"],
+                "val_net_pnl": val_r["net_pnl"],
+            }
+        except Exception as e:
+            results[strategy] = {"status": "error", "error": str(e)[:150]}
+    return results
+
+
+@app.get("/api/crypto/screener/scan")
+def crypto_screener_scan(limit: int = 12, days: int = 120,
+                          current_user: dict = Depends(_get_current_user)):
+    """Screen top-volume coins and re-validate every strategy's existing
+    params against each one's own history. Read-only report — does not
+    start, stop, or modify any bot."""
+    if not _CCXT_OK:
+        return JSONResponse(status_code=503, content={"error": "ccxt not available on this server"})
+    try:
+        coins = _screener_top_coins(limit)
+    except Exception as e:
+        return JSONResponse(status_code=502, content={"error": f"Failed to fetch market list: {e}"})
+
+    report = []
+    for coin in coins:
+        validation = _screener_validate_coin(coin["symbol"], days)
+        approved = [s for s, r in validation.items() if r.get("status") == "pass"]
+        report.append({**coin, "validation": validation, "approved_strategies": approved})
+
+    report.sort(key=lambda c: len(c["approved_strategies"]), reverse=True)
+    return {"scanned": len(report), "days": days, "coins": report}
+
+
 @app.get("/api/crypto/algo/list")
 def crypto_algo_list(live: bool = False, current_user: dict = Depends(_get_current_user)):
     result = []
