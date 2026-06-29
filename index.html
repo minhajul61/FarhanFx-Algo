@@ -2577,11 +2577,17 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                   <input type="number" id="bot-max-trades" value="2" min="1" max="5" style="font-size:12px;border-color:var(--accent)" title="Max concurrent positions this bot will hold"/>
                 </div>
               </div>
-              <div class="field" style="margin-bottom:8px">
-                <label>Fixed Position Size <span style="color:var(--text3);font-size:9px">(0 = off, use Risk % above instead)</span></label>
-                <input type="number" id="bot-fixed-amount" value="0" min="0" step="0.0001" style="font-size:12px"/>
-                <div style="font-size:9px;color:var(--text3);margin-top:3px">যদি 0-এর বেশি দাও, প্রতিটা trade ঠিক এই সংখ্যক coin/contract নেবে — Risk %/leverage/volatility-sizing সব বাইপাস হয়ে যাবে।</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">
+                <div class="field" style="margin:0">
+                  <label>Fixed Coin Amount <span style="color:var(--text3);font-size:9px">(e.g. BTC)</span></label>
+                  <input type="number" id="bot-fixed-amount" value="0" min="0" step="0.0001" style="font-size:12px"/>
+                </div>
+                <div class="field" style="margin:0">
+                  <label>Fixed USD Amount <span style="color:var(--text3);font-size:9px">(notional)</span></label>
+                  <input type="number" id="bot-fixed-usd" value="0" min="0" step="1" style="font-size:12px"/>
+                </div>
               </div>
+              <div style="font-size:9px;color:var(--text3);margin-bottom:8px">দুটোই 0 রাখলে Risk % দিয়ে size হিসাব হবে (default)। Binance Futures order form-এর মতই — Coin Amount দিলে সরাসরি সেই quantity, USD Amount দিলে সেই notional value ÷ current price = quantity। দুটোতে কিছু দিলে Coin Amount আগে priority পাবে।</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
                 <div class="field" style="margin:0">
                   <label>Min ADX (0=off)</label>
@@ -9498,6 +9504,7 @@ async function startAlgoBot() {
     demo_balance:   _gv('bot-demo-balance', 1000, parseFloat),
     risk_pct:       _gv('bot-risk', 1, parseFloat),
     fixed_amount:   _gv('bot-fixed-amount', 0, parseFloat),
+    fixed_usd:      _gv('bot-fixed-usd', 0, parseFloat),
     adx_min:         _gv('bot-adx-min', 0, parseInt),
     max_open_trades: _gv('bot-max-trades', 2, parseInt),
     trailing_atr:    _gv('bot-trailing-atr', 0, parseFloat),
@@ -9715,7 +9722,7 @@ async function algoBotResume(id) {
   const body = {
     exchange: bot.exchange, symbol: bot.symbol, strategy: bot.strategy,
     timeframe: bot.timeframe, risk_pct: bot.risk_pct, leverage: bot.leverage,
-    fixed_amount: bot.fixed_amount || 0,
+    fixed_amount: bot.fixed_amount || 0, fixed_usd: bot.fixed_usd || 0,
     fast_ema: bot.fast_ema, slow_ema: bot.slow_ema, rsi_period: bot.rsi_period,
     rsi_ob: bot.rsi_ob, rsi_os: bot.rsi_os, macd_fast: bot.macd_fast,
     macd_slow: bot.macd_slow, macd_signal: bot.macd_signal, bb_period: bot.bb_period,

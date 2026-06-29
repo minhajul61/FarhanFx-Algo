@@ -5180,6 +5180,7 @@ def _load_saved_bots():
                 bot.setdefault("dc_period", 55)
                 bot.setdefault("dc_ema", 150)
                 bot.setdefault("fixed_amount", 0.0)
+                bot.setdefault("fixed_usd", 0.0)
                 _crypto_bots[bid] = bot
                 if bot.get('status') == 'active':
                     delay = 15 + keys.index(bid) * 3
@@ -5550,6 +5551,7 @@ class CryptoBotReq(BaseModel):
     timeframe:      str   = "1h"
     risk_pct:       float = 1.0
     fixed_amount:   float = 0.0   # 0=off (use risk_pct sizing) | >0 = always trade this many contracts/coins
+    fixed_usd:      float = 0.0   # 0=off | >0 = always trade this many USDT of notional (converted to coins at current price). Ignored if fixed_amount is also set.
     leverage:       int   = 10
     margin_mode:    str   = "isolated"   # "isolated" | "cross" — isolated limits blast radius to this position's margin
     mode:           str   = "demo"        # "demo" (paper trade, no real orders) | "live" (real money)
@@ -6161,6 +6163,8 @@ def _bot_tick_demo(bot_id):
             if price <= 0: return
             if bot.get("fixed_amount", 0) > 0:
                 amount = bot["fixed_amount"]
+            elif bot.get("fixed_usd", 0) > 0:
+                amount = round(bot["fixed_usd"] / price, 6)
             else:
                 equity      = bot.get("demo_equity", bot.get("demo_balance", 1000))
                 risk_usd    = equity * bot["risk_pct"] / 100
@@ -6346,6 +6350,8 @@ def _bot_tick(bot_id):
             if price <= 0: return
             if bot.get("fixed_amount", 0) > 0:
                 amount = bot["fixed_amount"]
+            elif bot.get("fixed_usd", 0) > 0:
+                amount = round(bot["fixed_usd"] / price, 6)
             else:
                 bal         = ex.fetch_balance()
                 free        = float((bal.get("USDT") or {}).get("free") or 0)
@@ -6440,7 +6446,7 @@ def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_curre
         "id": bid, "username": uname, "exchange": req.exchange.lower(),
         "symbol": req.symbol, "strategy": req.strategy,
         "timeframe": req.timeframe, "risk_pct": req.risk_pct,
-        "fixed_amount": req.fixed_amount,
+        "fixed_amount": req.fixed_amount, "fixed_usd": req.fixed_usd,
         "leverage": req.leverage, "margin_mode": req.margin_mode,
         "mode": req.mode, "demo_balance": req.demo_balance,
         "demo_equity": req.demo_balance,
@@ -6764,7 +6770,7 @@ def _run_backtest_strategy(strategy: str, ohlcv: list, symbol: str, timeframe: s
         "bb_period": 30, "bb_std": 2.5,
         "atr_period": 14, "st_multiplier": 3.0,
         "ai_min_score": 65, "trailing_atr": 0.0, "tp_atr": 0.0, "adx_min": 0,
-        "bo_lookback": 20, "dc_period": 55, "dc_ema": 150, "fixed_amount": 0.0,
+        "bo_lookback": 20, "dc_period": 55, "dc_ema": 150, "fixed_amount": 0.0, "fixed_usd": 0.0,
         "open_side": None, "open_entry_price": None, "open_amount": 0,
         "open_trade_count": 0, "open_peak": None, "open_trough": None,
         "trades": [],
@@ -6836,6 +6842,8 @@ def _run_backtest_strategy(strategy: str, ohlcv: list, symbol: str, timeframe: s
             if bot["open_trade_count"] < bot["max_open_trades"] and price > 0:
                 if bot.get("fixed_amount", 0) > 0:
                     amount = bot["fixed_amount"]
+                elif bot.get("fixed_usd", 0) > 0:
+                    amount = round(bot["fixed_usd"] / price, 6)
                 else:
                     equity      = bot["demo_equity"]
                     risk_usd    = equity * bot["risk_pct"] / 100
