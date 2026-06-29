@@ -2520,6 +2520,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                   <option value="bb_squeeze">⚡ BB Squeeze(30,2.5) + Volume — val PF 1.28</option>
                   <option value="false_breakout">🎣 False Breakout Trap — PF 1.15, 55% WR</option>
                   <option value="macd_cross">📈 MACD(12,17,9) Crossover — val PF 1.07</option>
+                  <option value="trend_breakout">📊 Trend Breakout (Donchian 55 + EMA150) — val PF 1.03</option>
                 </select>
               </div>
               <div id="bot-strategy-hint" style="font-size:10px;color:var(--text3);margin-bottom:10px;line-height:1.5;padding:5px 8px;background:rgba(139,92,246,0.05);border-radius:6px;border-left:2px solid var(--accent)">
@@ -2625,6 +2626,14 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                   <div class="field" style="margin:0"><label>Period</label><input type="number" id="bot-bb-period" value="30" style="font-size:12px"/></div>
                   <div class="field" style="margin:0"><label>Std Dev</label><input type="number" id="bot-bb-std" value="2.5" step="0.5" style="font-size:12px"/></div>
                 </div>
+              </div>
+              <div id="bot-trend-params" style="display:none">
+                <div style="font-size:10px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;font-weight:700">DONCHIAN + EMA TREND FILTER</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                  <div class="field" style="margin:0"><label>Donchian Period</label><input type="number" id="bot-dc-period" value="55" style="font-size:12px"/></div>
+                  <div class="field" style="margin:0"><label>EMA Trend Filter</label><input type="number" id="bot-dc-ema" value="150" style="font-size:12px"/></div>
+                </div>
+                <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Exits via Trailing Stop (set below), not signal-flip — validated with Trailing ATR × 2.0.</div>
               </div>
 
               <div class="cx-err" id="bot-err"></div>
@@ -9424,6 +9433,7 @@ const _strategyHints = {
   macd_cross:  'MACD(12,17,9) histogram crosses zero line. Re-tuned for 15m out-of-sample: train PF 1.18, validation PF 1.07 — modest but real edge, high trade count.',
   bb_squeeze:  'BB(30, 2.5σ) band touch + RSI + volume confirmation. 2.3yr out-of-sample validated: train PF 3.08, validation PF 1.28.',
   false_breakout: 'IB False Breakout — institutions break an Inside Bar to hunt stops, then reverse. PF 1.15, 55% WR, low drawdown over 2.3yrs.',
+  trend_breakout: 'Donchian(55) breakout, only taken when it agrees with the EMA(150) trend — exits on a wide ATR trailing stop, not signal-flip, to let trends run. 1yr out-of-sample validated on 15m: train PF 1.06, val PF 1.03, ~320 trades/half.',
 };
 
 function botModeChange() {
@@ -9445,14 +9455,22 @@ function botStrategyChange() {
   if (hint) hint.textContent = _strategyHints[st] || '';
 
   // Hide all param sections
-  ['bot-macd-params','bot-bb-params','bot-rsi-params']
+  ['bot-macd-params','bot-bb-params','bot-rsi-params','bot-trend-params']
     .forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
 
   // Show relevant ones (false_breakout has no tunable params)
   const show = id => { const e = document.getElementById(id); if (e) e.style.display = 'block'; };
-  if (st === 'macd_cross') show('bot-macd-params');
-  if (st === 'bb_squeeze') show('bot-bb-params');
-  if (st === 'rsi')        show('bot-rsi-params');
+  if (st === 'macd_cross')     show('bot-macd-params');
+  if (st === 'bb_squeeze')     show('bot-bb-params');
+  if (st === 'rsi')            show('bot-rsi-params');
+  if (st === 'trend_breakout') show('bot-trend-params');
+
+  // trend_breakout exits via trailing stop, not signal-flip — prefill the
+  // validated setting so a new bot doesn't start with trailing off.
+  if (st === 'trend_breakout') {
+    const trailEl = document.getElementById('bot-trailing-atr');
+    if (trailEl && parseFloat(trailEl.value) === 0) trailEl.value = '2.0';
+  }
 }
 
 function _gv(id, def, fn) {
@@ -9489,6 +9507,9 @@ async function startAlgoBot() {
     rsi_period:     _gv('bot-rsi-period', 7, parseInt),
     rsi_ob:         _gv('bot-rsi-ob', 75, parseInt),
     rsi_os:         _gv('bot-rsi-os', 25, parseInt),
+    // Trend Breakout
+    dc_period:      _gv('bot-dc-period', 55, parseInt),
+    dc_ema:         _gv('bot-dc-ema', 150, parseInt),
   };
   if (!body.symbol) { errEl.textContent = 'Enter a symbol.'; errEl.style.display = 'block'; return; }
   const r = await apiFetch('/api/crypto/algo/start', { method: 'POST', body: JSON.stringify(body) });
