@@ -6219,6 +6219,7 @@ def _bot_tick_demo(bot_id):
 
             entry = {
                 "time":     datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "mode":     bot.get("mode", "demo"),
                 "signal":   signal,
                 "price":    round(price, 4),
                 "amount":   amount,
@@ -6417,6 +6418,7 @@ def _bot_tick(bot_id):
 
             entry = {
                 "time":     datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "mode":     bot.get("mode", "live"),
                 "signal":   signal,
                 "price":    round(price, 4),
                 "amount":   amount,
@@ -6588,6 +6590,7 @@ def crypto_algo_history(current_user: dict = Depends(_get_current_user)):
         for t in b.get("trades", []):
             rows.append({
                 "bot_id":   bid,
+                "mode":     b.get("mode", "live"),
                 "exchange": b.get("exchange", ""),
                 "symbol":   b.get("symbol", ""),
                 "strategy": b.get("strategy", ""),

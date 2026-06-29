@@ -2673,12 +2673,25 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
           <!-- ── ALGO TRADE HISTORY ──────────────────────────────── -->
           <div class="panel" style="margin:0">
-            <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
+            <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
               <span>📋 Algo Trade History</span>
-              <div style="display:flex;gap:8px;align-items:center">
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <span id="algo-hist-count" style="font-size:10px;color:var(--text3)"></span>
+                <select id="cx-hist-mode" onchange="algoLoadHistory()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:10px;font-family:var(--font)">
+                  <option value="all">Live + Demo</option>
+                  <option value="live">Live Only</option>
+                  <option value="demo">Demo Only</option>
+                </select>
+                <select id="cx-hist-strategy" onchange="algoLoadHistory()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:10px;font-family:var(--font)">
+                  <option value="all">All Strategies</option>
+                  <option value="rsi">RSI</option>
+                  <option value="macd_cross">MACD Cross</option>
+                  <option value="bb_squeeze">BB Squeeze</option>
+                  <option value="false_breakout">False Breakout</option>
+                  <option value="trend_breakout">Trend Breakout</option>
+                </select>
                 <select id="algo-hist-filter" onchange="algoLoadHistory()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:10px;font-family:var(--font)">
-                  <option value="all">All Bots</option>
+                  <option value="all">All Status</option>
                   <option value="open">Open Only</option>
                   <option value="closed">Closed Only</option>
                 </select>
@@ -2688,14 +2701,19 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <div style="overflow-x:auto">
               <table>
                 <thead><tr>
-                  <th>TIME</th><th>BOT ID</th><th>EXCHANGE</th><th>SYMBOL</th>
+                  <th>TIME</th><th>BOT ID</th><th>MODE</th><th>EXCHANGE</th><th>SYMBOL</th>
                   <th>STRATEGY</th><th>SIGNAL</th><th>ENTRY</th><th>SIZE</th>
-                  <th>EXIT PRICE</th><th>EXIT REASON</th><th>STATUS</th>
+                  <th>EXIT PRICE</th><th>PNL</th><th>EXIT REASON</th><th>STATUS</th>
                 </tr></thead>
                 <tbody id="algo-hist-tbody">
-                  <tr><td colspan="11" style="text-align:center;color:var(--text3);padding:24px">Loading history...</td></tr>
+                  <tr><td colspan="13" style="text-align:center;color:var(--text3);padding:24px">Loading history...</td></tr>
                 </tbody>
               </table>
+            </div>
+            <div id="cx-hist-pagination" style="display:none;justify-content:center;align-items:center;gap:12px;padding:12px;border-top:1px solid var(--border)">
+              <button class="sbtn" onclick="cxAlgoHistPage(-1)" style="font-size:10px;padding:4px 12px">‹ PREV</button>
+              <span id="cx-hist-page-info" style="font-size:11px;color:var(--text3)"></span>
+              <button class="sbtn" onclick="cxAlgoHistPage(1)" style="font-size:10px;padding:4px 12px">NEXT ›</button>
             </div>
           </div>
 
@@ -9782,34 +9800,66 @@ async function algoLoadBots() {
   algoLoadHistory();
 }
 
+let _cxHistPage = 0;
+let _cxHistFilterKey = '';
+const _CX_HIST_PAGE_SIZE = 20;
+let _cxHistRowsCache = [];
+
 async function algoLoadHistory() {
-  const tbody  = document.getElementById('algo-hist-tbody');
-  const cntEl  = document.getElementById('algo-hist-count');
-  const filter = document.getElementById('algo-hist-filter')?.value || 'all';
+  const tbody    = document.getElementById('algo-hist-tbody');
+  const cntEl    = document.getElementById('algo-hist-count');
+  const filter   = document.getElementById('algo-hist-filter')?.value || 'all';
+  const modeF    = document.getElementById('cx-hist-mode')?.value     || 'all';
+  const stratF   = document.getElementById('cx-hist-strategy')?.value || 'all';
   if (!tbody) return;
   const data = await apiFetch('/api/crypto/algo/history');
+  const pagEl = document.getElementById('cx-hist-pagination');
   if (data.error || !Array.isArray(data)) {
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text3);padding:20px">No trade history</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text3);padding:20px">No trade history</td></tr>';
+    if (pagEl) pagEl.style.display = 'none';
     return;
   }
   let rows = data;
-  if (filter === 'open')   rows = data.filter(t => t.status === 'open' || !t.exit_reason);
-  if (filter === 'closed') rows = data.filter(t => t.status === 'closed' || t.exit_reason);
+  if (filter === 'open')   rows = rows.filter(t => t.status === 'open' || !t.exit_reason);
+  if (filter === 'closed') rows = rows.filter(t => t.status === 'closed' || t.exit_reason);
+  if (modeF !== 'all')     rows = rows.filter(t => (t.mode || 'live') === modeF);
+  if (stratF !== 'all')    rows = rows.filter(t => t.strategy === stratF);
   if (cntEl) cntEl.textContent = `${rows.length} trade${rows.length!==1?'s':''}`;
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text3);padding:20px">No trades match filter</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text3);padding:20px">No trades match filter</td></tr>';
+    if (pagEl) pagEl.style.display = 'none';
     return;
   }
+  // Reset to page 1 only when the filter selection itself changes — not on
+  // every periodic refresh, or browsing page 3 would get yanked back to
+  // page 1 the moment any bot opens/closes a trade in the background.
+  const filterKey = `${filter}|${modeF}|${stratF}`;
+  if (filterKey !== _cxHistFilterKey) { _cxHistPage = 0; _cxHistFilterKey = filterKey; }
+  _cxHistRowsCache = rows;
+  const totalPages = Math.max(1, Math.ceil(rows.length / _CX_HIST_PAGE_SIZE));
+  _cxHistPage = Math.min(_cxHistPage, totalPages - 1);
+  const pageRows = rows.slice(_cxHistPage * _CX_HIST_PAGE_SIZE, (_cxHistPage + 1) * _CX_HIST_PAGE_SIZE);
+
+  if (pagEl) {
+    pagEl.style.display = totalPages > 1 ? 'flex' : 'none';
+    const infoEl = document.getElementById('cx-hist-page-info');
+    if (infoEl) infoEl.textContent = `Page ${_cxHistPage + 1} of ${totalPages}`;
+  }
+
   const exColors = { binance: '#f0b90b', bybit: '#ff6a00', coinswitch: 'var(--accent)' };
-  tbody.innerHTML = rows.map(t => {
+  tbody.innerHTML = pageRows.map(t => {
     const sigC   = t.signal === 'BUY' ? 'var(--green)' : 'var(--red)';
     const isOpen = !t.exit_reason && t.status !== 'closed';
     const stBg   = isOpen ? 'rgba(139,92,246,0.12)' : 'rgba(0,0,0,0)';
     const stTxt  = isOpen ? 'var(--accent)' : 'var(--text3)';
     const stLbl  = isOpen ? 'OPEN' : (t.exit_reason || 'closed').replace(/_/g,' ').toUpperCase();
+    const isDemo = (t.mode || 'live') === 'demo';
+    const pnlC   = (t.pnl || 0) > 0 ? 'var(--green)' : ((t.pnl || 0) < 0 ? 'var(--red)' : 'var(--text3)');
+    const pnlTxt = isOpen ? '—' : `${t.pnl >= 0 ? '+' : ''}$${(t.pnl || 0).toFixed(2)}`;
     return `<tr style="background:${stBg}">
       <td style="font-size:10px;color:var(--text3)">${t.time||'—'}</td>
       <td style="font-size:10px;color:var(--text3)">${t.bot_id||'—'}</td>
+      <td><span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:${isDemo?'rgba(139,92,246,0.12)':'rgba(16,185,129,0.12)'};color:${isDemo?'var(--accent)':'var(--green)'}">${isDemo?'DEMO':'LIVE'}</span></td>
       <td style="font-size:10px;font-weight:700;color:${exColors[t.exchange]||'var(--text)'}">${(t.exchange||'').toUpperCase()}</td>
       <td style="color:var(--cyan);font-weight:700">${t.symbol||'—'}</td>
       <td style="font-size:10px;color:var(--accent)">${(t.strategy||'').replace(/_/g,' ').toUpperCase()}</td>
@@ -9817,10 +9867,17 @@ async function algoLoadHistory() {
       <td style="font-weight:700">$${t.price||0}</td>
       <td style="color:var(--text2)">${t.amount||0}</td>
       <td style="color:var(--text2)">${t.exit_price ? '$'+t.exit_price : '—'}</td>
+      <td style="font-weight:700;color:${pnlC}">${pnlTxt}</td>
       <td style="font-size:10px;color:var(--amber)">${t.exit_reason ? t.exit_reason.replace(/_/g,' ') : '—'}</td>
       <td><span style="font-size:9px;padding:2px 7px;border-radius:4px;background:${stBg};color:${stTxt};border:1px solid ${isOpen?'rgba(139,92,246,0.4)':'var(--border)'};font-weight:700">${stLbl}</span></td>
     </tr>`;
   }).join('');
+}
+
+function cxAlgoHistPage(delta) {
+  const totalPages = Math.max(1, Math.ceil(_cxHistRowsCache.length / _CX_HIST_PAGE_SIZE));
+  _cxHistPage = Math.max(0, Math.min(_cxHistPage + delta, totalPages - 1));
+  algoLoadHistory();
 }
 
 async function algoBotStop(id) {
