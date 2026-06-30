@@ -8620,5 +8620,310 @@ def indian_order_report(current_user: dict = Depends(_get_current_user)):
         return JSONResponse(status_code=400, content={"error": str(e)[:200]})
 
 
+# ── INDIAN MARKET ALGO BOTS ───────────────────────────────────────────────────
+try:
+    import yfinance as _yf
+    _YF_OK = True
+except ImportError:
+    _yf = None
+    _YF_OK = False
+
+_indian_bots: dict = {}
+_indian_bot_timers: dict = {}
+_INDIAN_TF_SECONDS = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "1d": 86400}
+_INDIAN_TF_YF      = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "1d": "1d"}
+_INDIAN_TF_PERIOD  = {"1m": "1d", "5m": "5d", "15m": "5d", "1h": "60d", "1d": "2y"}
+
+
+class IndianBotReq(BaseModel):
+    symbol:           str              # NSE ticker e.g. "RELIANCE"
+    exchange_segment: str = "nse_cm"   # nse_cm | bse_cm | nse_fo | bse_fo
+    strategy:         str = "rsi"
+    timeframe:        str = "15m"
+    mode:             str = "demo"     # demo | live
+    product:          str = "MIS"      # MIS | CNC | NRML
+    quantity:         str = "1"        # shares / lots (must be string for Kotak Neo)
+    demo_balance:     float = 100000.0  # virtual INR balance
+    rsi_period:  int   = 7;  rsi_ob:   int   = 75;  rsi_os:   int   = 25
+    macd_fast:   int   = 12; macd_slow: int   = 17;  macd_signal: int = 9
+    bb_period:   int   = 30; bb_std:   float = 2.5
+    dc_period:   int   = 55; dc_ema:   int   = 150
+    vwap_period: int   = 14; vwap_std: float = 2.5
+    tp_pct:        float = 0.0   # take-profit: % gain from entry (0=off)
+    trailing_pct:  float = 0.0   # trailing stop: % from peak/trough (0=off)
+
+
+def _fetch_indian_ohlcv(symbol: str, exchange_segment: str, timeframe: str, bars: int = 200):
+    if not _YF_OK:
+        return None
+    yf_sym = symbol.upper()
+    if exchange_segment in ("nse_cm",):
+        yf_sym += ".NS"
+    elif exchange_segment in ("bse_cm",):
+        yf_sym += ".BO"
+    interval = _INDIAN_TF_YF.get(timeframe, "15m")
+    period   = _INDIAN_TF_PERIOD.get(timeframe, "5d")
+    try:
+        df = _yf.download(yf_sym, period=period, interval=interval, progress=False, auto_adjust=True)
+        if df.empty:
+            return None
+        if hasattr(df.columns, "levels"):
+            df.columns = df.columns.get_level_values(0)
+        ohlcv = []
+        for ts, row in df.iterrows():
+            o, h, l, c, v = (float(row.get(k, 0) or 0) for k in ("Open", "High", "Low", "Close", "Volume"))
+            if c != c or c == 0:  # NaN / zero close → skip
+                continue
+            ohlcv.append([int(ts.timestamp() * 1000), o, h, l, c, v])
+        if len(ohlcv) < 5:
+            return None
+        return ohlcv[-bars:] if len(ohlcv) > bars else ohlcv
+    except Exception:
+        return None
+
+
+def _indian_bot_tick(bot_id):
+    bot = _indian_bots.get(bot_id)
+    if not bot or bot["status"] != "active":
+        return
+    try:
+        ohlcv = _fetch_indian_ohlcv(bot["symbol"], bot["exchange_segment"], bot["timeframe"])
+        if not ohlcv or len(ohlcv) < 20:
+            bot["last_error"] = "Not enough OHLCV data — yfinance may be unavailable or market closed"
+            return
+        signal = _get_bot_signal(bot, ohlcv)
+        price  = float(ohlcv[-1][4])
+        bot["last_run"]   = datetime.now().strftime("%H:%M:%S")
+        bot["last_price"] = round(price, 2)
+        qty = int(bot.get("quantity", 1))
+
+        def _close_indian_pos(exit_price, exit_reason, live_client=None):
+            ep   = bot.get("open_entry_price", exit_price)
+            side = bot["open_side"]
+            pnl  = (exit_price - ep) * qty if side == "BUY" else (ep - exit_price) * qty
+            bot["demo_equity"] = round(bot.get("demo_equity", bot.get("demo_balance", 100000)) + pnl, 2)
+            if bot.get("trades"):
+                bot["trades"][-1].update(exit_price=round(exit_price, 2),
+                                         exit_reason=exit_reason,
+                                         pnl=round(pnl, 2), status="closed")
+            bot["open_side"]         = None
+            bot["open_entry_price"]  = None
+            bot["open_peak"]         = None
+            bot["open_trough"]       = None
+            if live_client:
+                try:
+                    tx = "S" if side == "BUY" else "B"
+                    live_client.place_order(
+                        exchange_segment=bot["exchange_segment"],
+                        trading_symbol=bot["symbol"],
+                        transaction_type=tx, quantity=str(qty),
+                        order_type="MKT", product=bot.get("product", "MIS"),
+                        price="0", trigger_price="0", validity="DAY"
+                    )
+                except Exception:
+                    pass
+            mode_label = "Live" if bot.get("mode") == "live" else "Demo"
+            _tg_notify(
+                f"<b>FarhanFX Indian — Closed ({mode_label})</b>\n"
+                f"📊 <b>{bot['strategy']}</b> | {bot['symbol']}\n"
+                f"{'✅' if pnl >= 0 else '❌'} PnL: <code>₹{pnl:.2f}</code> ({exit_reason})"
+            )
+
+        # TP / trailing-stop exit check
+        if bot.get("open_side"):
+            ep         = bot.get("open_entry_price", price)
+            oside      = bot["open_side"]
+            tp_pct     = bot.get("tp_pct", 0)
+            trail_pct  = bot.get("trailing_pct", 0)
+            live_cl    = None
+            if bot.get("mode") == "live":
+                try: live_cl = _get_neo_client(bot.get("username", "admin"))
+                except Exception: pass
+            should_exit, exit_reason = False, ""
+            if oside == "BUY":
+                bot["open_peak"] = max(bot.get("open_peak", ep), price)
+                if tp_pct > 0 and price >= ep * (1 + tp_pct / 100):
+                    should_exit, exit_reason = True, "take_profit"
+                elif trail_pct > 0 and price < bot["open_peak"] * (1 - trail_pct / 100):
+                    should_exit, exit_reason = True, "trailing_stop"
+            else:
+                bot["open_trough"] = min(bot.get("open_trough", ep), price)
+                if tp_pct > 0 and price <= ep * (1 - tp_pct / 100):
+                    should_exit, exit_reason = True, "take_profit"
+                elif trail_pct > 0 and price > bot["open_trough"] * (1 + trail_pct / 100):
+                    should_exit, exit_reason = True, "trailing_stop"
+            if should_exit:
+                _close_indian_pos(price, exit_reason, live_cl)
+
+        if signal:
+            live_cl = None
+            if bot.get("mode") == "live":
+                try:
+                    live_cl = _get_neo_client(bot.get("username", "admin"))
+                except Exception as e:
+                    bot["last_error"] = f"Neo login: {str(e)[:100]}"
+                    return
+
+            # Close opposite position on signal flip
+            if bot.get("open_side") and bot["open_side"] != signal:
+                _close_indian_pos(price, "signal_flip", live_cl)
+
+            # Skip if already in same-side position
+            if bot.get("open_side"):
+                bot["total_signals"] = bot.get("total_signals", 0) + 1
+                bot["last_signal"]   = signal
+                return
+
+            # Place order
+            order_id = "demo"
+            if live_cl:
+                try:
+                    r   = live_cl.place_order(
+                        exchange_segment=bot["exchange_segment"],
+                        trading_symbol=bot["symbol"],
+                        transaction_type="B" if signal == "BUY" else "S",
+                        quantity=str(qty), order_type="MKT",
+                        product=bot.get("product", "MIS"),
+                        price="0", trigger_price="0", validity="DAY"
+                    )
+                    err = _neo_err(r)
+                    if err:
+                        bot["last_error"] = f"Order failed: {err}"
+                        return
+                    order_id = ((r or {}).get("data") or {}).get("nOrdNo", "live")
+                except Exception as e:
+                    bot["last_error"] = str(e)[:200]
+                    return
+
+            entry = {
+                "time":        datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "mode":        bot.get("mode", "demo"),
+                "signal":      signal,
+                "price":       round(price, 2),
+                "amount":      qty,
+                "order_id":    order_id,
+                "pnl":         0,
+                "status":      "open",
+                "exit_price":  None,
+                "exit_reason": None,
+            }
+            bot.setdefault("trades", []).append(entry)
+            bot["total_signals"]    = bot.get("total_signals", 0) + 1
+            bot["last_signal"]      = signal
+            bot["open_side"]        = signal
+            bot["open_entry_price"] = price
+            bot["open_peak"]        = price
+            bot["open_trough"]      = price
+            bot["last_error"]       = None
+            mode_label = "Live" if bot.get("mode") == "live" else "Demo"
+            _tg_notify(
+                f"<b>FarhanFX Indian — Trade Opened ({mode_label})</b>\n"
+                f"📊 <b>{bot['strategy']}</b> | {bot['symbol']}\n"
+                f"{'🟢 BUY' if signal == 'BUY' else '🔴 SELL'} @ <code>₹{price:.2f}</code>\n"
+                f"Qty: <code>{qty}</code> | Product: {bot.get('product','MIS')}"
+            )
+
+    except Exception as e:
+        bot["last_error"] = str(e)[:200]
+    finally:
+        if _indian_bots.get(bot_id, {}).get("status") == "active":
+            interval = _INDIAN_TF_SECONDS.get(bot.get("timeframe", "15m"), 900)
+            t = threading.Timer(interval, _indian_bot_tick, args=[bot_id])
+            t.daemon = True
+            t.start()
+            _indian_bot_timers[bot_id] = t
+
+
+@app.post("/api/indian/algo/start")
+def indian_algo_start(req: IndianBotReq, current_user: dict = Depends(_get_current_user)):
+    if not _YF_OK:
+        return JSONResponse(status_code=400, content={"error": "yfinance not installed on server — run: pip install yfinance"})
+    uname = current_user["username"]
+    if req.mode == "live":
+        try:
+            _get_neo_client(uname)
+        except Exception as e:
+            return JSONResponse(status_code=400, content={"error": f"Kotak Neo not connected: {e}"})
+    bid = str(uuid.uuid4())[:8]
+    bot = req.dict()
+    bot.update({
+        "id": bid, "username": uname, "status": "active",
+        "total_signals": 0, "last_signal": None, "last_error": None,
+        "last_run": None, "last_price": None,
+        "open_side": None, "open_entry_price": None,
+        "open_peak": None, "open_trough": None,
+        "trades": [], "demo_equity": req.demo_balance,
+        "created": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    })
+    _indian_bots[bid] = bot
+    t = threading.Timer(3, _indian_bot_tick, args=[bid])
+    t.daemon = True
+    t.start()
+    _indian_bot_timers[bid] = t
+    return {"id": bid, "status": "started"}
+
+
+@app.post("/api/indian/algo/stop/{bot_id}")
+def indian_algo_stop(bot_id: str, current_user: dict = Depends(_get_current_user)):
+    bot = _indian_bots.get(bot_id)
+    if not bot:
+        return JSONResponse(status_code=404, content={"error": "Bot not found"})
+    bot["status"] = "stopped"
+    t = _indian_bot_timers.pop(bot_id, None)
+    if t:
+        t.cancel()
+    return {"status": "stopped"}
+
+
+@app.get("/api/indian/algo/bots")
+def indian_algo_bots(current_user: dict = Depends(_get_current_user)):
+    uname = current_user["username"]
+    result = []
+    for bot in _indian_bots.values():
+        if bot.get("username") != uname:
+            continue
+        result.append({
+            "id":             bot["id"],
+            "symbol":         bot["symbol"],
+            "exchange_segment": bot.get("exchange_segment", "nse_cm"),
+            "strategy":       bot["strategy"],
+            "timeframe":      bot["timeframe"],
+            "mode":           bot.get("mode", "demo"),
+            "product":        bot.get("product", "MIS"),
+            "quantity":       bot.get("quantity", "1"),
+            "status":         bot["status"],
+            "last_run":       bot.get("last_run"),
+            "last_price":     bot.get("last_price"),
+            "last_signal":    bot.get("last_signal"),
+            "last_error":     bot.get("last_error"),
+            "total_signals":  bot.get("total_signals", 0),
+            "open_side":      bot.get("open_side"),
+            "demo_equity":    bot.get("demo_equity", bot.get("demo_balance", 100000)),
+            "trades_count":   len(bot.get("trades", [])),
+            "created":        bot.get("created"),
+        })
+    return result
+
+
+@app.get("/api/indian/algo/history")
+def indian_algo_history(current_user: dict = Depends(_get_current_user)):
+    uname = current_user["username"]
+    rows = []
+    for bot in _indian_bots.values():
+        if bot.get("username") != uname:
+            continue
+        for tr in bot.get("trades", []):
+            rows.append({
+                "bot_id":   bot["id"],
+                "symbol":   bot["symbol"],
+                "strategy": bot["strategy"],
+                "timeframe":bot["timeframe"],
+                "product":  bot.get("product", "MIS"),
+                **tr,
+            })
+    rows.sort(key=lambda r: r.get("time", ""), reverse=True)
+    return rows
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
