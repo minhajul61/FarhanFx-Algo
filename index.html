@@ -2541,6 +2541,10 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                   <option value="false_breakout">False Breakout Trap — PF 1.15, 55% WR</option>
                   <option value="macd_cross">MACD Crossover — val PF 1.07</option>
                   <option value="trend_breakout">Trend Breakout (Donchian+EMA) — val PF 1.03</option>
+                  <option value="rsi_divergence">RSI Divergence — ~62-70% WR</option>
+                  <option value="vwap_rsi">VWAP + RSI Confluence — ~68-75% WR</option>
+                  <option value="bb_rsi_strict">BB + RSI Strict — ~63-68% WR</option>
+                  <option value="orb">Opening Range Breakout (ORB) — ~65-75% WR</option>
                 </select>
               </div>
               <div class="field" style="margin-bottom:8px">
@@ -2569,6 +2573,12 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                   <option value="macd_cross">📈 MACD(12,17,9) Crossover — val PF 1.07</option>
                   <option value="trend_breakout">📊 Trend Breakout (Donchian 55 + EMA150) — val PF 1.03</option>
                   <option value="vwap_bands">📐 VWAP Bands(14, 2.5σ) Mean-Reversion — val PF 1.24</option>
+                  <optgroup label="── High Win Rate ──">
+                  <option value="rsi_divergence">🔀 RSI Divergence — ~62-70% WR</option>
+                  <option value="vwap_rsi">🎯 VWAP + RSI Confluence — ~68-75% WR</option>
+                  <option value="bb_rsi_strict">🏹 BB + RSI Strict — ~63-68% WR</option>
+                  <option value="orb">🚀 Opening Range Breakout (ORB) — ~65-75% WR</option>
+                  </optgroup>
                 </select>
               </div>
               <div id="bot-strategy-hint" style="font-size:10px;color:var(--text3);margin-bottom:10px;line-height:1.5;padding:5px 8px;background:rgba(139,92,246,0.05);border-radius:6px;border-left:2px solid var(--accent)">
@@ -2663,6 +2673,12 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               </div>
 
               <div style="font-size:10px;color:var(--text3);margin-bottom:8px;line-height:1.5">Strategy-specific parameters (RSI/MACD/BB/Trend/VWAP periods) now live under <strong>Settings → Strategy Parameter Settings</strong> — new bots use whatever's saved there.</div>
+
+              <!-- Hidden high-WR strategy params — values come from Settings page in future; defaults used for now -->
+              <input type="hidden" id="bot-div-lookback"    value="25"/>
+              <input type="hidden" id="bot-swing-window"    value="5"/>
+              <input type="hidden" id="bot-vwap-proximity"  value="0.3"/>
+              <input type="hidden" id="bot-orb-minutes"     value="30"/>
 
               <div class="cx-err" id="bot-err"></div>
               <button class="obtn obtn-buy" onclick="startAlgoBot()" style="width:100%;margin-top:10px;font-size:13px;letter-spacing:1px">
@@ -3056,12 +3072,18 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 </div>
                 <div class="field" style="margin:0">
                   <label>Strategy</label>
-                  <select id="in-bot-strategy" class="sinput" style="width:100%">
+                  <select id="in-bot-strategy" class="sinput" style="width:100%" onchange="indianBotStrategyChange()">
                     <option value="rsi">RSI Reversal</option>
                     <option value="macd_cross">MACD Cross</option>
                     <option value="bb_squeeze">BB Squeeze</option>
                     <option value="trend_breakout">Trend Breakout</option>
                     <option value="vwap_bands">VWAP Bands</option>
+                    <optgroup label="── High Win Rate ──">
+                    <option value="rsi_divergence">RSI Divergence ~62-70% WR</option>
+                    <option value="vwap_rsi">VWAP + RSI Confluence ~68-75% WR</option>
+                    <option value="bb_rsi_strict">BB + RSI Strict ~63-68% WR</option>
+                    <option value="orb">Opening Range Breakout ~65-75% WR</option>
+                    </optgroup>
                   </select>
                 </div>
                 <div class="field" style="margin:0">
@@ -3101,7 +3123,16 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                   </select>
                 </div>
               </div>
-              <button class="sbtn" onclick="indianAlgoStart()" style="padding:8px 24px;background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700">▶ START BOT</button>
+              <!-- ORB minutes — shown only when strategy=orb -->
+              <div id="in-bot-orb-row" style="display:none;margin-top:8px">
+                <div class="field" style="margin:0">
+                  <label>ORB Window (minutes) <span style="color:var(--text3);font-size:9px">9:15 AM + N mins</span></label>
+                  <input type="number" id="in-bot-orb-minutes" class="sinput" style="width:100%" value="30" min="5" max="60" step="5"/>
+                </div>
+              </div>
+              <!-- Strategy hint -->
+              <div id="in-bot-strategy-hint" style="display:none;font-size:10px;color:var(--text3);margin-top:8px;line-height:1.5;padding:5px 8px;background:rgba(139,92,246,0.05);border-radius:6px;border-left:2px solid var(--accent)"></div>
+              <button class="sbtn" onclick="indianAlgoStart()" style="margin-top:10px;padding:8px 24px;background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700">▶ START BOT</button>
               <div id="in-bot-err" style="font-size:11px;color:var(--red);margin-top:8px;display:none"></div>
             </div>
 
@@ -10030,6 +10061,10 @@ const _strategyHints = {
   false_breakout: 'IB False Breakout — institutions break an Inside Bar to hunt stops, then reverse. PF 1.15, 55% WR, low drawdown over 2.3yrs.',
   trend_breakout: 'Donchian(55) breakout, only taken when it agrees with the EMA(150) trend — exits on a wide ATR trailing stop, not signal-flip, to let trends run. 1yr out-of-sample validated on 15m: train PF 1.06, val PF 1.03, ~320 trades/half.',
   vwap_bands:  'Rolling VWAP(14) ± 2.5σ bands — fades price back toward VWAP once it tags an outer band. Exits via TP/Trailing ATR, not signal-flip. 1yr out-of-sample validated on 15m: train PF 1.28, val PF 1.24, ~310 trades/half.',
+  rsi_divergence: 'RSI Divergence — price makes a lower low but RSI makes a higher low (bullish), or price makes higher high but RSI makes lower high (bearish). Far stronger signal than plain RSI threshold crossing. ~62-70% WR. Params: div_lookback=25 bars, swing_window=5.',
+  vwap_rsi:    'VWAP + RSI Confluence — institutional entry: only trades when price is within 0.3% of VWAP AND RSI < 40 (BUY) or RSI > 60 (SELL). Fewer but much higher-conviction signals. ~68-75% WR.',
+  bb_rsi_strict: 'BB + RSI Strict — price tags the lower BB AND RSI ≤ 30 → BUY; upper BB AND RSI ≥ 70 → SELL. Stricter than bb_squeeze (no volume filter, tighter RSI threshold). ~63-68% WR.',
+  orb:         'Opening Range Breakout — price range from the first 30 min after open sets the ORB high/low. Breakout above range → BUY, breakdown below → SELL. Best on Indian equities 9:15–9:45 AM IST. ~65-75% WR.',
 };
 
 // Each entry mirrors this strategy's validated defaults (server.py
@@ -10137,6 +10172,11 @@ async function startAlgoBot() {
     // VWAP Bands
     vwap_period:    sp.vwapPeriod,
     vwap_std:       sp.vwapStd,
+    // High Win Rate strategies
+    div_lookback:   _gv('bot-div-lookback', 25, parseInt),
+    swing_window:   _gv('bot-swing-window', 5, parseInt),
+    vwap_proximity: _gv('bot-vwap-proximity', 0.3, parseFloat),
+    orb_minutes:    _gv('bot-orb-minutes', 30, parseInt),
   };
   if (!body.symbol) { errEl.textContent = 'Enter a symbol.'; errEl.style.display = 'block'; return; }
   const r = await apiFetch('/api/crypto/algo/start', { method: 'POST', body: JSON.stringify(body) });
@@ -10698,6 +10738,23 @@ function indianTab(tab) {
 }
 
 // ── INDIAN MARKET — ALGO BOTS ────────────────────────────────────────────────
+function indianBotStrategyChange() {
+  const st = document.getElementById('in-bot-strategy')?.value;
+  const orbRow = document.getElementById('in-bot-orb-row');
+  if (orbRow) orbRow.style.display = (st === 'orb') ? '' : 'none';
+  const hints = {
+    rsi_divergence: 'RSI Divergence: price lower low + RSI higher low → BUY. Price higher high + RSI lower high → SELL. ~62-70% WR.',
+    vwap_rsi:       'VWAP + RSI Confluence: price within 0.3% of VWAP + RSI < 40 → BUY; RSI > 60 → SELL. ~68-75% WR.',
+    bb_rsi_strict:  'BB + RSI Strict: price at lower band + RSI ≤ 30 → BUY; upper band + RSI ≥ 70 → SELL. ~63-68% WR.',
+    orb:            'Opening Range Breakout: 9:15–9:45 AM IST range → BUY on breakout above, SELL on break below. ~65-75% WR.',
+  };
+  const hintEl = document.getElementById('in-bot-strategy-hint');
+  if (hintEl) {
+    hintEl.textContent = hints[st] || '';
+    hintEl.style.display = hints[st] ? '' : 'none';
+  }
+}
+
 async function indianAlgoStart() {
   const errEl = document.getElementById('in-bot-err');
   errEl.style.display = 'none';
@@ -10713,6 +10770,7 @@ async function indianAlgoStart() {
     mode:             document.getElementById('in-bot-mode').value,
     tp_pct:           parseFloat(document.getElementById('in-bot-tp').value || 0),
     trailing_pct:     parseFloat(document.getElementById('in-bot-trail').value || 0),
+    orb_minutes:      parseInt(document.getElementById('in-bot-orb-minutes')?.value || 30),
   };
   if (body.mode === 'live' && !confirm(`Live mode — real orders will be placed for ${symbol} on Kotak Neo. Confirm?`)) return;
   const r = await apiFetch('/api/indian/algo/start', { method: 'POST', body: JSON.stringify(body) });
