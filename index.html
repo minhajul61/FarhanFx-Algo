@@ -3758,7 +3758,7 @@ function showPage(id, el) {
   // regardless of role (admin's own MT5 account has nothing to do with
   // crypto bots), and restore it on every other page.
   const connBar = document.getElementById('conn-bar');
-  if (connBar) connBar.style.display = (id === 'crypto') ? 'none' : '';
+  if (connBar) connBar.style.display = 'none';
 
   stopAlgoRefresh();
   stopTradesRefresh();
@@ -4835,7 +4835,7 @@ function _applyRoleUI(role) {
   // Clients never touch MT5 — that badge/button is meaningless (and the
   // underlying endpoints are blocked for them server-side anyway).
   const connBar = document.getElementById('conn-bar');
-  if (connBar) connBar.style.display = (role === 'client') ? 'none' : '';
+  if (connBar) connBar.style.display = 'none';
 }
 
 // ── ADMIN: CLIENT EXPIRY MANAGEMENT ─────────────────────────────────────────────
