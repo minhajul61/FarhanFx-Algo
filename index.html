@@ -487,7 +487,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
     </div>
     <div class="tb-right">
       <div class="user-badge" id="user-badge">● USER</div>
-      <div class="conn-bar disconnected" id="conn-bar" onclick="onConnBarClick()"><div class="conn-dot" id="conn-dot"></div><span class="conn-label" id="conn-label">CONNECT MT5</span></div>
+      <div class="conn-bar" id="conn-bar" style="display:none"><div class="conn-dot" id="conn-dot"></div><span class="conn-label" id="conn-label">CONNECT MT5</span></div>
       <div id="cx-conn-bar" style="display:none;align-items:center;gap:6px;padding:5px 12px;background:var(--card);border:1px solid rgba(34,197,94,0.4);border-radius:8px;font-size:10px;letter-spacing:1px;cursor:pointer" onclick="_goToCrypto()">
         <div style="width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e;animation:pulse 2s infinite"></div>
         <span id="cx-conn-label" style="color:#22c55e;font-weight:700">BINANCE LIVE</span>
@@ -10849,8 +10849,8 @@ async function indianAlgoLoadHistory() {
   </div>
 </div>
 
-<!-- MT5 CONNECT MODAL -->
-<div id="mt5-modal">
+<!-- MT5 CONNECT MODAL REMOVED -->
+<div id="mt5-modal" style="display:none!important">
   <div class="mt5-overlay" onclick="closeMT5Modal()"></div>
   <div class="mt5-mcard">
     <button class="mt5-mclose" onclick="closeMT5Modal()">✕</button>
