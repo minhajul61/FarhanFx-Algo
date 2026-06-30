@@ -500,6 +500,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
     <div class="sidebar">
       <div class="nav-item active" onclick="showPage('dashboard',this)"><i class="ti ti-layout-dashboard"></i> DASHBOARD</div>
       <div class="nav-item" onclick="showPage('crypto',this)"><i class="ti ti-currency-bitcoin"></i> CRYPTO</div>
+      <div class="nav-item" onclick="showPage('indian',this)"><i class="ti ti-building-bank"></i> INDIAN MARKET</div>
       <div class="nav-item" onclick="showPage('algo',this)"><i class="ti ti-robot"></i> FOREX ALGO</div>
       <div class="nav-item" onclick="showPage('forexbot',this)"><i class="ti ti-affiliate"></i> FOREX BOT</div>
       <div class="nav-item" onclick="showPage('telegram',this)"><i class="ti ti-brand-telegram"></i> TELEGRAM BOT</div>
@@ -2361,6 +2362,38 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             </div>
           </div>
 
+          <!-- Real-Time Support / Resistance -->
+          <div class="panel" style="margin:0 0 12px 0">
+            <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span>📈 Real-Time Support / Resistance</span>
+                <span id="sr-live-badge" style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(34,197,94,0.12);color:var(--green);border:1px solid var(--green)">● LIVE</span>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input type="text" id="sr-symbol" value="BTC/USDT:USDT" style="background:var(--bg2);color:var(--cyan);font-weight:700;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11px;width:140px" onchange="srLoadLevels()"/>
+                <select id="sr-tf" onchange="srLoadLevels()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:10px;font-family:var(--font)">
+                  <option value="1m">1m</option><option value="5m" selected>5m</option>
+                  <option value="15m">15m</option><option value="1h">1h</option>
+                </select>
+                <button class="sbtn" onclick="srLoadLevels()" style="font-size:9px;padding:2px 8px">↻</button>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+              <div style="background:rgba(239,68,68,0.08);border:1px solid var(--red);border-radius:8px;padding:8px 12px">
+                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">NEAREST RESISTANCE</div>
+                <div id="sr-resistance" style="font-size:15px;font-weight:700;color:var(--red)">—</div>
+              </div>
+              <div style="background:rgba(34,197,94,0.08);border:1px solid var(--green);border-radius:8px;padding:8px 12px">
+                <div style="font-size:9px;color:var(--text3);letter-spacing:1px">NEAREST SUPPORT</div>
+                <div id="sr-support" style="font-size:15px;font-weight:700;color:var(--green)">—</div>
+              </div>
+            </div>
+            <div style="position:relative;height:220px">
+              <canvas id="sr-chart"></canvas>
+            </div>
+            <div id="sr-err" style="font-size:11px;color:var(--red);margin-top:8px;display:none"></div>
+          </div>
+
           <!-- All Positions (combined) -->
           <div class="panel" style="margin:0 0 12px 0">
             <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
@@ -2502,6 +2535,18 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               </div>
 
               <div class="field" style="margin-bottom:8px">
+                <label>🏆 Quick Preset <span style="color:var(--text3);font-size:9px">(auto-fills validated settings)</span></label>
+                <select id="bot-preset" onchange="applyBotPreset()" style="background:var(--bg2);color:var(--text);border:1px solid var(--accent);border-radius:8px;padding:8px 10px;font-family:var(--font);font-size:12px;width:100%">
+                  <option value="">— Custom (manual config) —</option>
+                  <option value="rsi">RSI Mean-Reversion — val PF 1.57, 71% WR</option>
+                  <option value="bb_squeeze">BB Squeeze + Volume — val PF 1.28</option>
+                  <option value="vwap_bands">VWAP Bands Mean-Reversion — val PF 1.24</option>
+                  <option value="false_breakout">False Breakout Trap — PF 1.15, 55% WR</option>
+                  <option value="macd_cross">MACD Crossover — val PF 1.07</option>
+                  <option value="trend_breakout">Trend Breakout (Donchian+EMA) — val PF 1.03</option>
+                </select>
+              </div>
+              <div class="field" style="margin-bottom:8px">
                 <label>Exchange</label>
                 <select id="bot-exchange" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--font);font-size:12px;width:100%">
                   <option value="binance">Binance</option>
@@ -2510,8 +2555,12 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 </select>
               </div>
               <div class="field" style="margin-bottom:8px">
-                <label>Symbol</label>
-                <input type="text" id="bot-symbol" value="BTC/USDT:USDT" style="font-size:12px;font-weight:700;color:var(--cyan)"/>
+                <label>Symbol <span style="color:var(--text3);font-size:9px">(comma-separate for multiple coins)</span></label>
+                <input type="text" id="bot-symbol" value="BTC/USDT:USDT" list="cx-symbol-list" placeholder="BTC/USDT:USDT, ETH/USDT:USDT" style="font-size:12px;font-weight:700;color:var(--cyan)"/>
+              </div>
+              <div class="field" style="margin-bottom:8px">
+                <label>Bot Name <span style="color:var(--text3);font-size:9px">(optional — shown on multi-coin groups)</span></label>
+                <input type="text" id="bot-name" placeholder="e.g. personal 01" style="font-size:12px"/>
               </div>
 
               <div class="field" style="margin-bottom:6px">
@@ -2522,6 +2571,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                   <option value="false_breakout">🎣 False Breakout Trap — PF 1.15, 55% WR</option>
                   <option value="macd_cross">📈 MACD(12,17,9) Crossover — val PF 1.07</option>
                   <option value="trend_breakout">📊 Trend Breakout (Donchian 55 + EMA150) — val PF 1.03</option>
+                  <option value="vwap_bands">📐 VWAP Bands(14, 2.5σ) Mean-Reversion — val PF 1.24</option>
                 </select>
               </div>
               <div id="bot-strategy-hint" style="font-size:10px;color:var(--text3);margin-bottom:10px;line-height:1.5;padding:5px 8px;background:rgba(139,92,246,0.05);border-radius:6px;border-left:2px solid var(--accent)">
@@ -2615,38 +2665,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 <div style="font-size:9px;color:var(--text3);margin-top:6px">0 = disabled · e.g. Trail=2, TP=3 → trail 2×ATR, close at 3×ATR profit</div>
               </div>
 
-              <!-- Strategy params (same as before) -->
-              <div id="bot-rsi-params">
-                <div style="font-size:10px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;font-weight:700">RSI SETTINGS</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
-                  <div class="field" style="margin:0"><label>Period</label><input type="number" id="bot-rsi-period" value="7" style="font-size:12px"/></div>
-                  <div class="field" style="margin:0"><label>OB</label><input type="number" id="bot-rsi-ob" value="75" style="font-size:12px"/></div>
-                  <div class="field" style="margin:0"><label>OS</label><input type="number" id="bot-rsi-os" value="25" style="font-size:12px"/></div>
-                </div>
-              </div>
-              <div id="bot-macd-params" style="display:none">
-                <div style="font-size:10px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;font-weight:700">MACD SETTINGS</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
-                  <div class="field" style="margin:0"><label>Fast</label><input type="number" id="bot-macd-fast" value="12" style="font-size:12px"/></div>
-                  <div class="field" style="margin:0"><label>Slow</label><input type="number" id="bot-macd-slow" value="17" style="font-size:12px"/></div>
-                  <div class="field" style="margin:0"><label>Signal</label><input type="number" id="bot-macd-signal" value="9" style="font-size:12px"/></div>
-                </div>
-              </div>
-              <div id="bot-bb-params" style="display:none">
-                <div style="font-size:10px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;font-weight:700">BOLLINGER BANDS</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-                  <div class="field" style="margin:0"><label>Period</label><input type="number" id="bot-bb-period" value="30" style="font-size:12px"/></div>
-                  <div class="field" style="margin:0"><label>Std Dev</label><input type="number" id="bot-bb-std" value="2.5" step="0.5" style="font-size:12px"/></div>
-                </div>
-              </div>
-              <div id="bot-trend-params" style="display:none">
-                <div style="font-size:10px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;font-weight:700">DONCHIAN + EMA TREND FILTER</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-                  <div class="field" style="margin:0"><label>Donchian Period</label><input type="number" id="bot-dc-period" value="55" style="font-size:12px"/></div>
-                  <div class="field" style="margin:0"><label>EMA Trend Filter</label><input type="number" id="bot-dc-ema" value="150" style="font-size:12px"/></div>
-                </div>
-                <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Exits via Trailing Stop (set below), not signal-flip — validated with Trailing ATR × 2.0.</div>
-              </div>
+              <div style="font-size:10px;color:var(--text3);margin-bottom:8px;line-height:1.5">Strategy-specific parameters (RSI/MACD/BB/Trend/VWAP periods) now live under <strong>Settings → Strategy Parameter Settings</strong> — new bots use whatever's saved there.</div>
 
               <div class="cx-err" id="bot-err"></div>
               <button class="obtn obtn-buy" onclick="startAlgoBot()" style="width:100%;margin-top:10px;font-size:13px;letter-spacing:1px">
@@ -2657,10 +2676,12 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <!-- Right: Running Strategies -->
             <div>
               <div class="panel" style="margin:0">
-                <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
+                <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
                   <span>🟢 Running Strategies</span>
                   <div style="display:flex;gap:6px;align-items:center">
                     <span id="algo-running-count" style="font-size:10px;color:var(--text3)">0 bots</span>
+                    <button class="sbtn" onclick="algoToggleAllMode()" title="Flip every running bot between Demo and Live" style="font-size:9px;padding:2px 8px;color:var(--accent);border-color:var(--accent)">⇄ TOGGLE LIVE/PAPER</button>
+                    <button class="sbtn" onclick="algoKillAll()" title="Stop every bot AND close all open positions immediately" style="font-size:9px;padding:2px 8px;color:var(--red);border-color:var(--red)">🛑 EMERGENCY KILL ALL</button>
                     <button class="sbtn" onclick="algoLoadBots()" style="font-size:9px;padding:2px 8px">↻</button>
                   </div>
                 </div>
@@ -2689,6 +2710,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                   <option value="bb_squeeze">BB Squeeze</option>
                   <option value="false_breakout">False Breakout</option>
                   <option value="trend_breakout">Trend Breakout</option>
+                  <option value="vwap_bands">VWAP Bands</option>
                 </select>
                 <select id="algo-hist-filter" onchange="algoLoadHistory()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:10px;font-family:var(--font)">
                   <option value="all">All Status</option>
@@ -2860,6 +2882,153 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           </div>
         </div>
 
+      </div>
+
+      <!-- INDIAN MARKET PAGE (Kotak Neo — NSE/BSE equity, index, F&O) -->
+      <div class="page" id="page-indian">
+        <div class="page-title">Indian Market — Kotak Neo</div>
+
+        <div id="in-connect-section" class="panel">
+          <div class="panel-title">🏦 Connect Kotak Neo</div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.6">
+            Kotak Neo app/web → Invest → Trade API → API Dashboard থেকে Consumer Key ও Access Token নাও।
+            TOTP Secret হলো QR code-এর পেছনের base32 string (Google/Microsoft Authenticator-এ যেটা scan করেছ), একবারের OTP code না।
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="field" style="margin-bottom:8px">
+              <label>Consumer Key</label>
+              <input type="password" id="in-consumer-key" class="sinput" style="width:100%;font-family:monospace;font-size:11px"/>
+            </div>
+            <div class="field" style="margin-bottom:8px">
+              <label>Access Token</label>
+              <input type="password" id="in-access-token" class="sinput" style="width:100%;font-family:monospace;font-size:11px"/>
+            </div>
+            <div class="field" style="margin-bottom:8px">
+              <label>Mobile Number <span style="color:var(--text3);font-size:9px">(with country code)</span></label>
+              <input type="text" id="in-mobile" class="sinput" style="width:100%" placeholder="+919876543210"/>
+            </div>
+            <div class="field" style="margin-bottom:8px">
+              <label>UCC <span style="color:var(--text3);font-size:9px">(Unique Client Code)</span></label>
+              <input type="text" id="in-ucc" class="sinput" style="width:100%"/>
+            </div>
+            <div class="field" style="margin-bottom:8px">
+              <label>MPIN</label>
+              <input type="password" id="in-mpin" class="sinput" style="width:100%"/>
+            </div>
+            <div class="field" style="margin-bottom:8px">
+              <label>TOTP Secret <span style="color:var(--text3);font-size:9px">(base32, from QR code)</span></label>
+              <input type="password" id="in-totp-secret" class="sinput" style="width:100%;font-family:monospace;font-size:11px"/>
+            </div>
+            <div class="field" style="margin-bottom:8px">
+              <label>Environment</label>
+              <select id="in-environment" class="sinput" style="width:100%">
+                <option value="prod" selected>Production (real money)</option>
+                <option value="uat">UAT (sandbox)</option>
+              </select>
+            </div>
+          </div>
+          <button class="sbtn" onclick="indianConnect()" style="margin-top:8px;padding:9px 24px;background:var(--accent);color:#fff;border-color:var(--accent);font-size:12px;font-weight:700">CONNECT</button>
+          <div id="in-connect-err" style="font-size:11px;color:var(--red);margin-top:8px;display:none"></div>
+        </div>
+
+        <div id="in-connected-banner" style="display:none;background:rgba(34,197,94,0.08);border:1px solid var(--green);border-radius:8px;padding:10px 14px;margin-bottom:14px;align-items:center;justify-content:space-between">
+          <span style="color:var(--green);font-weight:700;font-size:12px">✅ Connected — UCC: <span id="in-ucc-display"></span> (<span id="in-env-display"></span>)</span>
+          <button class="sbtn" onclick="indianDisconnect()" style="font-size:10px;padding:4px 12px;color:var(--red);border-color:var(--red)">DISCONNECT</button>
+        </div>
+
+        <div id="in-trade-section" style="display:none">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+            <!-- Scrip search -->
+            <div class="panel" style="margin:0">
+              <div class="panel-title">🔍 Search Symbol</div>
+              <div style="display:flex;gap:8px;margin-bottom:10px">
+                <select id="in-search-segment" class="sinput" style="width:140px">
+                  <option value="nse_cm">NSE Equity</option>
+                  <option value="bse_cm">BSE Equity</option>
+                  <option value="nse_fo">NSE F&O</option>
+                  <option value="bse_fo">BSE F&O</option>
+                </select>
+                <input type="text" id="in-search-symbol" class="sinput" style="flex:1" placeholder="e.g. RELIANCE, NIFTY"/>
+                <button class="sbtn" onclick="indianSearchScrip()" style="padding:6px 16px">SEARCH</button>
+              </div>
+              <div id="in-search-results" style="max-height:240px;overflow-y:auto"></div>
+            </div>
+
+            <!-- Place order -->
+            <div class="panel" style="margin:0">
+              <div class="panel-title">📝 Place Order</div>
+              <div class="field" style="margin-bottom:8px">
+                <label>Trading Symbol</label>
+                <input type="text" id="in-order-symbol" class="sinput" style="width:100%;font-weight:700;color:var(--cyan)" placeholder="select from search →"/>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                <div class="field" style="margin:0"><label>Exchange Segment</label>
+                  <select id="in-order-segment" class="sinput" style="width:100%">
+                    <option value="nse_cm">NSE Equity</option><option value="bse_cm">BSE Equity</option>
+                    <option value="nse_fo">NSE F&O</option><option value="bse_fo">BSE F&O</option>
+                  </select>
+                </div>
+                <div class="field" style="margin:0"><label>Product</label>
+                  <select id="in-order-product" class="sinput" style="width:100%">
+                    <option value="MIS">MIS (Intraday)</option><option value="CNC">CNC (Delivery)</option>
+                    <option value="NRML">NRML (F&O carry-forward)</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                <div class="field" style="margin:0"><label>Order Type</label>
+                  <select id="in-order-type" class="sinput" style="width:100%" onchange="indianOrderTypeChange()">
+                    <option value="MKT">Market</option><option value="L">Limit</option>
+                    <option value="SL">SL (Limit)</option><option value="SL-M">SL-M (Market)</option>
+                  </select>
+                </div>
+                <div class="field" style="margin:0"><label>Validity</label>
+                  <select id="in-order-validity" class="sinput" style="width:100%">
+                    <option value="DAY">DAY</option><option value="IOC">IOC</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                <div class="field" style="margin:0"><label>Quantity</label><input type="number" id="in-order-qty" class="sinput" style="width:100%" value="1" min="1"/></div>
+                <div class="field" id="in-order-price-field" style="margin:0;display:none"><label>Price</label><input type="number" id="in-order-price" class="sinput" style="width:100%" value="0" step="0.05"/></div>
+              </div>
+              <div class="field" style="margin-bottom:10px;display:none" id="in-order-trigger-field"><label>Trigger Price</label><input type="number" id="in-order-trigger" class="sinput" style="width:100%" value="0" step="0.05"/></div>
+              <div style="display:flex;gap:8px">
+                <button class="obtn obtn-buy" onclick="indianPlaceOrder('B')" style="flex:1">▲ BUY</button>
+                <button class="obtn obtn-sell" onclick="indianPlaceOrder('S')" style="flex:1">▼ SELL</button>
+              </div>
+              <div id="in-order-err" style="font-size:11px;color:var(--red);margin-top:8px;display:none"></div>
+            </div>
+          </div>
+
+          <!-- Positions -->
+          <div class="panel" style="margin-bottom:14px">
+            <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
+              <span>Positions</span>
+              <button class="sbtn" onclick="indianLoadPositions()" style="font-size:9px;padding:2px 8px">↻ REFRESH</button>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead><tr><th>SYMBOL</th><th>SEGMENT</th><th>PRODUCT</th><th>QTY</th><th>BUY AVG</th><th>SELL AVG</th><th>P&amp;L</th></tr></thead>
+                <tbody id="in-positions-tbody"><tr><td colspan="7" style="text-align:center;color:var(--text3);padding:16px">Connect first.</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Holdings -->
+          <div class="panel">
+            <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
+              <span>Holdings</span>
+              <button class="sbtn" onclick="indianLoadHoldings()" style="font-size:9px;padding:2px 8px">↻ REFRESH</button>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead><tr><th>SYMBOL</th><th>QTY</th><th>AVG PRICE</th><th>LTP</th><th>P&amp;L</th></tr></thead>
+                <tbody id="in-holdings-tbody"><tr><td colspan="5" style="text-align:center;color:var(--text3);padding:16px">Connect first.</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- FOREX BOT PAGE -->
@@ -3137,6 +3306,53 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <button class="sbtn" style="padding:10px 28px;font-size:12px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="saveSettings()">💾 SAVE SETTINGS</button>
           <button class="sbtn" style="padding:10px 20px;font-size:12px" onclick="resetSettings()">RESET DEFAULTS</button>
           <span id="s-save-status" style="font-size:11px;color:var(--text3)"></span>
+        </div>
+
+        <!-- Strategy Parameter Settings (crypto algo bots) — moved out of
+             the Create New Bot form to keep that form uncluttered. New
+             bots use whatever is saved here instead of asking for these
+             per-bot every time. -->
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-title">📐 Strategy Parameter Settings <span style="color:var(--text3);font-size:10px;font-weight:400">— used by Crypto Algo Bots when creating a new bot</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px">
+            <div>
+              <div class="setting-group" style="margin-top:0">
+                <div style="font-size:10px;letter-spacing:1px;color:var(--accent);font-weight:700;margin-bottom:4px">RSI MEAN-REVERSION</div>
+                <div class="setting-row"><div><div class="setting-label">Period</div></div><input class="sinput" id="sp-rsi-period" type="number" value="7" style="width:100px"/></div>
+                <div class="setting-row"><div><div class="setting-label">Overbought</div></div><input class="sinput" id="sp-rsi-ob" type="number" value="75" style="width:100px"/></div>
+                <div class="setting-row"><div><div class="setting-label">Oversold</div></div><input class="sinput" id="sp-rsi-os" type="number" value="25" style="width:100px"/></div>
+              </div>
+              <div class="setting-group">
+                <div style="font-size:10px;letter-spacing:1px;color:var(--accent);font-weight:700;margin-bottom:4px">MACD CROSSOVER</div>
+                <div class="setting-row"><div><div class="setting-label">Fast</div></div><input class="sinput" id="sp-macd-fast" type="number" value="12" style="width:100px"/></div>
+                <div class="setting-row"><div><div class="setting-label">Slow</div></div><input class="sinput" id="sp-macd-slow" type="number" value="17" style="width:100px"/></div>
+                <div class="setting-row"><div><div class="setting-label">Signal</div></div><input class="sinput" id="sp-macd-signal" type="number" value="9" style="width:100px"/></div>
+              </div>
+              <div class="setting-group">
+                <div style="font-size:10px;letter-spacing:1px;color:var(--accent);font-weight:700;margin-bottom:4px">BB SQUEEZE</div>
+                <div class="setting-row"><div><div class="setting-label">Period</div></div><input class="sinput" id="sp-bb-period" type="number" value="30" style="width:100px"/></div>
+                <div class="setting-row"><div><div class="setting-label">Std Dev</div></div><input class="sinput" id="sp-bb-std" type="number" step="0.5" value="2.5" style="width:100px"/></div>
+              </div>
+            </div>
+            <div>
+              <div class="setting-group" style="margin-top:0">
+                <div style="font-size:10px;letter-spacing:1px;color:var(--accent);font-weight:700;margin-bottom:4px">TREND BREAKOUT (DONCHIAN + EMA)</div>
+                <div class="setting-row"><div><div class="setting-label">Donchian Period</div></div><input class="sinput" id="sp-dc-period" type="number" value="55" style="width:100px"/></div>
+                <div class="setting-row"><div><div class="setting-label">EMA Trend Filter</div></div><input class="sinput" id="sp-dc-ema" type="number" value="150" style="width:100px"/></div>
+              </div>
+              <div class="setting-group">
+                <div style="font-size:10px;letter-spacing:1px;color:var(--accent);font-weight:700;margin-bottom:4px">VWAP MEAN-REVERSION BANDS</div>
+                <div class="setting-row"><div><div class="setting-label">VWAP Period</div></div><input class="sinput" id="sp-vwap-period" type="number" value="14" style="width:100px"/></div>
+                <div class="setting-row"><div><div class="setting-label">Std-Dev Bands</div></div><input class="sinput" id="sp-vwap-std" type="number" step="0.1" value="2.5" style="width:100px"/></div>
+              </div>
+              <div style="font-size:10px;color:var(--text3);margin-top:8px;line-height:1.5">False Breakout has no tunable parameters — it's a fixed price-action pattern.</div>
+            </div>
+          </div>
+          <div style="margin-top:14px;display:flex;gap:12px;align-items:center">
+            <button class="sbtn" style="padding:8px 22px;font-size:12px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="saveStrategyParams()">💾 SAVE STRATEGY PARAMETERS</button>
+            <button class="sbtn" style="padding:8px 18px;font-size:12px" onclick="resetStrategyParams()">RESET TO VALIDATED DEFAULTS</button>
+            <span id="sp-save-status" style="font-size:11px;color:var(--text3)"></span>
+          </div>
         </div>
 
         <!-- Client Management (admin only — clients can't reach this page at all) -->
@@ -3447,9 +3663,10 @@ function showPage(id, el) {
   if (id === 'reports')     { loadReports(); }
   if (id === 'crypto')      { cryptoInit(); }
   if (id === 'dashboard')   { loadDashboardReport(); }
-  if (id === 'settings')    { applySettingsToUI(loadSettings()); if (_getAuthRole() === 'admin') { document.getElementById('admin-clients-panel').style.display = 'block'; document.getElementById('admin-payments-panel').style.display = 'block'; loadAdminClients(); loadAdminPaymentRequests(); } }
+  if (id === 'settings')    { applySettingsToUI(loadSettings()); applyStrategyParamsToUI(loadStrategyParams()); if (_getAuthRole() === 'admin') { document.getElementById('admin-clients-panel').style.display = 'block'; document.getElementById('admin-payments-panel').style.display = 'block'; loadAdminClients(); loadAdminPaymentRequests(); } }
   if (id === 'forexbot')    { fbStartPolling(); } else { fbStopPolling(); }
   if (id === 'telegram')   { telegramInit(); } else { clearInterval(_tgRefTimer); }
+  if (id === 'indian')     { indianInit(); }
 }
 
 function tvExitFullPage() {
@@ -4353,6 +4570,54 @@ function resetSettings() {
   applySettingsToUI(SETTINGS_DEFAULTS);
   const st = document.getElementById('s-save-status');
   if (st) { st.textContent = 'Reset to defaults'; st.style.color = 'var(--text3)'; }
+}
+
+// Crypto algo-bot strategy parameters — moved here from the Create New Bot
+// form so that form only asks for what changes bot-to-bot (symbol,
+// strategy, risk); these tuning knobs are saved once and reused for every
+// new bot. Values mirror server.py's out-of-sample-validated defaults.
+const STRATEGY_PARAM_DEFAULTS = {
+  rsiPeriod: 7, rsiOb: 75, rsiOs: 25,
+  macdFast: 12, macdSlow: 17, macdSignal: 9,
+  bbPeriod: 30, bbStd: 2.5,
+  dcPeriod: 55, dcEma: 150,
+  vwapPeriod: 14, vwapStd: 2.5,
+};
+
+function loadStrategyParams() {
+  try { return Object.assign({}, STRATEGY_PARAM_DEFAULTS, JSON.parse(localStorage.getItem('farhanfx_strategy_params') || '{}')); }
+  catch { return { ...STRATEGY_PARAM_DEFAULTS }; }
+}
+
+function applyStrategyParamsToUI(p) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('sp-rsi-period', p.rsiPeriod); set('sp-rsi-ob', p.rsiOb); set('sp-rsi-os', p.rsiOs);
+  set('sp-macd-fast', p.macdFast); set('sp-macd-slow', p.macdSlow); set('sp-macd-signal', p.macdSignal);
+  set('sp-bb-period', p.bbPeriod); set('sp-bb-std', p.bbStd);
+  set('sp-dc-period', p.dcPeriod); set('sp-dc-ema', p.dcEma);
+  set('sp-vwap-period', p.vwapPeriod); set('sp-vwap-std', p.vwapStd);
+}
+
+function saveStrategyParams() {
+  const g = id => document.getElementById(id)?.value;
+  const p = {
+    rsiPeriod: parseInt(g('sp-rsi-period')) || 7, rsiOb: parseInt(g('sp-rsi-ob')) || 75, rsiOs: parseInt(g('sp-rsi-os')) || 25,
+    macdFast: parseInt(g('sp-macd-fast')) || 12, macdSlow: parseInt(g('sp-macd-slow')) || 17, macdSignal: parseInt(g('sp-macd-signal')) || 9,
+    bbPeriod: parseInt(g('sp-bb-period')) || 30, bbStd: parseFloat(g('sp-bb-std')) || 2.5,
+    dcPeriod: parseInt(g('sp-dc-period')) || 55, dcEma: parseInt(g('sp-dc-ema')) || 150,
+    vwapPeriod: parseInt(g('sp-vwap-period')) || 14, vwapStd: parseFloat(g('sp-vwap-std')) || 2.5,
+  };
+  localStorage.setItem('farhanfx_strategy_params', JSON.stringify(p));
+  const st = document.getElementById('sp-save-status');
+  if (st) { st.textContent = '✓ Saved at ' + new Date().toLocaleTimeString(); st.style.color = 'var(--green)'; }
+  toast('Strategy parameters saved ✓');
+}
+
+function resetStrategyParams() {
+  localStorage.removeItem('farhanfx_strategy_params');
+  applyStrategyParamsToUI(STRATEGY_PARAM_DEFAULTS);
+  const st = document.getElementById('sp-save-status');
+  if (st) { st.textContent = 'Reset to validated defaults'; st.style.color = 'var(--text3)'; }
 }
 
 function getSettings() { return loadSettings(); }
@@ -8297,6 +8562,8 @@ let _cxType      = 'market';
 let _cxModalEx   = 'binance';
 let _cxMarkPrice = 0;
 let _cxRefTimer  = null;
+let _srRefTimer  = null;
+let _srChart     = null;
 
 // ── Init / Refresh ──
 async function cryptoInit() {
@@ -8494,14 +8761,21 @@ async function cryptoLoadOrders() {
 }
 
 // ── Markets (symbol autocomplete) ──
+// Top ~150 coins by 24h volume, tagged major/meme/other — the <input
+// list="cx-symbol-list"> on every symbol field (Trade tab AND bot
+// creation) stays a plain text input, so typing any symbol by hand still
+// works exactly as before; this just adds ranked suggestions on top.
 async function cryptoLoadMarkets() {
   const dl = document.getElementById('cx-symbol-list');
   if (!dl) return;
-  // Try each connected exchange until we get a symbol list
+  const catEmoji = { major: '⭐', meme: '🐸', other: '🔹' };
   for (const ex of ['binance', 'bybit', _cxExchange]) {
-    const syms = await apiFetch('/api/crypto/markets?exchange=' + ex);
-    if (Array.isArray(syms) && syms.length > 0) {
-      dl.innerHTML = syms.map(s => `<option value="${s}">`).join('');
+    const rows = await apiFetch('/api/crypto/markets?exchange=' + ex);
+    if (Array.isArray(rows) && rows.length > 0) {
+      dl.innerHTML = rows.map(m => {
+        const volStr = m.volume_24h ? ` — ${catEmoji[m.category]||''} Vol $${(m.volume_24h/1e6).toFixed(1)}M` : '';
+        return `<option value="${m.symbol}">${m.symbol}${volStr}</option>`;
+      }).join('');
       return;
     }
   }
@@ -8986,6 +9260,7 @@ function _clearCryptoTimers() {
   if (_algoRefTimer) { clearInterval(_algoRefTimer); _algoRefTimer = null; }
   if (_rptRefTimer)  { clearInterval(_rptRefTimer);  _rptRefTimer  = null; }
   if (_tgRefTimer)   { clearInterval(_tgRefTimer);   _tgRefTimer   = null; }
+  if (_srRefTimer)   { clearInterval(_srRefTimer);   _srRefTimer   = null; }
   if (_labAutoTimer) { clearInterval(_labAutoTimer); _labAutoTimer = null;
     const btn = document.getElementById('lab-auto-btn');
     if (btn) { btn.textContent = '⏵ AUTO'; btn.style.background = ''; btn.style.color = ''; }
@@ -9140,6 +9415,8 @@ function showCryptoTab(tab, el) {
   if (tab === 'trade') {
     tpInit();
     _dashRefTimer = setInterval(cryptoRefresh, 10000);
+    srLoadLevels();
+    _srRefTimer = setInterval(srLoadLevels, 10000);
   }
   if (tab === 'algo') {
     algoLoadBots();
@@ -9151,6 +9428,65 @@ function showCryptoTab(tab, el) {
   }
   if (tab === 'payhistory') {
     loadPaymentHistory();
+  }
+}
+
+// -- REAL-TIME SUPPORT / RESISTANCE -----------------------------------------
+async function srLoadLevels() {
+  const errEl = document.getElementById('sr-err');
+  const sym = document.getElementById('sr-symbol')?.value?.trim() || 'BTC/USDT:USDT';
+  const tf  = document.getElementById('sr-tf')?.value || '5m';
+  const r = await apiFetch(`/api/crypto/sr_levels?symbol=${encodeURIComponent(sym)}&timeframe=${tf}`);
+  if (r.error) {
+    if (errEl) { errEl.textContent = r.error; errEl.style.display = 'block'; }
+    return;
+  }
+  if (errEl) errEl.style.display = 'none';
+
+  const fmt = (lvl) => {
+    if (!lvl) return '<span style="color:var(--text3);font-size:11px">none nearby</span>';
+    const pct = ((lvl.price - r.price) / r.price * 100).toFixed(3);
+    return `$${lvl.price} <span style="font-size:10px;color:var(--text3)">(${pct >= 0 ? '+' : ''}${pct}%, touched ${lvl.strength}×)</span>`;
+  };
+  const resEl = document.getElementById('sr-resistance');
+  const supEl = document.getElementById('sr-support');
+  if (resEl) resEl.innerHTML = fmt(r.nearest_resistance);
+  if (supEl) supEl.innerHTML = fmt(r.nearest_support);
+
+  const labels = r.times.map(t => new Date(t).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}));
+  const n = r.closes.length;
+  const datasets = [{
+    label: sym, data: r.closes, borderColor: '#22d3ee',
+    borderWidth: 2, pointRadius: 0, tension: 0.15,
+  }];
+  if (r.nearest_resistance) {
+    datasets.push({ label: 'Resistance', data: Array(n).fill(r.nearest_resistance.price),
+      borderColor: '#ef4444', borderWidth: 1, borderDash: [5, 4], pointRadius: 0 });
+  }
+  if (r.nearest_support) {
+    datasets.push({ label: 'Support', data: Array(n).fill(r.nearest_support.price),
+      borderColor: '#22c55e', borderWidth: 1, borderDash: [5, 4], pointRadius: 0 });
+  }
+
+  const ctx = document.getElementById('sr-chart');
+  if (!ctx) return;
+  if (_srChart) {
+    _srChart.data.labels = labels;
+    _srChart.data.datasets = datasets;
+    _srChart.update();
+  } else {
+    _srChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#6b7280', maxTicksLimit: 8 }, grid: { display: false } },
+          y: { ticks: { color: '#6b7280' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        },
+      },
+    });
   }
 }
 
@@ -9586,7 +9922,36 @@ const _strategyHints = {
   bb_squeeze:  'BB(30, 2.5σ) band touch + RSI + volume confirmation. 2.3yr out-of-sample validated: train PF 3.08, validation PF 1.28.',
   false_breakout: 'IB False Breakout — institutions break an Inside Bar to hunt stops, then reverse. PF 1.15, 55% WR, low drawdown over 2.3yrs.',
   trend_breakout: 'Donchian(55) breakout, only taken when it agrees with the EMA(150) trend — exits on a wide ATR trailing stop, not signal-flip, to let trends run. 1yr out-of-sample validated on 15m: train PF 1.06, val PF 1.03, ~320 trades/half.',
+  vwap_bands:  'Rolling VWAP(14) ± 2.5σ bands — fades price back toward VWAP once it tags an outer band. Exits via TP/Trailing ATR, not signal-flip. 1yr out-of-sample validated on 15m: train PF 1.28, val PF 1.24, ~310 trades/half.',
 };
+
+// Each entry mirrors this strategy's validated defaults (server.py
+// _STRATEGY_DEFAULTS) so picking a preset reproduces the exact backtested
+// setup instead of leaving a stale/manual param behind.
+// Strategy-specific numeric params (RSI period, MACD fast/slow, etc.) live
+// in Settings → Strategy Parameter Settings now, not here — a preset only
+// needs to set the strategy, its validated timeframe, and its exit mode.
+const _BOT_PRESETS = {
+  rsi:            { timeframe: '15m', trailing_atr: 0,   tp_atr: 0   },
+  macd_cross:     { timeframe: '15m', trailing_atr: 0,   tp_atr: 0   },
+  bb_squeeze:     { timeframe: '1h',  trailing_atr: 0,   tp_atr: 0   },
+  false_breakout: { timeframe: '1h',  trailing_atr: 0,   tp_atr: 0   },
+  trend_breakout: { timeframe: '15m', trailing_atr: 2.0, tp_atr: 0   },
+  vwap_bands:     { timeframe: '15m', trailing_atr: 2.0, tp_atr: 2.5 },
+};
+
+function applyBotPreset() {
+  const name = document.getElementById('bot-preset')?.value;
+  if (!name || !_BOT_PRESETS[name]) return;
+  const preset = _BOT_PRESETS[name];
+  const set = (id, val) => { const e = document.getElementById(id); if (e) e.value = val; };
+  set('bot-strategy', name);
+  set('bot-timeframe', preset.timeframe);
+  set('bot-trailing-atr', preset.trailing_atr);
+  set('bot-tp-atr', preset.tp_atr);
+  botStrategyChange();
+  toast(`Preset applied — ${name.replace(/_/g,' ').toUpperCase()} on ${preset.timeframe}`, true);
+}
 
 function botModeChange() {
   const mode = document.getElementById('bot-mode')?.value;
@@ -9606,22 +9971,18 @@ function botStrategyChange() {
   const hint = document.getElementById('bot-strategy-hint');
   if (hint) hint.textContent = _strategyHints[st] || '';
 
-  // Hide all param sections
-  ['bot-macd-params','bot-bb-params','bot-rsi-params','bot-trend-params']
-    .forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
-
-  // Show relevant ones (false_breakout has no tunable params)
-  const show = id => { const e = document.getElementById(id); if (e) e.style.display = 'block'; };
-  if (st === 'macd_cross')     show('bot-macd-params');
-  if (st === 'bb_squeeze')     show('bot-bb-params');
-  if (st === 'rsi')            show('bot-rsi-params');
-  if (st === 'trend_breakout') show('bot-trend-params');
-
-  // trend_breakout exits via trailing stop, not signal-flip — prefill the
-  // validated setting so a new bot doesn't start with trailing off.
+  // trend_breakout / vwap_bands both exit via ATR-based TP/trailing stop,
+  // not signal-flip — prefill the validated settings so a new bot doesn't
+  // start with both off.
   if (st === 'trend_breakout') {
     const trailEl = document.getElementById('bot-trailing-atr');
     if (trailEl && parseFloat(trailEl.value) === 0) trailEl.value = '2.0';
+  }
+  if (st === 'vwap_bands') {
+    const trailEl = document.getElementById('bot-trailing-atr');
+    const tpEl    = document.getElementById('bot-tp-atr');
+    if (trailEl && parseFloat(trailEl.value) === 0) trailEl.value = '2.0';
+    if (tpEl && parseFloat(tpEl.value) === 0) tpEl.value = '2.5';
   }
 }
 
@@ -9634,9 +9995,11 @@ async function startAlgoBot() {
   const errEl = document.getElementById('bot-err');
   errEl.style.display = 'none';
   const st = _gv('bot-strategy', 'ai_score');
+  const sp = loadStrategyParams();   // Settings → Strategy Parameter Settings
   const body = {
     exchange:       _gv('bot-exchange', 'binance'),
     symbol:         _gv('bot-symbol', 'BTC/USDT:USDT')?.trim(),
+    name:           _gv('bot-name', '')?.trim(),
     strategy:       st,
     timeframe:      _gv('bot-timeframe', '1h'),
     leverage:       _gv('bot-leverage', 10, parseInt),
@@ -9651,24 +10014,28 @@ async function startAlgoBot() {
     trailing_atr:    _gv('bot-trailing-atr', 0, parseFloat),
     tp_atr:          _gv('bot-tp-atr', 0, parseFloat),
     // MACD
-    macd_fast:      _gv('bot-macd-fast', 12, parseInt),
-    macd_slow:      _gv('bot-macd-slow', 17, parseInt),
-    macd_signal:    _gv('bot-macd-signal', 9, parseInt),
+    macd_fast:      sp.macdFast,
+    macd_slow:      sp.macdSlow,
+    macd_signal:    sp.macdSignal,
     // BB
-    bb_period:      _gv('bot-bb-period', 30, parseInt),
-    bb_std:         _gv('bot-bb-std', 2.5, parseFloat),
+    bb_period:      sp.bbPeriod,
+    bb_std:         sp.bbStd,
     // RSI
-    rsi_period:     _gv('bot-rsi-period', 7, parseInt),
-    rsi_ob:         _gv('bot-rsi-ob', 75, parseInt),
-    rsi_os:         _gv('bot-rsi-os', 25, parseInt),
+    rsi_period:     sp.rsiPeriod,
+    rsi_ob:         sp.rsiOb,
+    rsi_os:         sp.rsiOs,
     // Trend Breakout
-    dc_period:      _gv('bot-dc-period', 55, parseInt),
-    dc_ema:         _gv('bot-dc-ema', 150, parseInt),
+    dc_period:      sp.dcPeriod,
+    dc_ema:         sp.dcEma,
+    // VWAP Bands
+    vwap_period:    sp.vwapPeriod,
+    vwap_std:       sp.vwapStd,
   };
   if (!body.symbol) { errEl.textContent = 'Enter a symbol.'; errEl.style.display = 'block'; return; }
   const r = await apiFetch('/api/crypto/algo/start', { method: 'POST', body: JSON.stringify(body) });
   if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
-  toast(`Bot started — ${st.replace('_',' ').toUpperCase()} on ${body.symbol} (ID: ${r.bot_id})`, true);
+  const n = (r.bot_ids || [r.bot_id]).length;
+  toast(`Bot started — ${st.replace('_',' ').toUpperCase()} on ${body.symbol}${n > 1 ? ` (${n} coins)` : ''}`, true);
   algoLoadBots();
 }
 
@@ -9685,7 +10052,17 @@ async function algoLoadBots() {
   const active = bots.filter(b => b.status === 'active').length;
   if (cntEl) cntEl.textContent = `${bots.length} bot${bots.length!==1?'s':''} · ${active} active`;
 
+  // Bots created from one comma-separated-symbol submission share a
+  // group_id — count siblings so multi-coin groups can show a combined
+  // label + group-wide Stop/Delete without touching the proven per-bot
+  // stats/PnL rendering below.
+  const groupCounts = {};
+  bots.forEach(b => { groupCounts[b.group_id] = (groupCounts[b.group_id] || 0) + 1; });
+  bots.sort((a, b) => (a.group_id || a.id).localeCompare(b.group_id || b.id));
+
   ctr.innerHTML = bots.map(b => {
+    const groupSize = groupCounts[b.group_id] || 1;
+    const inGroup   = groupSize > 1;
     const stC      = b.status === 'active' ? 'var(--green)' : 'var(--amber)';
     const sigC     = b.last_signal === 'BUY' ? 'var(--green)' : b.last_signal === 'SELL' ? 'var(--red)' : 'var(--text3)';
     const maxT     = b.max_open_trades || 2;
@@ -9745,6 +10122,7 @@ async function algoLoadBots() {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
         <div>
           <div style="font-size:15px;font-weight:800;color:var(--cyan)">${b.symbol}</div>
+          ${inGroup ? `<span class="badge" style="background:rgba(139,92,246,0.12);color:var(--accent);border:1px solid var(--accent);font-size:9px;margin-top:3px;display:inline-block">🔗 ${b.group_name || 'Multi-Coin Group'} — ${groupSize} coins</span>` : ''}
           <div style="font-size:10px;color:var(--text3);margin-top:3px">
             <span style="color:var(--text2);font-weight:700">${b.exchange.toUpperCase()}</span> ·
             <span style="color:var(--accent);font-weight:700">${b.strategy.replace(/_/g,' ').toUpperCase()}</span> ·
@@ -9791,6 +10169,8 @@ async function algoLoadBots() {
           : `<button class="sbtn" onclick="algoBotResume('${b.id}')" style="font-size:10px;padding:4px 12px;color:var(--green);border-color:var(--green)">▶ RESUME</button>`}
         ${b.mode === 'demo' ? `<button class="sbtn" onclick="algoBotPromote('${b.id}')" style="font-size:10px;padding:4px 12px;color:var(--accent);border-color:var(--accent)">🚀 PROMOTE TO LIVE</button>` : ''}
         <button class="close-btn" onclick="algoBotDelete('${b.id}')">DELETE</button>
+        ${inGroup ? `<button class="sbtn" onclick="algoGroupAction('${b.group_id}','stop')" style="font-size:9px;padding:4px 10px;color:var(--amber);border-color:var(--amber)">⏸ STOP GROUP</button>
+        <button class="sbtn" onclick="algoGroupAction('${b.group_id}','delete')" style="font-size:9px;padding:4px 10px;color:var(--red);border-color:var(--red)">🗑 DELETE GROUP</button>` : ''}
         <span style="font-size:9px;color:var(--text3);margin-left:auto">${b.last_run ? 'Last run: '+b.last_run : 'Not run yet'} · ${b.created}</span>
       </div>
     </div>`;
@@ -9885,6 +10265,22 @@ async function algoBotStop(id) {
   toast('Bot stopped', true); algoLoadBots();
 }
 
+async function algoKillAll() {
+  if (!confirm('EMERGENCY KILL ALL — stop every running bot and close all open positions immediately. Continue?')) return;
+  const r = await apiFetch('/api/crypto/algo/kill_all', { method: 'POST' });
+  if (r.error) { toastErr(r.error); return; }
+  toast(`🛑 Killed ${r.stopped} bot(s), closed ${r.closed} position(s)${r.errors.length ? ' — ' + r.errors.length + ' error(s)' : ''}`, !r.errors.length);
+  algoLoadBots();
+}
+
+async function algoToggleAllMode() {
+  if (!confirm('Flip every running bot between Demo and Live? Live bots will have their open positions closed before switching to Demo; Demo bots need their exchange connected to switch to Live.')) return;
+  const r = await apiFetch('/api/crypto/algo/toggle_all_mode', { method: 'POST' });
+  if (r.error) { toastErr(r.error); return; }
+  toast(`⇄ ${r.promoted} bot(s) → LIVE, ${r.demoted} bot(s) → DEMO${r.skipped.length ? ' — ' + r.skipped.length + ' skipped' : ''}`, true);
+  algoLoadBots();
+}
+
 async function algoBotPromote(id) {
   if (!confirm('Switch this bot to LIVE? It will start placing real orders with real money on the connected exchange.')) return;
   const r = await apiFetch('/api/crypto/algo/' + id + '/promote', { method: 'POST' });
@@ -9909,6 +10305,7 @@ async function algoBotResume(id) {
     bb_std: bot.bb_std, atr_period: bot.atr_period, st_multiplier: bot.st_multiplier,
     ai_min_score: bot.ai_min_score, trailing_atr: bot.trailing_atr, tp_atr: bot.tp_atr,
     bo_lookback: bot.bo_lookback || 20, dc_period: bot.dc_period || 55, dc_ema: bot.dc_ema || 150,
+    vwap_period: bot.vwap_period || 14, vwap_std: bot.vwap_std || 2.5,
     adx_min: bot.adx_min, max_open_trades: bot.max_open_trades || 2,
     margin_mode: bot.margin_mode || 'isolated', mode: bot.mode || 'demo',
     demo_balance: bot.demo_equity ?? bot.demo_balance ?? 1000,
@@ -9922,6 +10319,19 @@ async function algoBotDelete(id) {
   if (!confirm('Delete this bot and its history?')) return;
   await apiFetch('/api/crypto/algo/' + id, { method: 'DELETE' });
   toast('Bot deleted', true); algoLoadBots();
+}
+
+async function algoGroupAction(groupId, action) {
+  const verb = action === 'stop' ? 'stop' : 'delete';
+  if (!confirm(`${verb === 'stop' ? 'Stop' : 'Delete'} every coin in this multi-coin group?`)) return;
+  const bots = await apiFetch('/api/crypto/algo/list');
+  const members = (bots || []).filter(b => b.group_id === groupId);
+  for (const b of members) {
+    if (action === 'stop')   await apiFetch('/api/crypto/algo/stop/' + b.id, { method: 'POST' });
+    if (action === 'delete') await apiFetch('/api/crypto/algo/' + b.id, { method: 'DELETE' });
+  }
+  toast(`Group ${verb}ped — ${members.length} bot(s)`, true);
+  algoLoadBots();
 }
 
 // ── AI Signal Lab ─────────────────────────────────────────────────────────────
@@ -10020,6 +10430,153 @@ async function runAiLab() {
       </div>`;
     }).join('');
   }
+}
+
+// ── INDIAN MARKET (Kotak Neo) ───────────────────────────────────────────────
+async function indianInit() {
+  const r = await apiFetch('/api/indian/status');
+  const connectSec = document.getElementById('in-connect-section');
+  const banner     = document.getElementById('in-connected-banner');
+  const tradeSec   = document.getElementById('in-trade-section');
+  if (r.connected) {
+    if (connectSec) connectSec.style.display = 'none';
+    if (banner) { banner.style.display = 'flex'; document.getElementById('in-ucc-display').textContent = r.ucc; document.getElementById('in-env-display').textContent = r.environment; }
+    if (tradeSec) tradeSec.style.display = 'block';
+    indianLoadPositions();
+    indianLoadHoldings();
+  } else {
+    if (connectSec) connectSec.style.display = 'block';
+    if (banner) banner.style.display = 'none';
+    if (tradeSec) tradeSec.style.display = 'none';
+  }
+}
+
+async function indianConnect() {
+  const errEl = document.getElementById('in-connect-err');
+  errEl.style.display = 'none';
+  const body = {
+    consumer_key:  document.getElementById('in-consumer-key').value.trim(),
+    access_token:  document.getElementById('in-access-token').value.trim(),
+    mobile_number: document.getElementById('in-mobile').value.trim(),
+    ucc:           document.getElementById('in-ucc').value.trim(),
+    mpin:          document.getElementById('in-mpin').value.trim(),
+    totp_secret:   document.getElementById('in-totp-secret').value.trim(),
+    environment:   document.getElementById('in-environment').value,
+  };
+  if (!body.consumer_key || !body.access_token || !body.mobile_number || !body.ucc || !body.mpin || !body.totp_secret) {
+    errEl.textContent = 'সব ফিল্ড দরকার।'; errEl.style.display = 'block'; return;
+  }
+  const r = await apiFetch('/api/indian/connect', { method: 'POST', body: JSON.stringify(body) });
+  if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+  toast('Kotak Neo connected ✓', true);
+  indianInit();
+}
+
+async function indianDisconnect() {
+  if (!confirm('Disconnect Kotak Neo account?')) return;
+  await apiFetch('/api/indian/disconnect', { method: 'POST' });
+  toast('Disconnected', true);
+  indianInit();
+}
+
+async function indianSearchScrip() {
+  const segment = document.getElementById('in-search-segment').value;
+  const symbol  = document.getElementById('in-search-symbol').value.trim();
+  const resultsEl = document.getElementById('in-search-results');
+  if (!symbol) return;
+  resultsEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:10px">Searching...</div>';
+  const r = await apiFetch(`/api/indian/search_scrip?exchange_segment=${segment}&symbol=${encodeURIComponent(symbol)}`);
+  if (r.error) { resultsEl.innerHTML = `<div style="color:var(--red);font-size:11px;padding:10px">${r.error}</div>`; return; }
+  const rows = Array.isArray(r) ? r : [];
+  if (!rows.length) { resultsEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:10px">No results.</div>'; return; }
+  resultsEl.innerHTML = rows.slice(0, 30).map(s => {
+    const sym = s.pTrdSymbol || s.trading_symbol || s.symbol || JSON.stringify(s);
+    return `<div onclick='indianPickScrip(${JSON.stringify(s).replace(/'/g,"&apos;")})' style="padding:6px 8px;border-bottom:1px solid var(--border);cursor:pointer;font-size:11px" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">${sym}</div>`;
+  }).join('');
+}
+
+function indianPickScrip(s) {
+  const sym = s.pTrdSymbol || s.trading_symbol || s.symbol || '';
+  document.getElementById('in-order-symbol').value = sym;
+  const segment = document.getElementById('in-search-segment').value;
+  document.getElementById('in-order-segment').value = segment;
+  toast(`Selected: ${sym}`, true);
+}
+
+function indianOrderTypeChange() {
+  const ot = document.getElementById('in-order-type').value;
+  const priceField   = document.getElementById('in-order-price-field');
+  const triggerField = document.getElementById('in-order-trigger-field');
+  priceField.style.display   = (ot === 'L' || ot === 'SL') ? 'block' : 'none';
+  triggerField.style.display = (ot === 'SL' || ot === 'SL-M') ? 'block' : 'none';
+}
+
+async function indianPlaceOrder(side) {
+  const errEl = document.getElementById('in-order-err');
+  errEl.style.display = 'none';
+  const symbol = document.getElementById('in-order-symbol').value.trim();
+  if (!symbol) { errEl.textContent = 'Search ও select করো একটা symbol।'; errEl.style.display = 'block'; return; }
+  const body = {
+    exchange_segment: document.getElementById('in-order-segment').value,
+    trading_symbol:   symbol,
+    transaction_type: side,
+    quantity:          String(document.getElementById('in-order-qty').value || '1'),
+    product:           document.getElementById('in-order-product').value,
+    order_type:        document.getElementById('in-order-type').value,
+    price:             String(document.getElementById('in-order-price').value || '0'),
+    trigger_price:     String(document.getElementById('in-order-trigger').value || '0'),
+    validity:          document.getElementById('in-order-validity').value,
+  };
+  if (!confirm(`${side === 'B' ? 'BUY' : 'SELL'} ${body.quantity} × ${symbol} (${body.product}, ${body.order_type}) — confirm?`)) return;
+  const r = await apiFetch('/api/indian/order', { method: 'POST', body: JSON.stringify(body) });
+  if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+  toast(`Order placed — ${side === 'B' ? 'BUY' : 'SELL'} ${symbol}`, true);
+  indianLoadPositions();
+}
+
+async function indianLoadPositions() {
+  const tbody = document.getElementById('in-positions-tbody');
+  const r = await apiFetch('/api/indian/positions');
+  if (r.error || !Array.isArray(r)) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:16px">${r.error || 'No positions'}</td></tr>`;
+    return;
+  }
+  if (!r.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:16px">No open positions</td></tr>'; return; }
+  tbody.innerHTML = r.map(p => {
+    const pnl = parseFloat(p.urPnl || p.pnl || 0);
+    return `<tr>
+      <td style="color:var(--cyan);font-weight:700">${p.trdSym || p.trading_symbol || '—'}</td>
+      <td>${p.exSeg || p.exchange_segment || '—'}</td>
+      <td>${p.prod || p.product || '—'}</td>
+      <td>${p.flBuyQty || p.buy_quantity || 0} / ${p.flSellQty || p.sell_quantity || 0}</td>
+      <td>${p.buyAvgPrc || p.buy_avg_price || '—'}</td>
+      <td>${p.sellAvgPrc || p.sell_avg_price || '—'}</td>
+      <td style="color:${pnl>=0?'var(--green)':'var(--red)'};font-weight:700">${pnl>=0?'+':''}${pnl.toFixed(2)}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function indianLoadHoldings() {
+  const tbody = document.getElementById('in-holdings-tbody');
+  const r = await apiFetch('/api/indian/holdings');
+  if (r.error || !Array.isArray(r)) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:16px">${r.error || 'No holdings'}</td></tr>`;
+    return;
+  }
+  if (!r.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:16px">No holdings</td></tr>'; return; }
+  tbody.innerHTML = r.map(h => {
+    const qty = parseFloat(h.quantity || h.holdingQty || 0);
+    const avg = parseFloat(h.averagePrice || h.avgPrice || 0);
+    const ltp = parseFloat(h.lastTradedPrice || h.ltp || 0);
+    const pnl = (ltp - avg) * qty;
+    return `<tr>
+      <td style="color:var(--cyan);font-weight:700">${h.displaySymbol || h.tradingSymbol || h.symbol || '—'}</td>
+      <td>${qty}</td>
+      <td>${avg.toFixed(2)}</td>
+      <td>${ltp.toFixed(2)}</td>
+      <td style="color:${pnl>=0?'var(--green)':'var(--red)'};font-weight:700">${pnl>=0?'+':''}${pnl.toFixed(2)}</td>
+    </tr>`;
+  }).join('');
 }
 </script>
 <!-- Symbol datalist at body level so browser can access from any input -->

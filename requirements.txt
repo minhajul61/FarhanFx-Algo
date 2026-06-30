@@ -3,3 +3,10 @@ fastapi
 uvicorn[standard]
 pydantic
 telethon
+pyotp
+PyJWT
+bidict
+pyjsparser
+pandas
+python-dateutil
+git+https://github.com/Kotak-Neo/Kotak-neo-api-v2.git#egg=neo_api_client

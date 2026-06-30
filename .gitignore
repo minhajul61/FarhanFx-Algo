@@ -23,4 +23,5 @@ payment_proofs/
 payment_requests.json
 users.json
 auth_sessions.json
+kotak_neo_cfg.json
 Trading Meterial/

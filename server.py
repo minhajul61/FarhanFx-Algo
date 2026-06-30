@@ -5206,6 +5206,10 @@ def _load_saved_bots():
                 bot.setdefault("dc_ema", 150)
                 bot.setdefault("fixed_amount", 0.0)
                 bot.setdefault("fixed_usd", 0.0)
+                bot.setdefault("vwap_period", 14)
+                bot.setdefault("vwap_std", 2.5)
+                bot.setdefault("group_id", bid)   # pre-multi-coin bots are their own group of one
+                bot.setdefault("group_name", "")
                 _crypto_bots[bid] = bot
                 if bot.get('status') == 'active':
                     delay = 15 + keys.index(bid) * 3
@@ -5476,27 +5480,81 @@ def crypto_set_leverage(req: CryptoLeverageReq, current_user: dict = Depends(_ge
         return JSONResponse(status_code=400, content={"error": str(e)[:200]})
 
 
+_MEME_COIN_BASES = {
+    "DOGE", "SHIB", "PEPE", "FLOKI", "BONK", "WIF", "MEME", "BABYDOGE",
+    "MOG", "TURBO", "BRETT", "POPCAT", "NEIRO", "1000SATS", "DOGS",
+    "CAT", "MEW", "PEOPLE", "ELON", "AIDOGE", "LADYS", "SUNDOG",
+}
+_MAJOR_COIN_BASES = {
+    "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "AVAX", "DOT", "LINK",
+    "MATIC", "POL", "LTC", "TRX", "ATOM", "UNI", "APT", "ARB", "OP", "SUI",
+}
+
+
 @app.get("/api/crypto/markets")
 def crypto_markets(exchange: str = "binance", current_user: dict = Depends(_get_current_user)):
-    ex = _active_ex.get(current_user["username"], {}).get(exchange.lower())
+    """Top ~150 USDT-margined perpetuals ranked by 24h volume, tagged major
+    /meme/other — feeds the symbol datalist so picking a coin (rather than
+    hand-typing it) is the default, while the input itself stays free-text
+    so a manually-typed symbol always still works."""
     fallback = [
-        "BTC/USDT:USDT","ETH/USDT:USDT","BNB/USDT:USDT","SOL/USDT:USDT",
-        "XRP/USDT:USDT","DOGE/USDT:USDT","ADA/USDT:USDT","AVAX/USDT:USDT",
-        "MATIC/USDT:USDT","DOT/USDT:USDT","LINK/USDT:USDT","LTC/USDT:USDT",
-        "UNI/USDT:USDT","ATOM/USDT:USDT","FIL/USDT:USDT","APT/USDT:USDT",
-        "ARB/USDT:USDT","OP/USDT:USDT","SUI/USDT:USDT","INJ/USDT:USDT",
+        {"symbol": "BTC/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "ETH/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "BNB/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "SOL/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "XRP/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "DOGE/USDT:USDT", "category": "meme", "volume_24h": None, "change_24h": None},
+        {"symbol": "ADA/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "AVAX/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "DOT/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "LINK/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "LTC/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "UNI/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "ATOM/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "FIL/USDT:USDT", "category": "other", "volume_24h": None, "change_24h": None},
+        {"symbol": "APT/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "ARB/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "OP/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "SUI/USDT:USDT", "category": "major", "volume_24h": None, "change_24h": None},
+        {"symbol": "INJ/USDT:USDT", "category": "other", "volume_24h": None, "change_24h": None},
+        {"symbol": "PEPE/USDT:USDT", "category": "meme", "volume_24h": None, "change_24h": None},
     ]
-    if not ex:
-        return fallback
     try:
-        mkts = ex.load_markets()
-        syms = sorted([
-            s for s, m in mkts.items()
-            if m.get("settle") == "USDT" and m.get("type") in ("swap", "future") and m.get("active")
-        ])
-        return syms if syms else fallback
-    except:
-        return fallback
+        pm = _ccxt.binanceusdm()
+        tickers = pm.fetch_tickers()
+        rows = []
+        for sym, t in tickers.items():
+            if not sym.endswith("/USDT:USDT"):
+                continue
+            base = sym.split("/")[0]
+            if base in _SCREENER_EXCLUDE_BASES:   # tokenized stocks/commodities, not real crypto
+                continue
+            vol = t.get("quoteVolume") or 0
+            if vol <= 0:
+                continue
+            category = "meme" if base in _MEME_COIN_BASES else ("major" if base in _MAJOR_COIN_BASES else "other")
+            rows.append({"symbol": sym, "category": category,
+                         "volume_24h": round(vol, 0), "change_24h": t.get("percentage")})
+        rows.sort(key=lambda x: x["volume_24h"], reverse=True)
+        if rows:
+            return rows[:150]
+    except Exception:
+        pass
+    # Public ticker fetch failed — fall back to whatever this user's own
+    # connected exchange reports (no volume/category data, just symbols).
+    ex = _active_ex.get(current_user["username"], {}).get(exchange.lower())
+    if ex:
+        try:
+            mkts = ex.load_markets()
+            syms = sorted([
+                s for s, m in mkts.items()
+                if m.get("settle") == "USDT" and m.get("type") in ("swap", "future") and m.get("active")
+            ])
+            if syms:
+                return [{"symbol": s, "category": "other", "volume_24h": None, "change_24h": None} for s in syms]
+        except Exception:
+            pass
+    return fallback
 
 
 # ── CRYPTO TRADE HISTORY ────────────────────────────────────────────────────────
@@ -5571,8 +5629,9 @@ _TF_SECONDS = {
 
 class CryptoBotReq(BaseModel):
     exchange:       str
-    symbol:         str
-    strategy:       str          # rsi|macd_cross|bb_squeeze|false_breakout|trend_breakout — validated strategies
+    symbol:         str   # one symbol, or comma-separated for a multi-coin bot, e.g. "BTC/USDT:USDT,ETH/USDT:USDT"
+    name:           str = ""   # optional label shown on the bot card, mainly useful for multi-coin groups
+    strategy:       str          # rsi|macd_cross|bb_squeeze|false_breakout|trend_breakout|vwap_bands — validated strategies
     timeframe:      str   = "1h"
     risk_pct:       float = 1.0
     fixed_amount:   float = 0.0   # 0=off (use risk_pct sizing) | >0 = always trade this many contracts/coins
@@ -5606,11 +5665,80 @@ class CryptoBotReq(BaseModel):
     # Trend breakout (Donchian + EMA trend filter) — validated on 15m
     dc_period:      int   = 55
     dc_ema:         int   = 150
+    # VWAP mean-reversion bands — 1yr out-of-sample validated on 15m
+    # (period=14, std=2.5, trailing_atr=2.0, tp_atr=2.5): train PF 1.28, val PF 1.24
+    vwap_period:    int   = 14
+    vwap_std:       float = 2.5
     # Risk management (ATR-based)
     trailing_atr:   float = 0.0  # 0=off, e.g. 2.0 = trail by 2*ATR
     tp_atr:         float = 0.0  # 0=off, e.g. 3.0 = TP at 3*ATR
     adx_min:        int   = 0    # min ADX to take a trade (0=off)
     max_open_trades: int  = 2    # max simultaneous open trades per bot
+
+
+def _detect_sr_levels(ohlcv, pivot_window=5, cluster_pct=0.3, max_levels=6):
+    """Classic fractal-pivot S/R: a bar is a pivot high/low if it's the
+    extreme point within pivot_window bars on each side. Nearby pivots get
+    merged into one level (cluster_pct apart) so a level touched several
+    times outranks a one-off spike — the touch count is exactly that
+    'strength'."""
+    highs = [c[2] for c in ohlcv]
+    lows  = [c[3] for c in ohlcv]
+    n = len(highs)
+    pivot_highs, pivot_lows = [], []
+    for i in range(pivot_window, n - pivot_window):
+        window_h = highs[i - pivot_window:i + pivot_window + 1]
+        if highs[i] == max(window_h):
+            pivot_highs.append(highs[i])
+        window_l = lows[i - pivot_window:i + pivot_window + 1]
+        if lows[i] == min(window_l):
+            pivot_lows.append(lows[i])
+
+    def cluster(levels):
+        if not levels:
+            return []
+        levels = sorted(levels)
+        clusters = [[levels[0]]]
+        for lv in levels[1:]:
+            if abs(lv - clusters[-1][-1]) / clusters[-1][-1] * 100 <= cluster_pct:
+                clusters[-1].append(lv)
+            else:
+                clusters.append([lv])
+        return [{"price": round(sum(c) / len(c), 6), "strength": len(c)} for c in clusters]
+
+    res = sorted(cluster(pivot_highs), key=lambda x: -x["strength"])[:max_levels]
+    sup = sorted(cluster(pivot_lows),  key=lambda x: -x["strength"])[:max_levels]
+    return res, sup
+
+
+@app.get("/api/crypto/sr_levels")
+def crypto_sr_levels(symbol: str = "BTC/USDT:USDT", timeframe: str = "5m",
+                      current_user: dict = Depends(_get_current_user)):
+    """Nearest support/resistance above/below the current price, plus a
+    trailing close-price series, for the live S/R chart on the Trade tab."""
+    pm = _get_pub_mkt()
+    if not pm:
+        return JSONResponse(status_code=400, content={"error": "Market data not available"})
+    try:
+        ohlcv = pm.fetch_ohlcv(symbol, timeframe, limit=200)
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)[:200]})
+    if len(ohlcv) < 30:
+        return JSONResponse(status_code=400, content={"error": "Not enough data for this symbol/timeframe"})
+    price = ohlcv[-1][4]
+    res_levels, sup_levels = _detect_sr_levels(ohlcv)
+    resistances = sorted([r for r in res_levels if r["price"] > price], key=lambda x: x["price"])
+    supports    = sorted([s for s in sup_levels if s["price"] < price], key=lambda x: -x["price"])
+    tail = ohlcv[-100:]
+    return {
+        "symbol": symbol, "price": round(price, 6),
+        "nearest_resistance": resistances[0] if resistances else None,
+        "nearest_support":    supports[0] if supports else None,
+        "resistances": resistances[:4],
+        "supports":    supports[:4],
+        "closes": [round(c[4], 6) for c in tail],
+        "times":  [c[0] for c in tail],
+    }
 
 
 # ── INDICATOR LIBRARY ────────────────────────────────────────────────────────────
@@ -5672,6 +5800,40 @@ def _atr_calc(highs, lows, closes, period=14):
     for tr in trs[period:]:
         atr = (atr * (period - 1) + tr) / period
     return round(atr, 6)
+
+
+def _supertrend_series(highs, lows, closes, period=10, mult=3.0):
+    """Full trailing SuperTrend direction series (+1 bullish / -1 bearish),
+    recomputed statelessly from the trailing window each call — same
+    stateless-per-call convention as every other indicator here."""
+    n = len(closes)
+    if n < period + 2:
+        return None
+    trs = [highs[0] - lows[0]] + [
+        max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1]))
+        for i in range(1, n)
+    ]
+    atrs = []
+    for i in range(n):
+        if i < period:
+            atrs.append(sum(trs[:i+1]) / (i+1))
+        else:
+            atrs.append((atrs[-1] * (period - 1) + trs[i]) / period)
+    hl2 = [(highs[i] + lows[i]) / 2 for i in range(n)]
+    upperband = [hl2[i] + mult * atrs[i] for i in range(n)]
+    lowerband = [hl2[i] - mult * atrs[i] for i in range(n)]
+    final_upper, final_lower = upperband[:], lowerband[:]
+    direction = [1] * n
+    for i in range(1, n):
+        final_upper[i] = min(upperband[i], final_upper[i-1]) if closes[i-1] <= final_upper[i-1] else upperband[i]
+        final_lower[i] = max(lowerband[i], final_lower[i-1]) if closes[i-1] >= final_lower[i-1] else lowerband[i]
+        if closes[i] > final_upper[i-1]:
+            direction[i] = 1
+        elif closes[i] < final_lower[i-1]:
+            direction[i] = -1
+        else:
+            direction[i] = direction[i-1]
+    return direction
 
 
 def _adx_calc(highs, lows, closes, period=14):
@@ -6079,6 +6241,73 @@ def _get_bot_signal(bot, ohlcv):
         if fs[-2] >= ss[-2] and fs[-1] < ss[-1]:
             return "SELL"
 
+    # Research-only — simplified, statelessly-detected Order Block (SMC/ICT):
+    # find the most recent impulsive candle (body > impulse_mult*ATR) that
+    # breaks the prior swing high/low, tag the opposite-colour candle right
+    # before it as the order block zone, and signal when price has since
+    # retraced into that zone and closed back out the favourable side.
+    elif strategy == "order_block":
+        opens_a = [c[1] for c in ohlcv]
+        lookback = bot.get("ob_lookback", 30)
+        impulse_mult = bot.get("ob_impulse_mult", 1.5)
+        if len(closes) < lookback + 3:
+            return None
+        atr = _atr_calc(highs, lows, closes, 14)
+        if not atr:
+            return None
+        for j in range(len(closes) - 2, lookback, -1):
+            body = closes[j] - opens_a[j]
+            swing_high = max(highs[j - lookback:j])
+            swing_low  = min(lows[j - lookback:j])
+            if body > impulse_mult * atr and closes[j] > swing_high:
+                if closes[j - 1] < opens_a[j - 1]:
+                    zone_hi = highs[j - 1]
+                    touched = any(lows[k] <= zone_hi for k in range(j, len(closes)))
+                    if touched and closes[-1] > zone_hi and lows[-1] <= zone_hi:
+                        return "BUY"
+                break
+            if -body > impulse_mult * atr and closes[j] < swing_low:
+                if closes[j - 1] > opens_a[j - 1]:
+                    zone_lo = lows[j - 1]
+                    touched = any(highs[k] >= zone_lo for k in range(j, len(closes)))
+                    if touched and closes[-1] < zone_lo and highs[-1] >= zone_lo:
+                        return "SELL"
+                break
+
+    # Research-only — fast SuperTrend (entry trigger) gated by a slow
+    # SuperTrend (trend filter), both computed off the same timeframe as a
+    # practical stand-in for true multi-timeframe alignment.
+    elif strategy == "supertrend_mtf":
+        fast_dir = _supertrend_series(highs, lows, closes, bot.get("st_fast_period", 10), bot.get("st_fast_mult", 3.0))
+        slow_dir = _supertrend_series(highs, lows, closes, bot.get("st_slow_period", 30), bot.get("st_slow_mult", 3.0))
+        if not fast_dir or not slow_dir or len(fast_dir) < 2:
+            return None
+        if fast_dir[-2] != 1 and fast_dir[-1] == 1 and slow_dir[-1] == 1:
+            return "BUY"
+        if fast_dir[-2] != -1 and fast_dir[-1] == -1 and slow_dir[-1] == -1:
+            return "SELL"
+
+    # VWAP mean-reversion: rolling VWAP + stddev bands, fade price back
+    # toward VWAP once it tags an outer band. 1yr out-of-sample validated
+    # on 15m (period=14, std=2.5, trailing_atr=2.0, tp_atr=2.5): train PF
+    # 1.28, val PF 1.24, ~310 trades each half.
+    elif strategy == "vwap_bands":
+        period  = bot.get("vwap_period", 14)
+        num_std = bot.get("vwap_std", 2.5)
+        if len(closes) < period + 1:
+            return None
+        tp  = [(highs[i] + lows[i] + closes[i]) / 3 for i in range(-period, 0)]
+        vol = volumes[-period:]
+        vsum = sum(vol)
+        vwap = sum(t * v for t, v in zip(tp, vol)) / vsum if vsum > 0 else closes[-1]
+        dev  = [t - vwap for t in tp]
+        std  = (sum(d * d for d in dev) / period) ** 0.5
+        price = closes[-1]
+        if std > 0 and price <= vwap - num_std * std:
+            return "BUY"
+        if std > 0 and price >= vwap + num_std * std:
+            return "SELL"
+
     # Donchian Channel breakout + long-term EMA trend filter. A well-
     # documented trend-following combo for BTC specifically: crypto ranges
     # aggressively between trends but moves sharply once trending, so only
@@ -6468,49 +6697,117 @@ def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_curre
         ex = _active_ex.get(uname, {}).get(req.exchange.lower())
         if not ex:
             return JSONResponse(status_code=400, content={"error": f"{req.exchange} not connected — connect it or switch this bot to Demo mode"})
-    bid = str(_uuid.uuid4())[:8]
-    _crypto_bots[bid] = {
-        "id": bid, "username": uname, "exchange": req.exchange.lower(),
-        "symbol": req.symbol, "strategy": req.strategy,
-        "timeframe": req.timeframe, "risk_pct": req.risk_pct,
-        "fixed_amount": req.fixed_amount, "fixed_usd": req.fixed_usd,
-        "leverage": req.leverage, "margin_mode": req.margin_mode,
-        "mode": req.mode, "demo_balance": req.demo_balance,
-        "demo_equity": req.demo_balance,
-        # EMA
-        "fast_ema": req.fast_ema, "slow_ema": req.slow_ema,
-        # RSI
-        "rsi_period": req.rsi_period, "rsi_ob": req.rsi_ob, "rsi_os": req.rsi_os,
-        # MACD
-        "macd_fast": req.macd_fast, "macd_slow": req.macd_slow, "macd_signal": req.macd_signal,
-        # BB
-        "bb_period": req.bb_period, "bb_std": req.bb_std,
-        # Supertrend / ATR
-        "atr_period": req.atr_period, "st_multiplier": req.st_multiplier,
-        # AI
-        "ai_min_score": req.ai_min_score,
-        # Breakout
-        "bo_lookback": req.bo_lookback,
-        # Trend breakout
-        "dc_period": req.dc_period, "dc_ema": req.dc_ema,
-        # Risk management
-        "trailing_atr": req.trailing_atr, "tp_atr": req.tp_atr, "adx_min": req.adx_min,
-        # Risk management
-        "max_open_trades": req.max_open_trades,
-        # Runtime state
-        "status": "active", "trades": [], "total_signals": 0,
-        "last_signal": None, "last_run": None, "last_rsi": None,
-        "last_adx": None, "last_macd": None, "last_ai_score": None, "last_ai_signal": None,
-        "last_price": None, "last_error": None, "open_side": None, "open_entry_price": None,
-        "open_trade_count": 0,
-        "created": datetime.now().strftime("%Y-%m-%d %H:%M"),
-    }
-    t = threading.Timer(3, _bot_tick, args=[bid])
-    t.daemon = True
-    t.start()
-    _bot_timers[bid] = t
+    # A comma-separated symbol list creates one independent bot per symbol
+    # — same proven single-symbol tick/signal/exit logic for each, just
+    # grouped under one group_id so the UI can show them as a single
+    # "Multiple Coins" card (mirroring how a multi-symbol bot is presented
+    # elsewhere) instead of juggling several positions inside one bot.
+    symbols = [s.strip() for s in req.symbol.split(",") if s.strip()]
+    if not symbols:
+        return JSONResponse(status_code=400, content={"error": "At least one symbol is required"})
+    group_id = str(_uuid.uuid4())[:8]
+    bot_ids = []
+    for sym in symbols:
+        bid = str(_uuid.uuid4())[:8]
+        bot_ids.append(bid)
+        _crypto_bots[bid] = {
+            "id": bid, "username": uname, "exchange": req.exchange.lower(),
+            "symbol": sym, "strategy": req.strategy,
+            "group_id": group_id, "group_name": req.name.strip(),
+            "timeframe": req.timeframe, "risk_pct": req.risk_pct,
+            "fixed_amount": req.fixed_amount, "fixed_usd": req.fixed_usd,
+            "leverage": req.leverage, "margin_mode": req.margin_mode,
+            "mode": req.mode, "demo_balance": req.demo_balance,
+            "demo_equity": req.demo_balance,
+            # EMA
+            "fast_ema": req.fast_ema, "slow_ema": req.slow_ema,
+            # RSI
+            "rsi_period": req.rsi_period, "rsi_ob": req.rsi_ob, "rsi_os": req.rsi_os,
+            # MACD
+            "macd_fast": req.macd_fast, "macd_slow": req.macd_slow, "macd_signal": req.macd_signal,
+            # BB
+            "bb_period": req.bb_period, "bb_std": req.bb_std,
+            # Supertrend / ATR
+            "atr_period": req.atr_period, "st_multiplier": req.st_multiplier,
+            # AI
+            "ai_min_score": req.ai_min_score,
+            # Breakout
+            "bo_lookback": req.bo_lookback,
+            # Trend breakout
+            "dc_period": req.dc_period, "dc_ema": req.dc_ema,
+            # VWAP bands
+            "vwap_period": req.vwap_period, "vwap_std": req.vwap_std,
+            # Risk management
+            "trailing_atr": req.trailing_atr, "tp_atr": req.tp_atr, "adx_min": req.adx_min,
+            # Risk management
+            "max_open_trades": req.max_open_trades,
+            # Runtime state
+            "status": "active", "trades": [], "total_signals": 0,
+            "last_signal": None, "last_run": None, "last_rsi": None,
+            "last_adx": None, "last_macd": None, "last_ai_score": None, "last_ai_signal": None,
+            "last_price": None, "last_error": None, "open_side": None, "open_entry_price": None,
+            "open_trade_count": 0,
+            "created": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        }
+        t = threading.Timer(3, _bot_tick, args=[bid])
+        t.daemon = True
+        t.start()
+        _bot_timers[bid] = t
     _save_bots()
-    return {"success": True, "bot_id": bid}
+    return {"success": True, "bot_id": bot_ids[0], "bot_ids": bot_ids, "group_id": group_id}
+
+
+@app.post("/api/crypto/algo/kill_all")
+def crypto_algo_kill_all(current_user: dict = Depends(_get_current_user)):
+    """Panic button: stop every one of this user's active bots AND flatten
+    any open position immediately (unlike Stop, which just pauses new
+    signals and leaves an existing position running)."""
+    uname = current_user["username"]
+    stopped, closed, errors = 0, 0, []
+    for bid, bot in list(_crypto_bots.items()):
+        if bot.get("username") != uname or bot.get("status") != "active":
+            continue
+        try:
+            if bot.get("open_side"):
+                try:
+                    if bot.get("mode", "live") == "demo":
+                        price = bot.get("last_price") or bot.get("open_entry_price")
+                        if price:
+                            ep, amt, oside = bot.get("open_entry_price", price), bot.get("open_amount", 0), bot["open_side"]
+                            pnl = (price - ep) * amt if oside == "BUY" else (ep - price) * amt
+                            bot["demo_equity"] = round(bot.get("demo_equity", bot.get("demo_balance", 1000)) + pnl, 4)
+                            if bot.get("trades"):
+                                bot["trades"][-1].update(exit_reason="emergency_kill", exit_price=round(price, 4),
+                                                          pnl=round(pnl, 4), status="closed")
+                            closed += 1
+                    else:
+                        ex = _active_ex.get(uname, {}).get(bot["exchange"])
+                        if ex:
+                            close_side = "sell" if bot["open_side"] == "BUY" else "buy"
+                            for p in ex.fetch_positions():
+                                if p.get("symbol") == bot["symbol"] and float(p.get("contracts") or 0) > 0:
+                                    ex.create_order(bot["symbol"], "market", close_side,
+                                                     float(p["contracts"]), params={"reduceOnly": True})
+                            if bot.get("trades"):
+                                bot["trades"][-1].update(exit_reason="emergency_kill", status="closed")
+                            closed += 1
+                except Exception as e:
+                    errors.append(f"{bid}: close failed ({e})")
+                bot["open_side"] = None
+                bot["open_entry_price"] = None
+                bot["open_amount"] = 0
+                bot["open_trade_count"] = 0
+            bot["status"] = "stopped"
+            t = _bot_timers.pop(bid, None)
+            if t:
+                t.cancel()
+            stopped += 1
+        except Exception as e:
+            errors.append(f"{bid}: {e}")
+    _save_bots()
+    if stopped:
+        _tg_notify(f"<b>FarhanFX Crypto — 🛑 EMERGENCY KILL ALL</b>\n{stopped} bot(s) stopped, {closed} open position(s) flattened.")
+    return {"success": True, "stopped": stopped, "closed": closed, "errors": errors}
 
 
 @app.get("/api/crypto/algo/analyze")
@@ -6565,6 +6862,61 @@ def crypto_algo_promote(bot_id: str, current_user: dict = Depends(_get_current_u
     bot["mode"] = "live"
     _save_bots()
     return {"success": True, "mode": "live"}
+
+
+@app.post("/api/crypto/algo/toggle_all_mode")
+def crypto_algo_toggle_all_mode(current_user: dict = Depends(_get_current_user)):
+    """Flip every active bot between Demo and Live in one click. Demo->Live
+    bots need their exchange connected (same requirement as the per-bot
+    Promote button) — any that aren't connected are skipped, not failed.
+    Live->Demo bots get their real position flattened first, same as Kill
+    All, since a live position can't be carried into paper trading."""
+    uname = current_user["username"]
+    promoted, demoted, skipped = 0, 0, []
+    for bid, bot in list(_crypto_bots.items()):
+        if bot.get("username") != uname or bot.get("status") != "active":
+            continue
+        try:
+            if bot.get("mode", "live") == "demo":
+                ex = _active_ex.get(uname, {}).get(bot["exchange"])
+                if not ex:
+                    skipped.append(f"{bid}: {bot['exchange']} not connected")
+                    continue
+                if bot.get("open_side"):
+                    if bot.get("trades"):
+                        bot["trades"][-1].update(exit_reason="toggled_to_live", exit_price=bot.get("last_price"), status="closed")
+                    bot["open_side"] = None
+                    bot["open_entry_price"] = None
+                    bot["open_amount"] = 0
+                    bot["open_trade_count"] = 0
+                bot["mode"] = "live"
+                promoted += 1
+            else:
+                if bot.get("open_side"):
+                    try:
+                        ex = _active_ex.get(uname, {}).get(bot["exchange"])
+                        if ex:
+                            close_side = "sell" if bot["open_side"] == "BUY" else "buy"
+                            for p in ex.fetch_positions():
+                                if p.get("symbol") == bot["symbol"] and float(p.get("contracts") or 0) > 0:
+                                    ex.create_order(bot["symbol"], "market", close_side,
+                                                     float(p["contracts"]), params={"reduceOnly": True})
+                    except Exception as e:
+                        skipped.append(f"{bid}: close failed ({e})")
+                    if bot.get("trades"):
+                        bot["trades"][-1].update(exit_reason="toggled_to_demo", status="closed")
+                    bot["open_side"] = None
+                    bot["open_entry_price"] = None
+                    bot["open_amount"] = 0
+                    bot["open_trade_count"] = 0
+                bot["mode"] = "demo"
+                demoted += 1
+        except Exception as e:
+            skipped.append(f"{bid}: {e}")
+    _save_bots()
+    if promoted or demoted:
+        _tg_notify(f"<b>FarhanFX Crypto — ⇄ Toggle Live/Paper</b>\n{promoted} bot(s) → LIVE, {demoted} bot(s) → DEMO.")
+    return {"success": True, "promoted": promoted, "demoted": demoted, "skipped": skipped}
 
 
 @app.delete("/api/crypto/algo/{bot_id}")
@@ -6746,7 +7098,7 @@ def _bot_stats(trades: list) -> dict:
 
 
 # ── STRATEGY BACKTESTER — 1-year historical run, all strategies at once ──────
-_ALL_CRYPTO_STRATEGIES = ["rsi", "macd_cross", "bb_squeeze", "false_breakout", "trend_breakout"]
+_ALL_CRYPTO_STRATEGIES = ["rsi", "macd_cross", "bb_squeeze", "false_breakout", "trend_breakout", "vwap_bands"]
 
 _backtest_data_cache: dict = {}   # f"{symbol}:{timeframe}:{days}" -> {"data": [...], "fetched_at": ts}
 
@@ -6799,12 +7151,15 @@ def _run_backtest_strategy(strategy: str, ohlcv: list, symbol: str, timeframe: s
         "atr_period": 14, "st_multiplier": 3.0,
         "ai_min_score": 65, "trailing_atr": 0.0, "tp_atr": 0.0, "adx_min": 0,
         "bo_lookback": 20, "dc_period": 55, "dc_ema": 150, "fixed_amount": 0.0, "fixed_usd": 0.0,
+        "vwap_period": 14, "vwap_std": 2.5,
         "open_side": None, "open_entry_price": None, "open_amount": 0,
         "open_trade_count": 0, "open_peak": None, "open_trough": None,
         "trades": [],
     }
     if strategy == "trend_breakout":
         bot["trailing_atr"] = 2.0  # exits via trailing stop, not signal-flip
+    if strategy == "vwap_bands":
+        bot["trailing_atr"], bot["tp_atr"] = 2.0, 2.5  # exits via TP/trailing stop, not signal-flip
     if param_overrides:
         bot.update(param_overrides)
     window = _bot_lookback_bars(bot)
@@ -6983,10 +7338,11 @@ _STRATEGY_DEFAULTS = {
     "bb_squeeze":     ("1h",  {"bb_period": 30, "bb_std": 2.5}),
     "false_breakout": ("1h",  {}),
     "trend_breakout": ("15m", {"dc_period": 55, "dc_ema": 150, "trailing_atr": 2.0, "tp_atr": 0.0}),
+    "vwap_bands":     ("15m", {"vwap_period": 14, "vwap_std": 2.5, "trailing_atr": 2.0, "tp_atr": 2.5}),
 }
 _SCREENER_EXCLUDE_BASES = {
-    "XAU", "XAG", "CL", "UKOIL", "USOIL",                      # commodities
-    "SOXL", "SKHYNIX", "MU", "NVDA", "TSLA", "MSFT", "AAPL",   # tokenized stocks
+    "XAU", "XAG", "CL", "UKOIL", "USOIL",                                  # commodities
+    "SOXL", "SKHYNIX", "MU", "NVDA", "TSLA", "MSFT", "AAPL", "SNDK", "SPCX", # tokenized stocks
 }
 
 
@@ -8009,6 +8365,259 @@ def tg_demo_stats():
         "open_positions": open_positions,
         **stats,
     }
+
+
+# ── INDIAN MARKET (Kotak Neo) ────────────────────────────────────────────────
+# Separate broker/asset class from the existing forex (MT5) and crypto (ccxt)
+# integrations — NSE/BSE equities, indices, and F&O via Kotak's official
+# neo_api_client SDK. Kept fully independent of FOREX BOT / FOREX ALGO.
+try:
+    from neo_api_client import NeoAPI as _NeoAPI
+    _NEO_OK = True
+except ImportError:
+    _NeoAPI = None
+    _NEO_OK = False
+
+import pyotp as _pyotp
+
+_NEO_CFG_FILE = "kotak_neo_cfg.json"
+_active_neo: dict = {}   # {username: NeoAPI client} — live, logged-in sessions
+
+
+def _load_neo_cfg() -> dict:
+    try:
+        with open(_NEO_CFG_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_neo_cfg(cfg: dict):
+    with open(_NEO_CFG_FILE, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+
+
+def _neo_err(r):
+    """The SDK is inconsistent about error shape across calls — client-side
+    validation uses {"error": [{"message": ...}]}, server/session errors use
+    {"Error": ...} or {"Error Message": ...}. Check all three."""
+    if not isinstance(r, dict):
+        return None
+    if r.get("error"):
+        e = r["error"]
+        return e[0].get("message", str(e)) if isinstance(e, list) else str(e)
+    if "Error Message" in r:
+        return r["Error Message"]
+    if "Error" in r:
+        return str(r["Error"])
+    return None
+
+
+def _neo_login(cfg: dict):
+    """Full 2-step login (totp_login + totp_validate). A fresh 30-second
+    TOTP code is generated from the stored secret on every call, so the
+    bot can re-authenticate unattended after a restart instead of needing
+    someone to type in a one-time code by hand."""
+    client = _NeoAPI(environment=cfg.get("environment", "prod"),
+                      consumer_key=cfg["consumer_key"], access_token=cfg["access_token"])
+    totp_code = _pyotp.TOTP(cfg["totp_secret"]).now()
+    r1 = client.totp_login(mobile_number=cfg["mobile_number"], ucc=cfg["ucc"], totp=totp_code)
+    err = _neo_err(r1)
+    if err:
+        raise Exception(f"TOTP login failed: {err}")
+    r2 = client.totp_validate(mpin=cfg["mpin"])
+    err = _neo_err(r2)
+    if err:
+        raise Exception(f"MPIN validation failed: {err}")
+    return client
+
+
+def _get_neo_client(username: str):
+    """Cached live client, or a fresh re-login from saved config if there
+    isn't one yet (e.g. right after a server restart)."""
+    client = _active_neo.get(username)
+    if client:
+        return client
+    cfg = _load_neo_cfg().get(username)
+    if not cfg:
+        return None
+    client = _neo_login(cfg)
+    _active_neo[username] = client
+    return client
+
+
+class KotakNeoConnectReq(BaseModel):
+    consumer_key:  str
+    access_token:  str
+    mobile_number: str   # with country code, e.g. +919876543210
+    ucc:           str   # Unique Client Code (Profile section in the app)
+    mpin:          str
+    totp_secret:   str   # base32 secret behind the TOTP QR code — NOT a one-time code
+    environment:   str = "prod"   # "prod" | "uat"
+
+
+@app.post("/api/indian/connect")
+def indian_connect(req: KotakNeoConnectReq, current_user: dict = Depends(_get_current_user)):
+    if not _NEO_OK:
+        return JSONResponse(status_code=400, content={"error": "neo_api_client not installed on the server"})
+    uname = current_user["username"]
+    cfg_dict = req.model_dump()
+    try:
+        client = _neo_login(cfg_dict)
+        limits = client.limits()
+        err = _neo_err(limits)
+        if err:
+            raise Exception(err)
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)[:250]})
+    _active_neo[uname] = client
+    cfg = _load_neo_cfg()
+    cfg[uname] = cfg_dict
+    _save_neo_cfg(cfg)
+    return {"success": True}
+
+
+@app.post("/api/indian/disconnect")
+def indian_disconnect(current_user: dict = Depends(_get_current_user)):
+    uname = current_user["username"]
+    _active_neo.pop(uname, None)
+    cfg = _load_neo_cfg()
+    cfg.pop(uname, None)
+    _save_neo_cfg(cfg)
+    return {"success": True}
+
+
+@app.get("/api/indian/status")
+def indian_status(current_user: dict = Depends(_get_current_user)):
+    cfg = _load_neo_cfg().get(current_user["username"])
+    if not cfg:
+        return {"connected": False}
+    return {"connected": True, "ucc": cfg.get("ucc", ""), "environment": cfg.get("environment", "prod")}
+
+
+@app.get("/api/indian/positions")
+def indian_positions(current_user: dict = Depends(_get_current_user)):
+    client = _get_neo_client(current_user["username"])
+    if not client:
+        return JSONResponse(status_code=400, content={"error": "Not connected — connect your Kotak Neo account first"})
+    try:
+        r = client.positions()
+        err = _neo_err(r)
+        if err:
+            return JSONResponse(status_code=400, content={"error": err})
+        return r.get("data", r) if isinstance(r, dict) else r
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)[:200]})
+
+
+@app.get("/api/indian/holdings")
+def indian_holdings(current_user: dict = Depends(_get_current_user)):
+    client = _get_neo_client(current_user["username"])
+    if not client:
+        return JSONResponse(status_code=400, content={"error": "Not connected — connect your Kotak Neo account first"})
+    try:
+        r = client.holdings()
+        err = _neo_err(r)
+        if err:
+            return JSONResponse(status_code=400, content={"error": err})
+        return r.get("data", r) if isinstance(r, dict) else r
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)[:200]})
+
+
+@app.get("/api/indian/limits")
+def indian_limits(current_user: dict = Depends(_get_current_user)):
+    client = _get_neo_client(current_user["username"])
+    if not client:
+        return JSONResponse(status_code=400, content={"error": "Not connected — connect your Kotak Neo account first"})
+    try:
+        r = client.limits()
+        err = _neo_err(r)
+        if err:
+            return JSONResponse(status_code=400, content={"error": err})
+        return r.get("data", r) if isinstance(r, dict) else r
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)[:200]})
+
+
+@app.get("/api/indian/search_scrip")
+def indian_search_scrip(exchange_segment: str = "nse_cm", symbol: str = "",
+                         current_user: dict = Depends(_get_current_user)):
+    """exchange_segment: nse_cm (NSE equity) | bse_cm (BSE equity) |
+    nse_fo (NSE F&O — index/stock futures & options) | bse_fo."""
+    client = _get_neo_client(current_user["username"])
+    if not client:
+        return JSONResponse(status_code=400, content={"error": "Not connected — connect your Kotak Neo account first"})
+    try:
+        r = client.search_scrip(exchange_segment=exchange_segment, symbol=symbol)
+        err = _neo_err(r)
+        if err:
+            return JSONResponse(status_code=400, content={"error": err})
+        return r if isinstance(r, list) else r.get("data", [])
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)[:200]})
+
+
+class IndianOrderReq(BaseModel):
+    exchange_segment: str          # nse_cm | bse_cm | nse_fo | bse_fo
+    trading_symbol:   str          # exact symbol from search_scrip, e.g. "RELIANCE-EQ"
+    transaction_type: str          # "B" (buy) | "S" (sell)
+    quantity:         str
+    product:          str = "MIS"  # MIS (intraday) | CNC (delivery) | NRML (F&O carry-forward)
+    order_type:       str = "MKT"  # MKT | L (limit) | SL | SL-M
+    price:            str = "0"
+    trigger_price:    str = "0"
+    validity:         str = "DAY"  # DAY | IOC
+
+
+@app.post("/api/indian/order")
+def indian_place_order(req: IndianOrderReq, current_user: dict = Depends(_get_current_user)):
+    client = _get_neo_client(current_user["username"])
+    if not client:
+        return JSONResponse(status_code=400, content={"error": "Not connected — connect your Kotak Neo account first"})
+    try:
+        r = client.place_order(
+            exchange_segment=req.exchange_segment, product=req.product,
+            price=req.price, order_type=req.order_type, quantity=req.quantity,
+            validity=req.validity, trading_symbol=req.trading_symbol,
+            transaction_type=req.transaction_type, trigger_price=req.trigger_price,
+        )
+        err = _neo_err(r)
+        if err:
+            return JSONResponse(status_code=400, content={"error": err})
+        return r
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)[:200]})
+
+
+@app.post("/api/indian/order/{order_id}/cancel")
+def indian_cancel_order(order_id: str, current_user: dict = Depends(_get_current_user)):
+    client = _get_neo_client(current_user["username"])
+    if not client:
+        return JSONResponse(status_code=400, content={"error": "Not connected — connect your Kotak Neo account first"})
+    try:
+        r = client.cancel_order(order_id=order_id)
+        err = _neo_err(r)
+        if err:
+            return JSONResponse(status_code=400, content={"error": err})
+        return r
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)[:200]})
+
+
+@app.get("/api/indian/order_report")
+def indian_order_report(current_user: dict = Depends(_get_current_user)):
+    client = _get_neo_client(current_user["username"])
+    if not client:
+        return JSONResponse(status_code=400, content={"error": "Not connected — connect your Kotak Neo account first"})
+    try:
+        r = client.order_report()
+        err = _neo_err(r)
+        if err:
+            return JSONResponse(status_code=400, content={"error": err})
+        return r.get("data", r) if isinstance(r, dict) else r
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)[:200]})
 
 
 if __name__ == "__main__":
