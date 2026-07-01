@@ -6868,6 +6868,18 @@ def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_curre
     symbols = [s.strip() for s in req.symbol.split(",") if s.strip()]
     if not symbols:
         return JSONResponse(status_code=400, content={"error": "At least one symbol is required"})
+    # Duplicate guard: same strategy + symbol + timeframe already running for this user
+    for sym in symbols:
+        for existing in _crypto_bots.values():
+            if (existing.get("username") == uname
+                    and existing.get("strategy") == req.strategy
+                    and existing.get("symbol") == sym
+                    and existing.get("timeframe") == req.timeframe
+                    and existing.get("status") == "active"):
+                return JSONResponse(status_code=400, content={
+                    "error": f"{req.strategy.upper()} on {sym} {req.timeframe} is already running. "
+                             f"Use a different pair or timeframe to run a second bot."
+                })
     group_id = str(_uuid.uuid4())[:8]
     bot_ids = []
     for sym in symbols:
