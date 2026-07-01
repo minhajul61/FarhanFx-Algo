@@ -2819,6 +2819,16 @@ def crypto_reports_summary(mode: str = "live", current_user: dict = Depends(_get
     }
 
 
+def _session_name(hour: int) -> str:
+    if 0 <= hour < 7:
+        return "Asian"
+    if 7 <= hour < 13:
+        return "London"
+    if 13 <= hour < 21:
+        return "New York"
+    return "Off-Hours"
+
+
 def _aggregate_trade_report(closed_trades: list) -> dict:
     """Shared aggregation: turns a flat list of closed trades (each needs at
     least time/pnl/symbol) into session/symbol/daily/monthly breakdowns, best
