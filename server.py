@@ -6166,8 +6166,13 @@ def _ai_full_analysis(ohlcv, bot_params=None):
 
 def _bot_lookback_bars(bot) -> int:
     base = max(100, (bot.get("slow_ema", 21) or 21) + 30)
-    if bot.get("strategy") == "trend_breakout":
+    st = bot.get("strategy", "")
+    if st == "trend_breakout":
         base = max(base, bot.get("dc_ema", 150) + 50)
+    if st == "bb_rsi_strict":
+        base = max(base, 220)   # needs EMA(200) + warmup
+    if st == "rsi_divergence":
+        base = max(base, bot.get("div_lookback", 25) + bot.get("swing_window", 5) + 30)
     return base
 
 
@@ -6414,8 +6419,10 @@ def _get_bot_signal(bot, ohlcv):
     elif strategy == "vwap_rsi":
         period    = bot.get("vwap_period", 14)
         proximity = bot.get("vwap_proximity", 0.3)   # % from VWAP
-        rsi_os    = bot.get("rsi_os", 40)
-        rsi_ob    = bot.get("rsi_ob", 60)
+        # Use separate keys so global RSI(7) settings (75/25) don't override these
+        # VWAP confluence uses RSI as direction signal, not overbought/oversold reversal
+        rsi_os    = bot.get("vwap_rsi_os", 40)
+        rsi_ob    = bot.get("vwap_rsi_ob", 60)
         if len(closes) < period + 14:
             return None
         tp   = [(highs[i] + lows[i] + closes[i]) / 3 for i in range(-period, 0)]
@@ -6893,6 +6900,11 @@ def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_curre
             "dc_period": req.dc_period, "dc_ema": req.dc_ema,
             # VWAP bands
             "vwap_period": req.vwap_period, "vwap_std": req.vwap_std,
+            # High WR strategy params
+            "div_lookback": req.div_lookback, "swing_window": req.swing_window,
+            "vwap_proximity": req.vwap_proximity,
+            "vwap_rsi_os": 40, "vwap_rsi_ob": 60,   # VWAP+RSI uses direction thresholds, NOT reversal
+            "orb_minutes": req.orb_minutes,
             # Risk management
             "trailing_atr": req.trailing_atr, "tp_atr": req.tp_atr, "adx_min": req.adx_min,
             # Risk management
