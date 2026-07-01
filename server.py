@@ -1444,6 +1444,57 @@ def _macd_calc(closes, fast=12, slow=26, signal=9):
     return macd, sig, hist
 
 
+def _detect_price_action(opens, closes, highs, lows):
+    """Detect candlestick patterns. Returns list of (name, direction, strength 0-1)."""
+    patterns = []
+    if len(closes) < 4:
+        return patterns
+    o, c, h, l = opens, closes, highs, lows
+
+    # Pin Bar (Hammer / Shooting Star)
+    for i in [-1, -2]:
+        body = abs(c[i] - o[i])
+        rng  = h[i] - l[i]
+        if rng < 1e-9:
+            continue
+        upper_wick = h[i] - max(c[i], o[i])
+        lower_wick = min(c[i], o[i]) - l[i]
+        if lower_wick >= 2.5 * body and upper_wick < body:
+            patterns.append(("Pin Bar", "BUY", 0.75))
+        elif upper_wick >= 2.5 * body and lower_wick < body:
+            patterns.append(("Pin Bar", "SELL", 0.75))
+
+    # Engulfing
+    if (c[-1] > o[-1] and c[-2] < o[-2] and
+            c[-1] > o[-2] and o[-1] < c[-2]):
+        patterns.append(("Engulfing", "BUY", 0.80))
+    elif (c[-1] < o[-1] and c[-2] > o[-2] and
+            c[-1] < o[-2] and o[-1] > c[-2]):
+        patterns.append(("Engulfing", "SELL", 0.80))
+
+    # Inside Bar False Breakout — stop-hunt trap reversal
+    # Mother bar: [-3], Inside bar: [-2], Breakout+reversal candle: [-1]
+    if len(closes) >= 4:
+        mb_high, mb_low = h[-3], l[-3]
+        ib_high, ib_low = h[-2], l[-2]
+        is_inside = ib_high <= mb_high and ib_low >= mb_low
+        if is_inside:
+            # Bearish false breakout → price broke below ib_low but closed back inside → BUY
+            if l[-1] < ib_low and c[-1] > ib_low:
+                patterns.append(("IB False Breakout", "BUY", 0.90))
+            # Bullish false breakout → price broke above ib_high but closed back inside → SELL
+            elif h[-1] > ib_high and c[-1] < ib_high:
+                patterns.append(("IB False Breakout", "SELL", 0.90))
+
+    # Doji (indecision near key level)
+    body = abs(c[-1] - o[-1])
+    rng  = h[-1] - l[-1]
+    if rng > 1e-9 and body / rng < 0.1:
+        patterns.append(("Doji", "NEUTRAL", 0.30))
+
+    return patterns
+
+
 def _atr_calc(highs, lows, closes, period=14):
     if len(closes) < 2:
         return 0.0
