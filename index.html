@@ -503,9 +503,6 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       <div class="nav-item" onclick="showPage('indian',this)"><i class="ti ti-building-bank"></i> INDIAN MARKET</div>
       <div class="nav-item" onclick="showPage('telegram',this)"><i class="ti ti-brand-telegram"></i> TELEGRAM BOT</div>
       <div class="nav-item" onclick="showPage('journal',this)"><i class="ti ti-notebook"></i> JOURNAL</div>
-      <div class="nav-item" onclick="showPage('reports',this)"><i class="ti ti-chart-bar"></i> REPORTS</div>
-      <div class="nav-item" onclick="showPage('wallet',this)"><i class="ti ti-wallet"></i> WALLET</div>
-      <div class="nav-item" onclick="showPage('backtest',this)"><i class="ti ti-test-pipe"></i> BACKTEST</div>
       <div class="nav-item" onclick="showPage('risk',this)"><i class="ti ti-shield-check"></i> RISK CALC</div>
       <div class="nav-item" onclick="showPage('settings',this)"><i class="ti ti-settings"></i> SETTINGS</div>
       <div class="nav-item" onclick="showPage('tradingview',this)"><i class="ti ti-chart-candle"></i> TRADING VIEW</div>
@@ -581,195 +578,6 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         </div>
       </div>
 
-            <div class="page" id="page-trades" style="display:none!important">
-        <div class="page-title">Trades</div>
-
-        <!-- QUICK ORDER -->
-        <div class="order-panel">
-          <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-            <div style="display:flex;align-items:center;gap:10px">
-              Quick Order
-              <!-- MARKET / PENDING tabs -->
-              <div style="display:flex;background:var(--bg);border:1px solid var(--border);border-radius:6px;overflow:hidden">
-                <button id="o-tab-market" onclick="oSetTab('market')" style="padding:4px 14px;font-size:11px;font-weight:700;background:var(--accent);color:#fff;border:none;cursor:pointer;transition:all 0.2s">MARKET</button>
-                <button id="o-tab-pending" onclick="oSetTab('pending')" style="padding:4px 14px;font-size:11px;font-weight:700;background:transparent;color:var(--text2);border:none;cursor:pointer;transition:all 0.2s">PENDING</button>
-              </div>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="font-size:10px;color:var(--text2);font-weight:500;letter-spacing:0.5px">SL/TP MODE</span>
-              <div style="display:flex;background:var(--bg);border:1px solid var(--border);border-radius:6px;overflow:hidden">
-                <button id="o-mode-pips" onclick="oSetMode('pips')" style="padding:4px 14px;font-size:11px;font-weight:700;background:var(--accent);color:#fff;border:none;cursor:pointer;letter-spacing:0.5px;transition:all 0.2s">PIPS</button>
-                <button id="o-mode-price" onclick="oSetMode('price')" style="padding:4px 14px;font-size:11px;font-weight:700;background:transparent;color:var(--text2);border:none;cursor:pointer;letter-spacing:0.5px;transition:all 0.2s">PRICE</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Pending order type selector (hidden in market mode) -->
-          <div id="o-pending-row" style="display:none;margin-bottom:12px;padding:10px 14px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <span style="font-size:10px;color:var(--text2);font-weight:600;letter-spacing:0.5px;min-width:70px">ORDER TYPE</span>
-              <div style="display:flex;gap:6px;flex-wrap:wrap">
-                <button id="ptype-bl" onclick="oPendingType('BUY_LIMIT')"  class="ptype-btn ptype-active-buy" style="padding:5px 12px;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;border:1px solid var(--green);background:rgba(16,185,129,0.2);color:var(--green);transition:all 0.2s">▼ BUY LIMIT</button>
-                <button id="ptype-bs" onclick="oPendingType('BUY_STOP')"   class="ptype-btn" style="padding:5px 12px;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);transition:all 0.2s">▲ BUY STOP</button>
-                <button id="ptype-sl" onclick="oPendingType('SELL_LIMIT')" class="ptype-btn" style="padding:5px 12px;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);transition:all 0.2s">▲ SELL LIMIT</button>
-                <button id="ptype-ss" onclick="oPendingType('SELL_STOP')"  class="ptype-btn" style="padding:5px 12px;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);transition:all 0.2s">▼ SELL STOP</button>
-              </div>
-              <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
-                <span style="font-size:10px;color:var(--text2)">AT PRICE</span>
-                <input id="o-pending-price" type="number" class="sinput" style="width:130px" step="0.00001" placeholder="trigger price"/>
-              </div>
-            </div>
-            <div id="o-pending-hint" style="font-size:10px;color:var(--text3);margin-top:6px"></div>
-          </div>
-
-          <div class="order-grid">
-            <div class="field">
-              <label>Symbol</label>
-              <input id="o-symbol" class="sinput" list="jf-symbol-list" autocomplete="off"
-                onblur="oFetchPrice()"
-                style="width:100%" value="XAUUSDc" placeholder="Type or select..."/>
-              <div id="o-price-preview" style="font-size:10px;color:var(--cyan);margin-top:3px;height:14px;white-space:nowrap;overflow:hidden"></div>
-            </div>
-            <div class="field">
-              <label>Volume (lots)</label>
-              <input id="o-volume" class="sinput" style="width:100%" type="number" value="0.01" step="0.01" min="0.01"/>
-              <div style="height:14px"></div>
-            </div>
-            <div class="field">
-              <label id="o-sl-label">Stop Loss (pips)</label>
-              <input id="o-sl" class="sinput" style="width:100%" type="number" value="20" step="1" min="0" placeholder="0 = none" oninput="oUpdatePreviews()"/>
-              <div id="o-sl-preview" style="font-size:10px;margin-top:3px;height:14px;white-space:nowrap;overflow:hidden"></div>
-            </div>
-            <div class="field">
-              <label id="o-tp-label">Take Profit (pips)</label>
-              <input id="o-tp" class="sinput" style="width:100%" type="number" value="40" step="1" min="0" placeholder="0 = none" oninput="oUpdatePreviews()"/>
-              <div id="o-tp-preview" style="font-size:10px;margin-top:3px;height:14px;white-space:nowrap;overflow:hidden"></div>
-            </div>
-            <div class="field">
-              <label>Comment</label>
-              <input id="o-comment" class="sinput" style="width:100%" value="FarhanFX Algo"/>
-              <div style="height:14px"></div>
-            </div>
-            <!-- MARKET mode buttons -->
-            <div id="o-market-btns" style="display:flex;flex-direction:column;justify-content:flex-start">
-              <button class="obtn obtn-buy" id="o-buy-btn" onclick="placeOrder('BUY')">▲ BUY</button>
-              <div style="height:14px"></div>
-            </div>
-            <div id="o-market-btns2" style="display:flex;flex-direction:column;justify-content:flex-start">
-              <button class="obtn obtn-sell" id="o-sell-btn" onclick="placeOrder('SELL')">▼ SELL</button>
-              <div style="height:14px"></div>
-            </div>
-            <!-- PENDING mode button (spans both columns) -->
-            <div id="o-pending-btn-wrap" style="display:none;grid-column:span 2;align-self:start">
-              <button id="o-pending-btn" onclick="placePendingOrder()" class="obtn" style="width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff">⧖ PLACE PENDING</button>
-              <div style="height:14px"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- PENDING ORDERS -->
-        <div class="panel" id="pending-panel" style="display:none">
-          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
-            Pending Orders
-            <button class="sbtn" onclick="loadPendingOrders()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
-          </div>
-          <table>
-            <thead><tr><th>TICKET</th><th>SYMBOL</th><th>TYPE</th><th>LOTS</th><th>PRICE</th><th>SL</th><th>TP</th><th>PLACED</th><th>ACTION</th></tr></thead>
-            <tbody id="pending-tbody"><tr><td colspan="9" style="text-align:center;color:var(--text3);padding:16px">No pending orders</td></tr></tbody>
-          </table>
-        </div>
-
-        <!-- LIVE P&L SUMMARY STRIP -->
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px">
-          <div class="kpi" style="border-color:var(--border2)">
-            <div class="kpi-label">OPEN POSITIONS</div>
-            <div id="trd-pos-count" class="kpi-value" style="color:var(--cyan)">—</div>
-            <div id="trd-pos-lots" class="kpi-delta" style="color:var(--text3)">lots: —</div>
-          </div>
-          <div class="kpi" style="border-color:var(--border2)">
-            <div class="kpi-label">FLOATING P&amp;L <span style="font-size:8px;color:var(--text3)">(OPEN)</span></div>
-            <div id="trd-float-pnl" class="kpi-value" style="font-size:20px">—</div>
-            <div id="trd-float-sub" class="kpi-delta" style="color:var(--text3);font-size:10px">unrealized</div>
-          </div>
-          <div class="kpi" style="border-color:var(--border2)">
-            <div class="kpi-label">TODAY REALIZED <span style="font-size:8px;color:var(--text3)">(CLOSED)</span></div>
-            <div id="trd-today-pnl" class="kpi-value">—</div>
-            <div id="trd-today-sub" class="kpi-delta" style="color:var(--text3);font-size:10px">—</div>
-          </div>
-          <div class="kpi" style="border-color:var(--border2)">
-            <div class="kpi-label">WIN RATE (30D)</div>
-            <div id="trd-win-rate" class="kpi-value" style="color:var(--green)">—</div>
-            <div id="trd-wl-count" class="kpi-delta" style="color:var(--text3)">— W / — L</div>
-          </div>
-          <div class="kpi" style="border-color:var(--border2)">
-            <div class="kpi-label">NET P&amp;L (30D)</div>
-            <div id="trd-net-pnl" class="kpi-value">—</div>
-            <div id="trd-net-sub" class="kpi-delta" style="color:var(--text3)">realized</div>
-          </div>
-        </div>
-
-        <!-- OPEN POSITIONS -->
-        <div class="panel">
-          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
-            Open Positions
-            <div style="display:flex;align-items:center;gap:8px">
-              <span id="pos-live-dot" style="width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;display:none"></span>
-              <span id="pos-last-update" style="font-size:10px;color:var(--text3)"></span>
-              <button class="sbtn" onclick="loadPositions()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
-              <button class="sbtn" onclick="closeAllPositions()" style="font-size:10px;padding:4px 10px;background:rgba(239,68,68,0.15);border-color:var(--red);color:var(--red)">✕ CLOSE ALL</button>
-            </div>
-          </div>
-          <table>
-            <thead><tr><th>TICKET</th><th>SYMBOL</th><th>TYPE</th><th>LOTS</th><th>OPEN</th><th>CURRENT</th><th>SL</th><th>TP</th><th>PIPS</th><th>PROFIT</th><th>SWAP</th><th>DURATION</th><th>ACTION</th></tr></thead>
-            <tbody id="positions-tbody"><tr><td colspan="13" style="text-align:center;color:var(--text3);padding:20px">Loading positions...</td></tr></tbody>
-          </table>
-        </div>
-
-        <!-- DEAL HISTORY -->
-        <div class="panel">
-          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
-            Trade History — MT5 Sync
-            <span id="deals-stats" style="font-size:10px;color:var(--text3)"></span>
-          </div>
-          <!-- Filter bar -->
-          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;padding:10px 12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">
-            <input id="deals-search" type="text" placeholder="Search symbol, type, ticket…" oninput="dealsApplyFilter()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text);font-family:var(--font);font-size:11px;outline:none;width:190px"/>
-            <input id="deals-date-from" type="date" onchange="dealsApplyFilter()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-family:var(--font);font-size:11px;outline:none"/>
-            <span style="font-size:10px;color:var(--text3)">→</span>
-            <input id="deals-date-to" type="date" onchange="dealsApplyFilter()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-family:var(--font);font-size:11px;outline:none"/>
-            <select id="history-days" onchange="loadDeals()" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-family:var(--font);font-size:11px;outline:none">
-              <option value="7">7 days</option>
-              <option value="30" selected>30 days</option>
-              <option value="90">90 days</option>
-              <option value="365">1 year</option>
-            </select>
-            <button class="sbtn" onclick="dealsApplyFilter()" style="font-size:10px;padding:5px 10px">⚙ FILTER</button>
-            <button class="sbtn" onclick="dealsClearFilter()" style="font-size:10px;padding:5px 10px;color:var(--text2)">✕ CLEAR</button>
-            <button class="sbtn" onclick="loadDeals()" style="font-size:10px;padding:5px 10px;margin-left:auto">↻ SYNC</button>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>#</th><th>SYMBOL</th><th>TYPE</th><th>LOTS</th>
-                <th>ENTRY</th><th>EXIT</th><th>PIPS</th><th>DURATION</th>
-                <th>GROSS</th><th>COMM</th><th>SWAP</th><th>NET P&amp;L</th>
-                <th>CLOSED</th>
-              </tr>
-            </thead>
-            <tbody id="deals-tbody"><tr><td colspan="13" style="text-align:center;color:var(--text3);padding:20px">Loading...</td></tr></tbody>
-          </table>
-          <!-- Pagination -->
-          <div id="deals-pagination" style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;gap:8px;display:none">
-            <span id="deals-page-info" style="font-size:11px;color:var(--text3)"></span>
-            <div style="display:flex;gap:6px">
-              <button class="sbtn" id="deals-prev" onclick="dealsChangePage(-1)" style="font-size:10px;padding:4px 12px">◀ Prev</button>
-              <div id="deals-page-nums" style="display:flex;gap:4px"></div>
-              <button class="sbtn" id="deals-next" onclick="dealsChangePage(1)" style="font-size:10px;padding:4px 12px">Next ▶</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- TRADING VIEW PAGE (full-screen flex layout) -->
       <div class="page" id="page-tradingview">
         <!-- Minimal control bar — only BACK button, everything else is TradingView's own UI -->
@@ -782,878 +590,6 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       </div>
 
       <!-- REPORTS PAGE -->
-      <div class="page" id="page-reports">
-        <div class="page-title" style="display:flex;justify-content:space-between;align-items:center">
-          Reports &amp; Analytics
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <select id="rpt-months" onchange="rptOnPresetChange()" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-family:var(--font);font-size:10px;outline:none">
-              <option value="1">1 month</option><option value="3">3 months</option>
-              <option value="6">6 months</option><option value="12" selected>12 months</option>
-              <option value="24">24 months</option>
-              <option value="0">Custom range</option>
-            </select>
-            <div id="rpt-custom-range" style="display:none;align-items:center;gap:6px">
-              <span style="font-size:10px;color:var(--text3)">From</span>
-              <input type="date" id="rpt-date-from" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:4px 7px;color:var(--text);font-family:var(--font);font-size:10px;outline:none"/>
-              <span style="font-size:10px;color:var(--text3)">To</span>
-              <input type="date" id="rpt-date-to" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:4px 7px;color:var(--text);font-family:var(--font);font-size:10px;outline:none"/>
-            </div>
-            <button class="sbtn" onclick="loadActiveReport()" style="font-size:10px;padding:4px 12px;background:var(--accent);color:#fff;border-color:var(--accent)">↻ APPLY</button>
-          </div>
-        </div>
-
-        <!-- Sub-tab navigation -->
-        <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:0">
-          <button id="rpt-tab-algo-forex"   onclick="showReportTab('algo-forex')"   style="padding:8px 16px;border:none;border-bottom:2px solid var(--accent);background:transparent;color:var(--accent);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.5px;transition:all 0.2s">📊 Algo Forex</button>
-          <button id="rpt-tab-algo-crypto"  onclick="showReportTab('algo-crypto')"  style="padding:8px 16px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text3);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.5px;transition:all 0.2s">🤖 Algo Crypto</button>
-          <button id="rpt-tab-manual-forex" onclick="showReportTab('manual-forex')" style="padding:8px 16px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text3);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.5px;transition:all 0.2s">💼 Manual Forex</button>
-          <button id="rpt-tab-manual-crypto"onclick="showReportTab('manual-crypto')"style="padding:8px 16px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text3);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.5px;transition:all 0.2s">🪙 Manual Crypto</button>
-          <button id="rpt-tab-funding"      onclick="showReportTab('funding')"      style="padding:8px 16px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--text3);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.5px;transition:all 0.2s">💰 Deposit / Withdrawal</button>
-        </div>
-
-        <!-- Sub-pages (filled by JS) -->
-        <div id="rpt-page-algo-forex"></div>
-        <div id="rpt-page-algo-crypto"   style="display:none"></div>
-        <div id="rpt-page-manual-forex"  style="display:none"></div>
-        <div id="rpt-page-manual-crypto" style="display:none"></div>
-        <div id="rpt-page-funding"       style="display:none"></div>
-
-        <!-- Strategy Robustness Matrix — algo-forex only, backtest WR vs live deployed TF -->
-        <div id="rpt-strategy-matrix" style="display:none;margin-top:14px"></div>
-      </div>
-
-
-      <!-- WALLET PAGE -->
-      <div class="page" id="page-wallet">
-        <div class="page-title">Wallet</div>
-        <div class="wallet-card">
-          <div class="w-label">MT5 ACCOUNT BALANCE</div>
-          <div class="w-balance" id="w-balance">—</div>
-          <div style="display:flex;gap:24px;margin-top:4px;flex-wrap:wrap">
-            <div><div class="w-label">EQUITY</div><div style="color:#58a6ff;font-size:14px;font-weight:700;margin-top:4px" id="w-equity">—</div></div>
-            <div><div class="w-label">OPEN P&amp;L</div><div style="font-size:14px;font-weight:700;margin-top:4px" id="w-profit">—</div></div>
-            <div><div class="w-label">FREE MARGIN</div><div style="color:#e3b341;font-size:14px;font-weight:700;margin-top:4px" id="w-free-margin">—</div></div>
-            <div><div class="w-label">MARGIN LEVEL</div><div style="color:#58a6ff;font-size:14px;font-weight:700;margin-top:4px" id="w-margin-level">—</div></div>
-            <div><div class="w-label">LEVERAGE</div><div style="color:#7d8590;font-size:14px;font-weight:700;margin-top:4px" id="w-leverage">—</div></div>
-            <div><div class="w-label">ACCOUNT</div><div style="color:#7d8590;font-size:14px;font-weight:700;margin-top:4px" id="w-login">—</div></div>
-            <div><div class="w-label">SERVER</div><div style="color:#7d8590;font-size:12px;font-weight:700;margin-top:4px" id="w-server">—</div></div>
-          </div>
-        </div>
-        <div class="panel">
-          <div class="panel-title">Transaction History</div>
-          <div class="tx-row"><div class="tx-info"><div class="tx-icon" style="background:#0f1f14"><i class="ti ti-arrow-down green"></i></div><div><div class="tx-name">Initial Deposit</div><div class="tx-date">Jan 01, 2024</div></div></div><div class="green" style="font-weight:700">+$10,000.00</div></div>
-          <div class="tx-row"><div class="tx-info"><div class="tx-icon" style="background:#0f1f14"><i class="ti ti-chart-line green"></i></div><div><div class="tx-name">Trading Profit — Q1</div><div class="tx-date">Mar 31, 2024</div></div></div><div class="green" style="font-weight:700">+$1,050.00</div></div>
-          <div class="tx-row"><div class="tx-info"><div class="tx-icon" style="background:#0f1f14"><i class="ti ti-chart-line green"></i></div><div><div class="tx-name">Trading Profit — Q2</div><div class="tx-date">Jun 30, 2024</div></div></div><div class="green" style="font-weight:700">+$910.00</div></div>
-          <div class="tx-row"><div class="tx-info"><div class="tx-icon" style="background:#1f0f0f"><i class="ti ti-arrow-up red"></i></div><div><div class="tx-name">Withdrawal</div><div class="tx-date">Jul 15, 2024</div></div></div><div class="red" style="font-weight:700">-$500.00</div></div>
-          <div class="tx-row"><div class="tx-info"><div class="tx-icon" style="background:#0f1f14"><i class="ti ti-chart-line green"></i></div><div><div class="tx-name">Trading Profit — Q3</div><div class="tx-date">Sep 30, 2024</div></div></div><div class="green" style="font-weight:700">+$1,640.00</div></div>
-          <div class="tx-row"><div class="tx-info"><div class="tx-icon" style="background:#0f1f14"><i class="ti ti-chart-line green"></i></div><div><div class="tx-name">Trading Profit — Q4</div><div class="tx-date">Dec 31, 2024</div></div></div><div class="green" style="font-weight:700">+$1,732.00</div></div>
-        </div>
-      </div>
-
-      <!-- BACKTEST PAGE -->
-      <div class="page" id="page-backtest">
-        <div class="page-title">Backtest Engine — Real MT5 Data</div>
-        <div id="bt-setup">
-          <div class="panel" style="margin-bottom:16px">
-
-            <!-- ROW 1: Symbol + Strategy + Timeframe -->
-            <div style="display:grid;grid-template-columns:2fr 1.5fr 1fr;gap:16px;margin-bottom:16px">
-
-              <div class="field" style="margin-bottom:0">
-                <label>📊 Symbol (Currency / Crypto / Index)</label>
-                <select id="bt-pair" style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none">
-                  <optgroup label="── Forex Majors ──">
-                    <option value="EURUSDc">EURUSDc — EUR/USD</option>
-                    <option value="GBPUSDc">GBPUSDc — GBP/USD</option>
-                    <option value="USDJPYc">USDJPYc — USD/JPY</option>
-                    <option value="USDCHFc">USDCHFc — USD/CHF</option>
-                    <option value="AUDUSDc">AUDUSDc — AUD/USD</option>
-                    <option value="USDCADc">USDCADc — USD/CAD</option>
-                    <option value="NZDUSDc">NZDUSDc — NZD/USD</option>
-                  </optgroup>
-                  <optgroup label="── Forex Crosses ──">
-                    <option value="GBPJPYc">GBPJPYc — GBP/JPY</option>
-                    <option value="EURJPYc">EURJPYc — EUR/JPY</option>
-                    <option value="EURGBPc">EURGBPc — EUR/GBP</option>
-                    <option value="AUDJPYc">AUDJPYc — AUD/JPY</option>
-                    <option value="GBPCADc">GBPCADc — GBP/CAD</option>
-                    <option value="CADJPYc">CADJPYc — CAD/JPY</option>
-                    <option value="CHFJPYc">CHFJPYc — CHF/JPY</option>
-                    <option value="EURAUDc">EURAUDc — EUR/AUD</option>
-                    <option value="GBPAUDc">GBPAUDc — GBP/AUD</option>
-                    <option value="AUDNZDc">AUDNZDc — AUD/NZD</option>
-                    <option value="EURCADc">EURCADc — EUR/CAD</option>
-                    <option value="NZDJPYc">NZDJPYc — NZD/JPY</option>
-                  </optgroup>
-                  <optgroup label="── Metals &amp; Commodities ──">
-                    <option value="XAUUSDc">XAUUSDc — Gold/USD</option>
-                    <option value="XAGUSDc">XAGUSDc — Silver/USD</option>
-                    <option value="XPTUSDc">XPTUSDc — Platinum/USD</option>
-                    <option value="USOILc">USOILc  — WTI Crude Oil</option>
-                    <option value="UKOILc">UKOILc  — Brent Oil</option>
-                  </optgroup>
-                  <optgroup label="── Crypto ──">
-                    <option value="BTCUSDc">BTCUSDc  — Bitcoin</option>
-                    <option value="ETHUSDc">ETHUSDc  — Ethereum</option>
-                    <option value="XRPUSDc">XRPUSDc  — Ripple</option>
-                    <option value="LTCUSDc">LTCUSDc  — Litecoin</option>
-                    <option value="SOLUSDc">SOLUSDc  — Solana</option>
-                    <option value="ADAUSDc">ADAUSDc  — Cardano</option>
-                    <option value="DOGEUSDc">DOGEUSDc — Dogecoin</option>
-                    <option value="BNBUSDc">BNBUSDc  — BNB</option>
-                    <option value="DOTUSDc">DOTUSDc  — Polkadot</option>
-                    <option value="MATICUSDc">MATICUSDc — Polygon</option>
-                  </optgroup>
-                  <optgroup label="── Indices ──">
-                    <option value="NAS100s">NAS100s  — Nasdaq 100</option>
-                    <option value="US30s">US30s    — Dow Jones</option>
-                    <option value="SPX500s">SPX500s  — S&amp;P 500</option>
-                    <option value="UK100s">UK100s   — FTSE 100</option>
-                    <option value="GER40s">GER40s   — DAX 40</option>
-                    <option value="JPN225s">JPN225s  — Nikkei 225</option>
-                    <option value="AUS200s">AUS200s  — ASX 200</option>
-                    <option value="FRA40s">FRA40s   — CAC 40</option>
-                    <option value="HK50s">HK50s    — Hang Seng</option>
-                  </optgroup>
-                </select>
-              </div>
-
-              <div class="field" style="margin-bottom:0">
-                <label>🤖 Strategy</label>
-                <select id="bt-strategy" style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none">
-                  <optgroup label="── Moving Average ──">
-                    <option value="MA Cross">MA Cross — EMA 20/50 Crossover</option>
-                    <option value="EMA Trend">EMA Trend — EMA 20/100 Trend Follow</option>
-                    <option value="Triple EMA">Triple EMA — EMA 5/20/50 Alignment</option>
-                    <option value="SMA Cross">SMA Cross — SMA 20/50 Crossover</option>
-                  </optgroup>
-                  <optgroup label="── Oscillator ──">
-                    <option value="RSI">RSI — Overbought/Oversold (14)</option>
-                    <option value="Stochastic">Stochastic — %K/%D Crossover (14,3)</option>
-                    <option value="Stochastic + RSI">Stochastic + RSI — Double Confirm</option>
-                    <option value="CCI">CCI — Commodity Channel Index (20)</option>
-                    <option value="Williams %R">Williams %R — Reversal (14)</option>
-                  </optgroup>
-                  <optgroup label="── MACD ──">
-                    <option value="MACD">MACD — Signal Line Cross (12,26,9)</option>
-                    <option value="MACD + EMA Trend">MACD + EMA Trend — With EMA 200 Filter</option>
-                  </optgroup>
-                  <optgroup label="── Volatility ──">
-                    <option value="Bollinger Bands">Bollinger Bands — Mean Reversion (20,2)</option>
-                    <option value="Bollinger + RSI">Bollinger + RSI — Double Confirm</option>
-                    <option value="ATR Breakout">ATR Breakout — 20-Period High/Low</option>
-                  </optgroup>
-                  <optgroup label="── Trend + Momentum ──">
-                    <option value="Trend + RSI">Trend + RSI — EMA 200 + RSI 50 Level</option>
-                    <option value="Scalper">Scalper — EMA 5/13 + RSI 7 (Fast)</option>
-                  </optgroup>
-                  <optgroup label="── SMC (Smart Money Concepts) ──">
-                    <option value="SMC - Order Block">SMC — Order Block + BOS Retest</option>
-                    <option value="SMC - Fair Value Gap">SMC — Fair Value Gap (FVG) Fill</option>
-                    <option value="SMC - ChoCH">SMC — Change of Character (ChoCH)</option>
-                    <option value="SMC - Liquidity Sweep">SMC — Liquidity Sweep Reversal</option>
-                  </optgroup>
-                  <optgroup label="── Price Action (High Win Rate) ──">
-                    <option value="Pin Bar SR">📌 Pin Bar at S/R — 3-Pillar Setup</option>
-                    <option value="Engulfing Trend">🕯️ Engulfing Trend — At Key Level</option>
-                    <option value="Inside Bar Breakout">📦 Inside Bar Breakout — With Trend</option>
-                    <option value="IB False Breakout">🎣 IB False Breakout Trap</option>
-                    <option value="PA Confluence">🏛️ PA Confluence — All 3 Pillars</option>
-                  </optgroup>
-                  <optgroup label="── নিজের Strategy ──">
-                    <option value="Custom Strategy">⚙️ Custom Strategy — নিজে Rules বানাও</option>
-                  </optgroup>
-                </select>
-              </div>
-
-              <div class="field" style="margin-bottom:0">
-                <label>⏱ Timeframe</label>
-                <select id="bt-tf" style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none">
-                  <option value="M1">M1  — 1 Minute</option>
-                  <option value="M5">M5  — 5 Minutes</option>
-                  <option value="M15">M15 — 15 Minutes</option>
-                  <option value="M30">M30 — 30 Minutes</option>
-                  <option value="H1" selected>H1  — 1 Hour</option>
-                  <option value="H4">H4  — 4 Hours</option>
-                  <option value="D1">D1  — Daily</option>
-                  <option value="W1">W1  — Weekly</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- SMC SETTINGS PANEL — shows only when SMC strategy selected -->
-            <div id="bt-smc-panel" style="display:none;margin-bottom:16px;background:#0d1117;border:1px solid #a371f7;border-radius:10px;padding:20px">
-
-              <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
-                <div style="width:8px;height:8px;background:#a371f7;border-radius:50%"></div>
-                <div style="font-size:12px;color:#a371f7;font-weight:700;letter-spacing:2px">SMC — SMART MONEY CONCEPTS SETTINGS</div>
-                <div id="bt-smc-strategy-badge" style="margin-left:auto;font-size:10px;color:#e6edf3;background:#21262d;padding:4px 12px;border-radius:20px;border:1px solid #30363d"></div>
-              </div>
-
-              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px">
-
-                <div class="field" style="margin-bottom:0">
-                  <label style="color:#a371f7">Swing Lookback (bars)</label>
-                  <input id="smc-swing-lb" type="number" value="5" min="3" max="20" class="sinput" style="width:100%"/>
-                  <div style="font-size:10px;color:#3d444d;margin-top:4px">Swing High/Low চেনার জন্য কত bar দেখবে</div>
-                </div>
-
-                <div class="field" style="margin-bottom:0">
-                  <label style="color:#a371f7">Zone Expiry (candles)</label>
-                  <input id="smc-expiry" type="number" value="60" min="10" max="500" class="sinput" style="width:100%"/>
-                  <div style="font-size:10px;color:#3d444d;margin-top:4px">OB / FVG কত candle পর invalid হবে</div>
-                </div>
-
-                <div class="field" style="margin-bottom:0">
-                  <label style="color:#a371f7">Entry Method</label>
-                  <select id="smc-entry" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px 12px;color:#e6edf3;font-family:var(--font);font-size:12px;outline:none">
-                    <option value="touch">Zone Touch (Aggressive)</option>
-                    <option value="close" selected>Candle Close Inside Zone</option>
-                    <option value="midpoint">Zone Midpoint Entry</option>
-                  </select>
-                </div>
-
-                <div class="field" style="margin-bottom:0">
-                  <label style="color:#a371f7">Session Filter</label>
-                  <select id="smc-session" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px 12px;color:#e6edf3;font-family:var(--font);font-size:12px;outline:none">
-                    <option value="all" selected>All Sessions</option>
-                    <option value="london">London (07:00–16:00 UTC)</option>
-                    <option value="newyork">New York (12:00–21:00 UTC)</option>
-                    <option value="lnny">London + New York Overlap</option>
-                    <option value="asian">Asian (00:00–08:00 UTC)</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- SMC Concept explanation for selected strategy -->
-              <div id="bt-smc-explain" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:11px;line-height:1.8;color:var(--text2)"></div>
-            </div>
-
-            <!-- CUSTOM STRATEGY BUILDER — full width, below all inputs -->
-            <div id="bt-custom-builder" style="display:none;margin-bottom:16px">
-
-              <!-- Strategy Name -->
-              <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:12px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:8px">
-                <div style="font-size:10px;color:var(--cyan);letter-spacing:2px;white-space:nowrap">STRATEGY NAME</div>
-                <input id="bt-custom-name" class="sinput" style="flex:1;max-width:400px" placeholder="e.g. My RSI + EMA Strategy" oninput="btRefreshPreview()"/>
-                <div style="font-size:10px;color:var(--text3);margin-left:auto">Define your BUY and SELL rules below</div>
-              </div>
-
-              <!-- BUY & SELL columns -->
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px">
-
-                <!-- ── BUY ── -->
-                <div style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:16px">
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-                    <div>
-                      <div style="font-size:12px;color:var(--green);font-weight:700;letter-spacing:1px">🟢 BUY ENTRY CONDITIONS</div>
-                      <div style="font-size:10px;color:var(--text3);margin-top:2px">সব condition সত্য হলে BUY order দেবে</div>
-                    </div>
-                    <button onclick="addBtRule('buy')" style="background:rgba(16,185,129,0.2);border:1px solid rgba(16,185,129,0.5);border-radius:6px;color:var(--green);font-family:var(--font);font-size:11px;font-weight:700;padding:6px 14px;cursor:pointer">+ Add Condition</button>
-                  </div>
-                  <div id="bt-buy-rules"></div>
-                  <div id="bt-buy-empty" style="text-align:center;color:var(--text3);font-size:11px;padding:20px 0;border:1px dashed rgba(16,185,129,0.3);border-radius:6px;letter-spacing:1px">
-                    "+ Add Condition" বাটন চাপো
-                  </div>
-                </div>
-
-                <!-- ── SELL ── -->
-                <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:16px">
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-                    <div>
-                      <div style="font-size:12px;color:var(--red);font-weight:700;letter-spacing:1px">🔴 SELL ENTRY CONDITIONS</div>
-                      <div style="font-size:10px;color:var(--text3);margin-top:2px">সব condition সত্য হলে SELL order দেবে</div>
-                    </div>
-                    <button onclick="addBtRule('sell')" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);border-radius:6px;color:var(--red);font-family:var(--font);font-size:11px;font-weight:700;padding:6px 14px;cursor:pointer">+ Add Condition</button>
-                  </div>
-                  <div id="bt-sell-rules"></div>
-                  <div id="bt-sell-empty" style="text-align:center;color:var(--text3);font-size:11px;padding:20px 0;border:1px dashed rgba(239,68,68,0.3);border-radius:6px;letter-spacing:1px">
-                    "+ Add Condition" বাটন চাপো
-                  </div>
-                </div>
-              </div>
-
-              <!-- Live Logic Preview -->
-              <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:14px">
-                <div style="font-size:9px;color:#7d8590;letter-spacing:2px;margin-bottom:8px">STRATEGY LOGIC PREVIEW</div>
-                <div id="bt-preview-text" style="font-family:var(--font);font-size:12px;line-height:2;color:#e6edf3;white-space:pre">
-<span style="color:#3d444d">— Condition add করলে এখানে দেখাবে —</span></div>
-              </div>
-            </div>
-
-            <!-- DIVIDER -->
-            <div style="border-top:1px solid #21262d;margin-bottom:16px"></div>
-
-            <!-- ROW 2: Date Range -->
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;margin-bottom:16px">
-              <div class="field" style="margin-bottom:0">
-                <label>📅 Date From</label>
-                <input type="date" id="bt-from" value="2024-01-01" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:10px 12px;color:#e6edf3;font-family:var(--font);font-size:13px;outline:none;color-scheme:dark"/>
-              </div>
-              <div class="field" style="margin-bottom:0">
-                <label>📅 Date To</label>
-                <input type="date" id="bt-to" value="2024-12-31" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:10px 12px;color:#e6edf3;font-family:var(--font);font-size:13px;outline:none;color-scheme:dark"/>
-              </div>
-              <div class="field" style="margin-bottom:0">
-                <label style="color:#7d8590;font-size:10px">QUICK RANGE</label>
-                <div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:4px">
-                  <button class="preset-btn" onclick="btSetRange(1)">1M</button>
-                  <button class="preset-btn" onclick="btSetRange(3)">3M</button>
-                  <button class="preset-btn" onclick="btSetRange(6)">6M</button>
-                  <button class="preset-btn" onclick="btSetRange(12)">1Y</button>
-                  <button class="preset-btn" onclick="btSetRange(24)">2Y</button>
-                </div>
-              </div>
-              <div class="field" style="margin-bottom:0">
-                <label style="color:#7d8590;font-size:10px">WHAT WILL BE TESTED</label>
-                <div id="bt-summary" style="font-size:11px;color:var(--accent);padding-top:6px;line-height:1.6">—</div>
-              </div>
-            </div>
-
-            <!-- DIVIDER -->
-            <div style="border-top:1px solid #21262d;margin-bottom:16px"></div>
-
-            <!-- ROW 3: Risk Settings -->
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;margin-bottom:20px">
-              <div class="field" style="margin-bottom:0">
-                <label>💰 Initial Capital ($)</label>
-                <input id="bt-capital" type="number" value="10000" min="100" class="sinput" style="width:100%"/>
-              </div>
-              <div class="field" style="margin-bottom:0">
-                <label>⚠️ Risk per Trade (%)</label>
-                <input id="bt-risk" type="number" value="1.0" step="0.1" min="0.1" max="10" class="sinput" style="width:100%"/>
-              </div>
-              <div class="field" style="margin-bottom:0">
-                <label>🔴 Stop Loss (pips)</label>
-                <input id="bt-sl" type="number" value="20" min="1" class="sinput" style="width:100%"/>
-              </div>
-              <div class="field" style="margin-bottom:0">
-                <label>🟢 Take Profit (pips)</label>
-                <input id="bt-tp" type="number" value="40" min="1" class="sinput" style="width:100%"/>
-              </div>
-            </div>
-
-            <!-- RUN BUTTON -->
-            <div style="text-align:center">
-              <button onclick="runBacktest()" id="bt-run-btn" style="background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:10px;padding:14px 64px;color:#fff;font-family:var(--font);font-size:15px;font-weight:700;letter-spacing:2px;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 20px var(--accent-glow)">▶ RUN BACKTEST</button>
-            </div>
-
-          </div>
-        </div>
-
-        <div id="bt-loading" style="display:none;text-align:center;padding:40px">
-          <div style="font-size:13px;color:var(--accent);letter-spacing:2px;margin-bottom:12px" id="bt-load-text">FETCHING MT5 DATA...</div>
-          <div style="width:100%;height:4px;background:var(--border);border-radius:2px;overflow:hidden">
-            <div id="bt-progress-bar" style="height:100%;background:linear-gradient(90deg,var(--accent),var(--cyan));border-radius:2px;width:0%;transition:width 0.8s"></div>
-          </div>
-          <div style="font-size:10px;color:var(--text3);margin-top:10px;letter-spacing:1px">Running strategy on real historical candles...</div>
-        </div>
-
-        <div id="bt-results" style="display:none">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-            <div style="font-size:11px;color:#7d8590;letter-spacing:2px" id="bt-result-label">RESULTS</div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <span style="font-size:10px;color:#3d444d;letter-spacing:1px" id="bt-candle-info"></span>
-              <button onclick="resetBacktest()" style="background:transparent;border:1px solid #21262d;color:#7d8590;font-family:var(--font);font-size:10px;padding:5px 12px;border-radius:4px;cursor:pointer;letter-spacing:1px">← NEW TEST</button>
-            </div>
-          </div>
-          <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
-            <div class="kpi" style="border-top:2px solid var(--accent)"><div class="kpi-label">Net Profit</div><div class="kpi-value" id="r-profit">—</div><div class="kpi-delta" id="r-return">—</div></div>
-            <div class="kpi" style="border-top:2px solid var(--cyan)"><div class="kpi-label">Win Rate</div><div class="kpi-value cyan" id="r-winrate">—</div><div class="kpi-delta" id="r-trades">—</div></div>
-            <div class="kpi" style="border-top:2px solid var(--red)"><div class="kpi-label">Max Drawdown</div><div class="kpi-value red" id="r-dd">—</div><div class="kpi-delta" id="r-pf">—</div></div>
-            <div class="kpi" style="border-top:2px solid var(--cyan)"><div class="kpi-label">Sharpe Ratio</div><div class="kpi-value cyan" id="r-sharpe">—</div><div class="kpi-delta" id="r-calmar">—</div></div>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px">
-            <div class="kpi" style="border-top:2px solid var(--green)"><div class="kpi-label">Profit Factor</div><div class="kpi-value green" id="r-pf2">—</div></div>
-            <div class="kpi" style="border-top:2px solid var(--green)"><div class="kpi-label">Avg Win</div><div class="kpi-value green" id="r-avg-win">—</div></div>
-            <div class="kpi" style="border-top:2px solid var(--red)"><div class="kpi-label">Avg Loss</div><div class="kpi-value red" id="r-avg-loss">—</div></div>
-            <div class="kpi" style="border-top:2px solid var(--cyan)"><div class="kpi-label">Calmar Ratio</div><div class="kpi-value cyan" id="r-calmar2">—</div></div>
-            <div class="kpi" style="border-top:2px solid var(--amber)">
-              <div class="kpi-label">Expectancy</div>
-              <div class="kpi-value amber" id="r-expectancy">—</div>
-              <div class="kpi-delta" id="r-expectancy-sub" style="font-size:9px">per trade</div>
-            </div>
-            <div class="kpi" style="border-top:2px solid var(--accent)">
-              <div class="kpi-label">Kelly Optimal</div>
-              <div class="kpi-value purple" id="r-kelly">—</div>
-              <div class="kpi-delta" id="r-kelly-sub" style="font-size:9px">risk per trade</div>
-            </div>
-          </div>
-          <div class="two-col">
-            <div class="panel"><div class="panel-title">Equity Curve — Real MT5 Data</div><div style="position:relative;height:220px"><canvas id="bt-equity-chart"></canvas></div></div>
-            <div class="panel"><div class="panel-title">Drawdown %</div><div style="position:relative;height:220px"><canvas id="bt-dd-chart"></canvas></div></div>
-          </div>
-          <div class="panel">
-            <div class="panel-title">Trade Log (last 50)</div>
-            <table>
-              <thead><tr><th>#</th><th>TYPE</th><th>ENTRY</th><th>EXIT</th><th>RESULT</th><th>P&amp;L</th><th>OPEN TIME</th><th>CLOSE TIME</th><th>DURATION</th></tr></thead>
-              <tbody id="bt-trade-log"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- FOREX ALGO PAGE REMOVED -->
-      <div class="page" id="page-algo" style="display:none!important">
-        <div class="page-title">Forex Algo Strategies</div>
-
-        <!-- ═══════════════ ALGO PERFORMANCE DASHBOARD ═══════════════ -->
-        <div style="margin-bottom:14px">
-          <!-- KPI Row -->
-          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:10px">
-            <div class="kpi" style="border-top:2px solid var(--green)">
-              <div class="kpi-label">TOTAL P&L</div>
-              <div class="kpi-value" id="apd-pnl" style="font-size:22px">$0.00</div>
-              <div class="kpi-delta" id="apd-pnl-sub" style="font-size:9px">algo trades only</div>
-            </div>
-            <div class="kpi" style="border-top:2px solid var(--accent)">
-              <div class="kpi-label" style="display:flex;align-items:center;justify-content:space-between">
-                TOTAL TRADES
-                <span style="display:flex;align-items:center;gap:4px">
-                  <span style="width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 5px var(--green);animation:pulse 2s infinite;display:inline-block"></span>
-                  <span id="apd-running" style="font-size:10px;font-weight:700;color:var(--green)">0</span>
-                  <span style="font-size:9px;color:var(--text3)">running</span>
-                </span>
-              </div>
-              <div class="kpi-value purple" id="apd-total" style="font-size:22px">0</div>
-              <div class="kpi-delta" id="apd-wr" style="font-size:9px">win rate: —</div>
-            </div>
-            <div class="kpi" style="border-top:2px solid var(--red)">
-              <div class="kpi-label">SL HITS</div>
-              <div class="kpi-value" id="apd-sl" style="font-size:22px;color:var(--red)">0</div>
-              <div class="kpi-delta" id="apd-sl-loss" style="font-size:9px">total loss: $0.00</div>
-            </div>
-            <div class="kpi" style="border-top:2px solid var(--amber)">
-              <div class="kpi-label">TRAILING SL</div>
-              <div class="kpi-value" id="apd-trail" style="font-size:22px;color:var(--amber)">0</div>
-              <div class="kpi-delta" id="apd-trail-profit" style="font-size:9px">profit locked: $0.00</div>
-            </div>
-            <div class="kpi" style="border-top:2px solid var(--cyan)">
-              <div class="kpi-label">TP HITS</div>
-              <div class="kpi-value cyan" id="apd-tp" style="font-size:22px">0</div>
-              <div class="kpi-delta" id="apd-tp-profit" style="font-size:9px">total profit: $0.00</div>
-            </div>
-          </div>
-          <!-- Strategy Performance Table -->
-          <div class="panel" style="padding:10px 14px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-              <span style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:1px">STRATEGY PERFORMANCE</span>
-              <span id="apd-period" style="font-size:9px;color:var(--text3)">Today</span>
-            </div>
-            <table style="width:100%;border-collapse:collapse;font-size:11px">
-              <thead>
-                <tr style="color:var(--text3);font-size:9px;letter-spacing:1px;border-bottom:1px solid var(--border)">
-                  <th style="text-align:left;padding:4px 6px;font-weight:600">STRATEGY</th>
-                  <th style="text-align:center;padding:4px 6px;font-weight:600">TRADES</th>
-                  <th style="text-align:center;padding:4px 6px;font-weight:600">TP</th>
-                  <th style="text-align:center;padding:4px 6px;font-weight:600;color:var(--amber)">TRAIL</th>
-                  <th style="text-align:center;padding:4px 6px;font-weight:600">SL</th>
-                  <th style="text-align:center;padding:4px 6px;font-weight:600">WIN%</th>
-                  <th style="text-align:right;padding:4px 6px;font-weight:600">P&L</th>
-                </tr>
-              </thead>
-              <tbody id="apd-strat-body">
-                <tr><td colspan="7" style="text-align:center;color:var(--text3);padding:12px;font-size:10px">No trades yet</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- ═══════════════ AI MARKET ANALYSIS PANEL ═══════════════ -->
-        <div class="order-panel" style="border-color:var(--amber);margin-bottom:16px;background:linear-gradient(135deg,rgba(245,158,11,0.04),rgba(139,92,246,0.06))">
-          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-            <span style="background:linear-gradient(90deg,var(--amber),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:14px">🧠 AI Market Analysis — Live Signal</span>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <input id="ai-symbol" class="sinput" list="jf-symbol-list" style="width:130px" value="XAUUSDc" placeholder="Symbol" autocomplete="off" onchange="_aiLastSym=this.value.trim();_aiSaveState()"/>
-              <select id="ai-tf" class="sinput" style="width:80px" onchange="_aiLastTf=this.value;_aiSaveState()">
-                <option>M15</option><option>M30</option><option value="H1" selected>H1</option><option>H4</option><option>D1</option>
-              </select>
-              <button onclick="toggleAiAnalyze()" id="ai-run-btn" style="padding:6px 16px;background:linear-gradient(135deg,var(--amber),#d97706);border:none;color:#000;font-weight:800;border-radius:6px;font-family:var(--font);font-size:11px;cursor:pointer;letter-spacing:0.5px">▶ ANALYZE</button>
-              <button onclick="toggleAiAuto()" id="ai-auto-btn" style="padding:6px 14px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:6px;font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer">AUTO TRADE: OFF</button>
-            </div>
-          </div>
-
-          <!-- SIGNAL OUTPUT — JARVIS AI Visualization -->
-          <div id="ai-output" style="margin-top:16px">
-            <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
-
-              <!-- JARVIS Holographic Display -->
-              <div style="position:relative;width:300px;height:300px;flex-shrink:0;display:flex;align-items:center;justify-content:center">
-                <!-- Outer ring -->
-                <div style="position:absolute;width:290px;height:290px;border-radius:50%;border:1px solid rgba(139,92,246,0.18);animation:jarvis-spin 18s linear infinite"></div>
-                <!-- Tick marks on outer ring -->
-                <div style="position:absolute;width:290px;height:290px;border-radius:50%;background:conic-gradient(from 0deg,rgba(139,92,246,0.4) 2deg,transparent 2deg,transparent 10deg,rgba(139,92,246,0.2) 10deg,rgba(139,92,246,0.2) 12deg,transparent 12deg,transparent 20deg,rgba(6,182,212,0.4) 20deg,rgba(6,182,212,0.4) 22deg,transparent 22deg);animation:jarvis-spin 18s linear infinite"></div>
-                <!-- Ring 2 -->
-                <div style="position:absolute;width:240px;height:240px;border-radius:50%;border:1px dashed rgba(6,182,212,0.35);animation:jarvis-spin2 12s linear infinite"></div>
-                <!-- Ring 2 glow arc -->
-                <div style="position:absolute;width:240px;height:240px;border-radius:50%;background:conic-gradient(from 90deg,rgba(6,182,212,0.5) 0deg,rgba(6,182,212,0.1) 60deg,transparent 61deg);animation:jarvis-spin2 12s linear infinite"></div>
-                <!-- Ring 3 -->
-                <div style="position:absolute;width:190px;height:190px;border-radius:50%;border:1px solid rgba(139,92,246,0.45);animation:jarvis-spin 8s linear infinite"></div>
-                <!-- Radar sweep -->
-                <div style="position:absolute;width:190px;height:190px;border-radius:50%;background:conic-gradient(from 0deg,rgba(139,92,246,0.55) 0deg,rgba(139,92,246,0.1) 35deg,transparent 36deg);animation:jarvis-scan 3s linear infinite"></div>
-                <!-- Inner ring -->
-                <div style="position:absolute;width:130px;height:130px;border-radius:50%;border:1px solid rgba(6,182,212,0.6);animation:jarvis-spin2 5s linear infinite"></div>
-                <!-- Glow core -->
-                <div id="ai-jarvis-glow" style="position:absolute;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,rgba(139,92,246,0.2) 0%,transparent 70%);animation:jarvis-pulse 2s ease-in-out infinite"></div>
-                <!-- Center signal -->
-                <div style="position:relative;z-index:10;text-align:center;display:flex;flex-direction:column;align-items:center">
-                  <div id="ai-badge" style="font-size:26px;font-weight:900;letter-spacing:3px;color:var(--text3);text-shadow:0 0 20px currentColor;transition:all 0.4s">—</div>
-                  <div id="ai-confidence" style="font-size:10px;color:var(--text3);margin-top:2px;letter-spacing:1px">SCANNING...</div>
-                  <div style="width:70px;background:rgba(255,255,255,0.1);border-radius:4px;height:3px;margin:4px auto;overflow:hidden">
-                    <div id="ai-conf-bar" style="height:100%;width:0%;border-radius:4px;transition:width 0.6s,background 0.3s;background:var(--text3)"></div>
-                  </div>
-                  <div id="ai-last-update" style="font-size:9px;color:var(--text3);margin-top:3px;opacity:0.6"></div>
-                  <div id="ai-hold-reason" style="font-size:9px;color:var(--amber);margin-top:2px;text-align:center;max-width:120px;line-height:1.3"></div>
-                </div>
-                <!-- Orbiting dots -->
-                <div style="position:absolute;width:240px;height:240px;border-radius:50%;animation:jarvis-spin2 12s linear infinite">
-                  <div style="position:absolute;top:-4px;left:50%;transform:translateX(-50%);width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan)"></div>
-                </div>
-                <div style="position:absolute;width:190px;height:190px;border-radius:50%;animation:jarvis-spin 8s linear infinite">
-                  <div style="position:absolute;top:-4px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)"></div>
-                  <div style="position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:rgba(139,92,246,0.7)"></div>
-                </div>
-              </div>
-
-              <!-- Metrics grid -->
-              <div style="flex:1;min-width:260px;display:grid;grid-template-columns:1fr 1fr;gap:8px;align-content:start">
-                <div style="background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:10px 14px;animation:jarvis-float 3s ease-in-out infinite">
-                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:4px">▲ BUY SCORE</div>
-                  <div id="ai-buy-pct" style="font-size:24px;font-weight:900;color:var(--green);text-shadow:0 0 12px rgba(16,185,129,0.4)">—</div>
-                </div>
-                <div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:10px 14px;animation:jarvis-float 3s ease-in-out infinite 0.4s">
-                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:4px">▼ SELL SCORE</div>
-                  <div id="ai-sell-pct" style="font-size:24px;font-weight:900;color:var(--red);text-shadow:0 0 12px rgba(239,68,68,0.4)">—</div>
-                </div>
-                <div style="background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.15);border-radius:8px;padding:10px 14px;animation:jarvis-float 3.5s ease-in-out infinite 0.5s">
-                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:4px">W1 WEEKLY</div>
-                  <div id="ai-w1-bias" style="font-size:13px;font-weight:700;color:var(--text2)">—</div>
-                </div>
-                <div style="background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.15);border-radius:8px;padding:10px 14px;animation:jarvis-float 3.5s ease-in-out infinite 0.8s">
-                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:4px">D1 DAILY</div>
-                  <div id="ai-d1-bias" style="font-size:13px;font-weight:700;color:var(--text2)">—</div>
-                </div>
-                <div style="background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.15);border-radius:8px;padding:10px 14px;animation:jarvis-float 3.5s ease-in-out infinite 1.2s">
-                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:4px">H4 TREND</div>
-                  <div id="ai-h4-bias" style="font-size:13px;font-weight:700;color:var(--text2)">—</div>
-                </div>
-                <div style="background:rgba(6,182,212,0.05);border:1px solid rgba(6,182,212,0.15);border-radius:8px;padding:10px 14px;animation:jarvis-float 4s ease-in-out infinite 1.6s">
-                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:4px">ICT KILL ZONE</div>
-                  <div id="ai-killzone" style="font-size:13px;font-weight:700;color:var(--text2)">—</div>
-                </div>
-                <div style="background:rgba(6,182,212,0.05);border:1px solid rgba(6,182,212,0.15);border-radius:8px;padding:10px 14px;animation:jarvis-float 4s ease-in-out infinite 2s">
-                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:4px">STRUCTURE (BOS)</div>
-                  <div id="ai-bos" style="font-size:13px;font-weight:700;color:var(--text2)">—</div>
-                </div>
-                <!-- 3-Factor Gate -->
-                <div id="ai-3factor-box" style="grid-column:span 1;border-radius:8px;padding:10px 14px;border:1px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.04);animation:jarvis-float 4s ease-in-out infinite 2.4s">
-                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:4px">3-FACTOR GATE</div>
-                  <div id="ai-3factor" style="font-size:12px;font-weight:700;color:var(--amber)">—</div>
-                  <div id="ai-3factor-detail" style="font-size:9px;color:var(--text3);margin-top:2px;line-height:1.4">Trend · Level · Signal</div>
-                </div>
-                <div id="ai-news-block" style="grid-column:span 2"></div>
-                <div style="grid-column:span 2;background:#0a0a10;border:1px solid var(--border);border-radius:8px;padding:10px">
-                  <div style="font-size:9px;color:var(--text3);letter-spacing:1.5px;margin-bottom:6px">📰 UPCOMING NEWS</div>
-                  <div id="ai-news-list"><div style="font-size:11px;color:var(--text3)">Waiting for analysis...</div></div>
-                </div>
-              </div>
-            </div>
-
-            <!-- AI Components breakdown table -->
-            <div style="margin-top:14px">
-              <div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'"
-                   style="cursor:pointer;font-size:9px;color:var(--text3);letter-spacing:1.5px;padding:6px 0;border-top:1px solid var(--border);user-select:none">
-                ▸ SIGNAL COMPONENTS (click to expand)
-              </div>
-              <div style="display:none;overflow-x:auto;margin-top:8px">
-                <table style="width:100%;border-collapse:collapse;font-size:11px">
-                  <thead>
-                    <tr style="color:var(--text3);font-size:9px;letter-spacing:1px">
-                      <th style="text-align:left;padding:4px 8px;font-weight:600">COMPONENT</th>
-                      <th style="text-align:center;padding:4px 6px;font-weight:600">DIR</th>
-                      <th style="text-align:left;padding:4px 8px;min-width:120px;font-weight:600">SCORE</th>
-                      <th style="text-align:left;padding:4px 8px;font-weight:600">DETAIL</th>
-                    </tr>
-                  </thead>
-                  <tbody id="ai-components-body"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <!-- Auto-trade settings (shown when auto mode is on) -->
-          <div id="ai-auto-panel" style="display:none;margin-top:14px;padding:14px;background:#0d0f1a;border-radius:8px;border:1px solid var(--amber)">
-            <div style="font-size:11px;color:var(--amber);font-weight:700;margin-bottom:10px;letter-spacing:1px">AUTO TRADE SETTINGS</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end">
-              <div class="field" style="margin-bottom:0"><label>Lot Size</label><input id="ai-vol" class="sinput" style="width:100%" type="number" value="0.01" step="0.01" min="0.01"/></div>
-              <div class="field" style="margin-bottom:0"><label>SL (pips)</label><input id="ai-sl" class="sinput" style="width:100%" type="number" value="20"/></div>
-              <div class="field" style="margin-bottom:0"><label>TP (pips)</label><input id="ai-tp" class="sinput" style="width:100%" type="number" value="40"/></div>
-              <div class="field" style="margin-bottom:0"><label>Min Confidence %</label><input id="ai-min-conf" class="sinput" style="width:100%" type="number" value="65" min="50" max="95"/></div>
-              <div id="ai-status-dot" style="width:10px;height:10px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;align-self:center"></div>
-            </div>
-            <div id="ai-last-action" style="font-size:11px;color:var(--text3);margin-top:8px">Waiting for signal...</div>
-          </div>
-        </div>
-
-        <!-- CONFIGURE STRATEGY FORM -->
-        <div class="order-panel" style="border-color:var(--cyan);margin-bottom:14px">
-          <div class="panel-title" style="color:var(--cyan);display:flex;justify-content:space-between;align-items:center">
-            <span>⚙ Configure Strategy</span>
-            <div style="display:flex;gap:8px">
-              <button onclick="algoAddToQueue()" style="padding:5px 12px;background:transparent;border:1px solid var(--cyan);color:var(--cyan);border-radius:6px;font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer">+ QUEUE</button>
-              <button onclick="startStrategy()" style="padding:5px 14px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff;border-radius:6px;font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.5px">▶ START NOW</button>
-            </div>
-          </div>
-          <!-- Row 1: Strategy + Symbol + TF -->
-          <div style="display:grid;grid-template-columns:2fr 2fr 1fr;gap:10px;margin-top:12px;align-items:end">
-            <div class="field" style="margin-bottom:0">
-              <label>Strategy</label>
-              <select id="algo-strategy" class="sinput" style="width:100%" onchange="autoSetStrategyTF(this.value)">
-                <optgroup label="── Backtested ≥50% WR (H1) ──">
-                  <option value="Trend Continuation">📊 Trend Continuation — 63.6% WR</option>
-                  <option value="M2B/M2S">📈 M2B/M2S — 59.3% WR (EMA Pullback)</option>
-                  <option value="Pin Bar SR">📌 Pin Bar SR — 56.8% WR</option>
-                  <option value="Engulfing Trend">🕯️ Engulfing Trend — 53.8% WR</option>
-                  <option value="PA Confluence">🏛️ PA Confluence — 53.2% WR</option>
-                </optgroup>
-                <optgroup label="── Backtested ≥50% WR (M15) ──">
-                  <option value="Trend Continuation M15">📊 Trend Continuation M15 — 58.4% WR</option>
-                </optgroup>
-                <optgroup label="── AI Engine ──">
-                  <option value="AI Signal Engine">🧠 AI Signal Engine (W1+D1+H4, 3-Factor Gate)</option>
-                </optgroup>
-              </select>
-            </div>
-            <div class="field" style="margin-bottom:0">
-              <label>Symbol</label>
-              <input id="algo-symbol" class="sinput" list="jf-symbol-list" autocomplete="off" style="width:100%;font-weight:700;color:var(--cyan)" value="XAUUSDc" placeholder="Symbol..."/>
-            </div>
-            <div class="field" style="margin-bottom:0">
-              <label>Timeframe</label>
-              <select id="algo-tf" class="sinput" style="width:100%">
-                <option>M1</option><option>M5</option><option>M15</option><option>M30</option><option selected>H1</option><option>H4</option><option>D1</option>
-              </select>
-            </div>
-          </div>
-          <!-- Row 2: Lots + SL + TP + Max Trades -->
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-top:10px;align-items:end">
-            <div class="field" style="margin-bottom:0"><label>Lots</label><input id="algo-vol" class="sinput" style="width:100%" type="number" value="0.1" step="0.01" min="0.01"/></div>
-            <div class="field" style="margin-bottom:0"><label>SL (pips)</label><input id="algo-sl" class="sinput" style="width:100%" type="number" value="20" min="0"/></div>
-            <div class="field" style="margin-bottom:0"><label>TP (pips)</label><input id="algo-tp" class="sinput" style="width:100%" type="number" value="40" min="0"/></div>
-            <div class="field" style="margin-bottom:0">
-              <label style="color:var(--accent)">Max Concurrent Trades</label>
-              <input id="algo-max-trades" class="sinput" style="width:100%;border-color:var(--accent)" type="number" value="2" min="1" max="10" title="Stop opening new trades after this many positions are open"/>
-            </div>
-          </div>
-          <!-- Quick symbol presets -->
-          <div style="display:flex;gap:5px;margin-top:10px;flex-wrap:wrap;align-items:center">
-            <span style="font-size:10px;color:var(--text3)">Quick:</span>
-            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='EURUSDc'">EURUSDc</button>
-            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='GBPUSDc'">GBPUSDc</button>
-            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='XAUUSDc'">XAUUSDc</button>
-            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='GBPJPYc'">GBPJPYc</button>
-            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='NAS100s'">NAS100s</button>
-            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='BTCUSDc'">BTCUSDc</button>
-            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='USDJPYc'">USDJPYc</button>
-            <button class="preset-btn" onclick="document.getElementById('algo-symbol').value='US30s'">US30s</button>
-          </div>
-        </div>
-
-        <!-- STRATEGY QUEUE -->
-        <div id="algo-queue-panel" style="display:none;margin-bottom:12px">
-          <div class="panel">
-            <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;color:var(--cyan)">
-              Strategy Queue (<span id="algo-queue-count">0</span>)
-              <div style="display:flex;gap:8px">
-                <button onclick="algoClearQueue()" style="padding:4px 12px;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">CLEAR</button>
-                <button onclick="algoStartAll()" style="padding:4px 16px;background:linear-gradient(135deg,var(--green),#059669);border:none;color:#fff;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.5px">▶▶ START ALL</button>
-              </div>
-            </div>
-            <table style="margin-top:8px">
-              <thead><tr><th>STRATEGY</th><th>SYMBOL</th><th>TF</th><th>LOTS</th><th>SL</th><th>TP</th><th></th></tr></thead>
-              <tbody id="algo-queue-tbody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- STRATEGY INFO CARDS — Only backtested ≥50% WR strategies shown -->
-        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:14px">
-          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(59,130,246,0.12),rgba(16,185,129,0.08));transition:border-color 0.2s;border-width:1px" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Trend Continuation';autoSetStrategyTF('Trend Continuation')">
-            <div style="font-size:10px;background:linear-gradient(90deg,#3b82f6,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">📊 TREND CONT.</div>
-            <div style="font-size:10px;color:var(--text3)">EMA200+ST+EMA50 D1+H4</div>
-            <div style="font-size:9px;color:var(--green);margin-top:4px">BT: 63.6% WR · H1</div>
-          </div>
-          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(52,211,153,0.12),rgba(16,185,129,0.08));transition:border-color 0.2s;border-width:1px" onmouseover="this.style.borderColor='#34d399'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='M2B/M2S';autoSetStrategyTF('M2B/M2S')">
-            <div style="font-size:10px;background:linear-gradient(90deg,#34d399,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">📈 M2B/M2S</div>
-            <div style="font-size:10px;color:var(--text3)">EMA pullback · D1+H4</div>
-            <div style="font-size:9px;color:var(--green);margin-top:4px">BT: 59.3% WR · H1</div>
-          </div>
-          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(16,185,129,0.1),rgba(52,211,153,0.08));transition:border-color 0.2s" onmouseover="this.style.borderColor='#10b981'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Pin Bar SR';autoSetStrategyTF('Pin Bar SR')">
-            <div style="font-size:10px;color:#10b981;letter-spacing:1px;margin-bottom:4px">📌 PIN BAR SR</div>
-            <div style="font-size:10px;color:var(--text3)">At EMA21/pivot D1+H4</div>
-            <div style="font-size:9px;color:var(--green);margin-top:4px">BT: 56.8% WR · H1</div>
-          </div>
-          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(52,211,153,0.08),rgba(16,185,129,0.06));transition:border-color 0.2s" onmouseover="this.style.borderColor='#34d399'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Engulfing Trend';autoSetStrategyTF('Engulfing Trend')">
-            <div style="font-size:10px;color:#34d399;letter-spacing:1px;margin-bottom:4px">🕯️ ENGULFING</div>
-            <div style="font-size:10px;color:var(--text3)">At EMA21 + trend D1+H4</div>
-            <div style="font-size:9px;color:var(--green);margin-top:4px">BT: 53.8% WR · H1</div>
-          </div>
-          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(16,185,129,0.06));transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='PA Confluence';autoSetStrategyTF('PA Confluence')">
-            <div style="font-size:10px;color:var(--accent);letter-spacing:1px;margin-bottom:4px">🏛️ PA CONFLUENCE</div>
-            <div style="font-size:10px;color:var(--text3)">Trend+Level+PA signal</div>
-            <div style="font-size:9px;color:var(--green);margin-top:4px">BT: 53.2% WR · H1</div>
-          </div>
-          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(59,130,246,0.08),rgba(52,211,153,0.06));transition:border-color 0.2s" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='Trend Continuation M15';autoSetStrategyTF('Trend Continuation M15')">
-            <div style="font-size:10px;color:#3b82f6;letter-spacing:1px;margin-bottom:4px">📊 TREND CONT. M15</div>
-            <div style="font-size:10px;color:var(--text3)">EMA100+ST+EMA50 D1+H4</div>
-            <div style="font-size:9px;color:var(--green);margin-top:4px">BT: 58.4% WR · M15</div>
-          </div>
-          <div class="panel" style="padding:10px;cursor:pointer;border-color:transparent;background:linear-gradient(135deg,rgba(245,158,11,0.12),rgba(16,185,129,0.08));transition:border-color 0.2s;border-width:1px" onmouseover="this.style.borderColor='var(--amber)'" onmouseout="this.style.borderColor='transparent'" onclick="document.getElementById('algo-strategy').value='AI Signal Engine';autoSetStrategyTF('AI Signal Engine')">
-            <div style="font-size:10px;background:linear-gradient(90deg,var(--amber),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px;margin-bottom:4px">🧠 AI ENGINE</div>
-            <div style="font-size:10px;color:var(--text3)">W1+D1+H4+H1 · 3-Factor</div>
-            <div style="font-size:9px;color:var(--green);margin-top:4px">22 components · H1</div>
-          </div>
-        </div>
-
-        <!-- FOREX NEWS PANEL -->
-        <div class="panel" style="margin-bottom:14px">
-          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-            <div style="display:flex;align-items:center;gap:10px">
-              <span>📰 Forex News Impact</span>
-              <span id="news-impact-badge" style="background:var(--card2);border:1px solid var(--border2);color:var(--text3);font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">—</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span id="news-symbol-label" style="font-size:10px;color:var(--text3)">XAUUSDc</span>
-              <button class="sbtn" onclick="loadNewsCalendar()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
-            </div>
-          </div>
-          <div id="news-calendar-body">
-            <div style="text-align:center;color:var(--text3);padding:16px;font-size:12px">Loading news calendar...</div>
-          </div>
-        </div>
-
-        <!-- RUNNING STRATEGIES -->
-        <div class="panel" style="margin-bottom:14px">
-          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <div style="display:flex;align-items:center;gap:10px">
-              <span>🤖 Running Strategies</span>
-              <span id="algo-mt5-running-count" style="background:var(--accent);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:0.5px">0</span>
-            </div>
-            <button class="sbtn" onclick="loadStrategies()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
-          </div>
-          <div id="algo-list"><div style="text-align:center;color:var(--text3);padding:30px;font-size:12px">No strategies running. Start one above.</div></div>
-        </div>
-
-        <!-- ALGO TRADE HISTORY -->
-        <div class="panel">
-          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-            <div style="display:flex;align-items:center;gap:10px">
-              <span>📋 Algo Trade History</span>
-              <span id="algo-mt5-hist-count" style="background:var(--card2);border:1px solid var(--border2);color:var(--text2);font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">0</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <!-- Date filter -->
-              <input type="date" id="algo-hist-date-from" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--text);font-family:var(--font);font-size:11px;outline:none" title="From date"/>
-              <span style="color:var(--text3);font-size:11px">—</span>
-              <input type="date" id="algo-hist-date-to" style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--text);font-family:var(--font);font-size:11px;outline:none" title="To date"/>
-              <button onclick="algoHistApplyDateFilter()" style="padding:3px 10px;background:var(--accent);border:none;border-radius:6px;color:#fff;font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer">FILTER</button>
-              <button onclick="algoHistClearDate()" style="padding:3px 8px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text3);font-family:var(--font);font-size:10px;cursor:pointer">CLEAR</button>
-              <!-- Filter tabs -->
-              <div style="display:flex;gap:2px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:2px">
-                <button id="algo-hf-all" onclick="algoHistFilter('all')" style="padding:3px 10px;border:none;border-radius:6px;font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer;background:var(--accent);color:#fff;transition:all 0.2s">ALL</button>
-                <button id="algo-hf-open" onclick="algoHistFilter('open')" style="padding:3px 10px;border:none;border-radius:6px;font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer;background:transparent;color:var(--text3);transition:all 0.2s">OPEN</button>
-                <button id="algo-hf-closed" onclick="algoHistFilter('closed')" style="padding:3px 10px;border:none;border-radius:6px;font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer;background:transparent;color:var(--text3);transition:all 0.2s">CLOSED</button>
-              </div>
-              <button class="sbtn" onclick="loadAlgoHistory()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
-            </div>
-          </div>
-
-          <!-- Live Open Positions from MT5 -->
-          <div id="algo-live-pos-wrap" style="display:none;margin-bottom:12px">
-            <div style="font-size:10px;color:var(--cyan);letter-spacing:1px;font-weight:700;margin-bottom:6px">⚡ LIVE OPEN POSITIONS (MT5)</div>
-            <table>
-              <thead><tr><th>TICKET</th><th>STRATEGY</th><th>SYMBOL</th><th>TYPE</th><th>LOTS</th><th>ENTRY</th><th>CURRENT</th><th>SL</th><th>TP</th><th>LIVE P&amp;L</th></tr></thead>
-              <tbody id="algo-live-pos-tbody"><tr><td colspan="10" style="text-align:center;color:var(--text3);padding:10px">No open positions</td></tr></tbody>
-            </table>
-            <div style="height:1px;background:var(--border);margin:12px 0"></div>
-          </div>
-
-          <!-- Closed / All History Table -->
-          <table>
-            <thead><tr><th>TICKET</th><th>STRATEGY</th><th>SYMBOL</th><th>TYPE</th><th>LOTS</th><th>ENTRY</th><th>EXIT</th><th>SL</th><th>TP</th><th>P&amp;L</th><th>RESULT</th><th>TIME</th></tr></thead>
-            <tbody id="algo-history-tbody"><tr><td colspan="12" style="text-align:center;color:var(--text3);padding:20px">Loading...</td></tr></tbody>
-          </table>
-
-          <!-- Pagination controls -->
-          <div id="algo-hist-pagination" style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;flex-wrap:wrap;gap:8px">
-            <div style="font-size:11px;color:var(--text3)" id="algo-hist-page-info">Showing 0 trades</div>
-            <div style="display:flex;align-items:center;gap:6px">
-              <button onclick="algoHistPage('first')" id="algo-pg-first" style="padding:4px 8px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text3);font-family:var(--font);font-size:11px;cursor:pointer">«</button>
-              <button onclick="algoHistPage('prev')"  id="algo-pg-prev"  style="padding:4px 10px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:11px;cursor:pointer">‹ Prev</button>
-              <div id="algo-pg-numbers" style="display:flex;gap:4px"></div>
-              <button onclick="algoHistPage('next')"  id="algo-pg-next"  style="padding:4px 10px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:11px;cursor:pointer">Next ›</button>
-              <button onclick="algoHistPage('last')"  id="algo-pg-last"  style="padding:4px 8px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text3);font-family:var(--font);font-size:11px;cursor:pointer">»</button>
-              <select id="algo-pg-size" onchange="algoHistPageSizeChange()" style="padding:4px 6px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:11px">
-                <option value="25" selected>25 / page</option>
-                <option value="50">50 / page</option>
-                <option value="100">100 / page</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <!-- DATE-WISE ANALYSIS -->
-        <div class="panel" style="margin-top:12px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;cursor:pointer" onclick="toggleDateAnalysis()">
-            <div class="panel-title" style="margin:0">📅 Date-wise P&L Analysis</div>
-            <span id="date-analysis-toggle" style="font-size:18px;color:var(--text3);transition:transform 0.2s">▼</span>
-          </div>
-          <div id="date-analysis-body">
-            <!-- Summary stats row -->
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
-              <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">
-                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">BEST DAY</div>
-                <div style="font-size:16px;font-weight:800;color:var(--green)" id="da-best-day">—</div>
-                <div style="font-size:10px;color:var(--text3)" id="da-best-day-date">—</div>
-              </div>
-              <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">
-                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">WORST DAY</div>
-                <div style="font-size:16px;font-weight:800;color:var(--red)" id="da-worst-day">—</div>
-                <div style="font-size:10px;color:var(--text3)" id="da-worst-day-date">—</div>
-              </div>
-              <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">
-                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">PROFITABLE DAYS</div>
-                <div style="font-size:16px;font-weight:800;color:var(--green)" id="da-prof-days">—</div>
-                <div style="font-size:10px;color:var(--text3)" id="da-prof-days-pct">of total days</div>
-              </div>
-              <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center">
-                <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">AVG DAILY P&L</div>
-                <div style="font-size:16px;font-weight:800" id="da-avg-day">—</div>
-                <div style="font-size:10px;color:var(--text3)">per trading day</div>
-              </div>
-            </div>
-            <!-- P&L bar chart -->
-            <div id="da-bar-chart" style="display:flex;align-items:flex-end;gap:4px;height:80px;margin-bottom:14px;padding:0 4px;overflow-x:auto"></div>
-            <!-- Daily table -->
-            <table style="font-size:12px">
-              <thead>
-                <tr>
-                  <th style="cursor:pointer" onclick="sortDateAnalysis('date')">DATE ⇅</th>
-                  <th style="cursor:pointer" onclick="sortDateAnalysis('trades')">TRADES ⇅</th>
-                  <th>WINS</th><th>LOSSES</th>
-                  <th style="cursor:pointer" onclick="sortDateAnalysis('wr')">WIN RATE ⇅</th>
-                  <th style="cursor:pointer" onclick="sortDateAnalysis('pnl')">P&L ⇅</th>
-                  <th>BEST TRADE</th><th>WORST TRADE</th>
-                  <th>STRATEGIES</th>
-                </tr>
-              </thead>
-              <tbody id="date-analysis-tbody"><tr><td colspan="9" style="text-align:center;color:var(--text3);padding:16px">Load history first</td></tr></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- JOURNAL PAGE -->
       <div class="page" id="page-journal">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
           <div>
@@ -3170,116 +2106,6 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       </div>
 
       <!-- FOREX BOT PAGE REMOVED -->
-      <div class="page" id="page-forexbot" style="display:none">
-        <div class="page-title" style="display:flex;justify-content:space-between;align-items:center">
-          Forex Bot — Grid Recovery
-          <div style="display:flex;align-items:center;gap:6px">
-            <div id="fb-status-dot" style="width:6px;height:6px;border-radius:50%;background:var(--text3)"></div>
-            <span id="fb-status-label" style="font-size:10px;color:var(--text3);letter-spacing:0.5px">NOT CONNECTED</span>
-          </div>
-        </div>
-        <div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--amber)">
-          ⚠ Grid/martingale strategy — lot size grows on each loss step. Runs on its own separate MT5 account, isolated from your main live account. Test on a demo account first.
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <!-- MT5 Connect Panel -->
-          <div class="panel">
-            <div class="panel-title">MT5 Account (separate from main account)</div>
-            <div style="display:flex;flex-direction:column;gap:8px">
-              <input id="fb-login" class="sinput" type="number" placeholder="Login (account number)" autocomplete="off"/>
-              <input id="fb-password" class="sinput" type="password" placeholder="Password" autocomplete="off"/>
-              <select id="fb-broker" class="sinput" style="width:100%" onchange="fbBrokerChange()">
-                <option value="">— Select broker (auto-fills server + terminal) —</option>
-                <option value="exness">Exness</option>
-                <option value="vantage">Vantage</option>
-                <option value="cxm">CXM Direct</option>
-                <option value="custom">Other / Custom</option>
-              </select>
-              <input id="fb-server" class="sinput" type="text" placeholder="Server (e.g. VantageMarkets-Live)" autocomplete="off"/>
-              <input id="fb-terminal-path" class="sinput" type="text" placeholder="Terminal path (optional, e.g. C:\Program Files\Vantage Markets MT5 Terminal\terminal64.exe)" autocomplete="off"/>
-              <div style="font-size:10px;color:var(--text3)">Exact server name may differ by region/account type — check your MT5 terminal's login screen if Connect fails. Each broker normally needs its own separate MT5 terminal install (different terminal64.exe path).</div>
-              <button onclick="fbConnect()" id="fb-connect-btn" style="padding:8px 16px;background:var(--accent);border:none;color:#fff;font-weight:700;border-radius:6px;font-family:var(--font);font-size:11px;cursor:pointer">CONNECT</button>
-              <div id="fb-connect-result" style="font-size:11px;margin-top:4px"></div>
-            </div>
-          </div>
-
-          <!-- Strategy Settings Panel -->
-          <div class="panel">
-            <div class="panel-title">Grid Recovery Settings</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-              <div>
-                <label style="font-size:9px;color:var(--text3);letter-spacing:0.5px">SYMBOL</label>
-                <input id="fb-symbol" class="sinput" type="text" value="XAUUSD" style="width:100%"/>
-              </div>
-              <div>
-                <label style="font-size:9px;color:var(--text3);letter-spacing:0.5px">TIMEFRAME</label>
-                <select id="fb-timeframe" class="sinput" style="width:100%">
-                  <option value="M5">M5</option>
-                  <option value="M15" selected>M15</option>
-                  <option value="M30">M30</option>
-                  <option value="H1">H1</option>
-                </select>
-              </div>
-              <div>
-                <label style="font-size:9px;color:var(--text3);letter-spacing:0.5px">BASE LOT</label>
-                <input id="fb-base-lot" class="sinput" type="number" step="0.01" value="0.01" style="width:100%"/>
-              </div>
-              <div>
-                <label style="font-size:9px;color:var(--text3);letter-spacing:0.5px">MAX STEPS</label>
-                <input id="fb-max-steps" class="sinput" type="number" value="12" style="width:100%"/>
-              </div>
-              <div>
-                <label style="font-size:9px;color:var(--text3);letter-spacing:0.5px">MULTIPLIER</label>
-                <input id="fb-multiplier" class="sinput" type="number" step="0.01" value="1.68" style="width:100%"/>
-              </div>
-              <div>
-                <label style="font-size:9px;color:var(--text3);letter-spacing:0.5px">TP $ (0 = auto)</label>
-                <input id="fb-tp-usd" class="sinput" type="number" step="0.1" value="0" style="width:100%"/>
-              </div>
-            </div>
-            <div style="display:flex;gap:8px;margin-top:12px">
-              <button onclick="fbStart()" id="fb-start-btn" style="flex:1;padding:10px;background:var(--green);border:none;color:#fff;font-weight:800;border-radius:6px;font-family:var(--font);font-size:12px;cursor:pointer">▶ START</button>
-              <button onclick="fbStop()" id="fb-stop-btn" style="flex:1;padding:10px;background:var(--red);border:none;color:#fff;font-weight:800;border-radius:6px;font-family:var(--font);font-size:12px;cursor:pointer">■ STOP</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Status -->
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:16px 0">
-          <div class="kpi" style="border-top:2px solid var(--accent);padding:12px 16px">
-            <div class="kpi-label">ACCOUNT</div>
-            <div class="kpi-value" id="fb-acc-login" style="font-size:16px">—</div>
-            <div style="font-size:10px;color:var(--text3);margin-top:2px" id="fb-acc-server">—</div>
-          </div>
-          <div class="kpi" style="border-top:2px solid var(--cyan);padding:12px 16px">
-            <div class="kpi-label">BALANCE</div>
-            <div class="kpi-value cyan" id="fb-balance" style="font-size:18px">—</div>
-          </div>
-          <div class="kpi" style="border-top:2px solid var(--amber);padding:12px 16px">
-            <div class="kpi-label">GRID STEP</div>
-            <div class="kpi-value amber" id="fb-step" style="font-size:18px">0 / 0</div>
-          </div>
-          <div class="kpi" style="border-top:2px solid var(--green);padding:12px 16px">
-            <div class="kpi-label">BASKET P&amp;L</div>
-            <div class="kpi-value" id="fb-basket-pnl" style="font-size:18px">—</div>
-          </div>
-          <div class="kpi" style="border-top:2px solid var(--text3);padding:12px 16px">
-            <div class="kpi-label">DIRECTION</div>
-            <div class="kpi-value" id="fb-direction" style="font-size:18px">—</div>
-          </div>
-        </div>
-
-        <!-- Log -->
-        <div class="panel">
-          <div class="panel-title">Activity Log</div>
-          <div id="fb-log" style="background:#0a0c13;border-radius:8px;min-height:200px;max-height:360px;overflow-y:auto;padding:8px;font-size:11px;font-family:monospace;color:var(--text2)">
-            <div style="color:var(--text3);text-align:center;padding:40px">Not started yet.</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- TELEGRAM BOT PAGE -->
       <div class="page" id="page-telegram">
         <div class="page-title">Telegram Signal Bot</div>
           <!-- ── TELEGRAM SIGNAL BOT ───────────────────────────────────────── -->
@@ -3664,22 +2490,8 @@ function setLoginStatus(msg, color) {
   el.style.color = color || '#7d8590';
 }
 
-async function useCurrentSession() {
-  const btn = document.getElementById('session-btn');
-  btn.textContent = '⚡ CONNECTING...';
-  btn.disabled = true;
-  setLoginStatus('READING MT5 SESSION...', 'var(--cyan)');
-
-  const r = await apiFetch('/api/account');
-  if (r.error) {
-    btn.textContent = '⚡ USE CURRENT MT5 SESSION';
-    btn.disabled = false;
-    setLoginStatus(r.error, 'var(--red)');
-    return;
-  }
-  setLoginStatus('SESSION FOUND ✓', 'var(--green)');
-  setTimeout(() => showApp(r), 500);
-}
+// MT5 removed — useCurrentSession is a no-op stub (login-screen bypassed by auth flow)
+async function useCurrentSession() { /* MT5 removed */ }
 
 async function checkServer(e) {
   if (e) e.preventDefault();
@@ -3692,66 +2504,18 @@ async function checkServer(e) {
   }
 }
 
-async function handleAction() {
-  const login    = parseInt(document.getElementById('mt5-login').value.trim());
-  const password = document.getElementById('mt5-password').value.trim();
-  const server   = document.getElementById('mt5-server').value.trim();
-  const btn      = document.getElementById('main-btn');
-
-  if (!login || !password || !server) {
-    btn.style.background = 'var(--red)';
-    btn.textContent = 'FILL ALL FIELDS';
-    setTimeout(() => { btn.style.background = ''; btn.textContent = 'CONNECT TO MT5 →'; }, 2000);
-    return;
-  }
-
-  btn.style.background = 'var(--cyan)';
-  btn.textContent = 'CONNECTING...';
-  btn.disabled = true;
-
-  const msgs = ['CONNECTING TO SERVER...','AUTHENTICATING...','LOADING ACCOUNT...','ALMOST DONE...'];
-  let mi = 0; setLoginStatus(msgs[0], 'var(--cyan)');
-  const t = setInterval(() => { mi=(mi+1)%msgs.length; setLoginStatus(msgs[mi],'var(--cyan)'); }, 4000);
-
-  try {
-    const token = _getAuthToken();
-    const ctrl  = new AbortController();
-    const kt    = setTimeout(() => ctrl.abort(), 38000);
-    const resp  = await fetch(API + '/api/connect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ login, password, server }),
-      signal: ctrl.signal,
-    }).catch(() => null);
-    clearTimeout(kt);
-    const r = resp ? await resp.json().catch(() => ({error:'Server error'})) : {error:'Timed out — check MetaTrader 5 is open'};
-
-    if (r.error) {
-      btn.style.background = 'var(--red)'; btn.textContent = 'LOGIN FAILED'; btn.disabled = false;
-      setLoginStatus(r.error, 'var(--red)');
-      setTimeout(() => { btn.style.background = ''; btn.textContent = 'CONNECT TO MT5 →'; setLoginStatus('TRY AGAIN', 'var(--text2)'); }, 4000);
-      return;
-    }
-    btn.textContent = '✓ CONNECTED';
-    setLoginStatus('MT5 LOGIN SUCCESS ✓', 'var(--green)');
-    setTimeout(() => showApp(r), 700);
-  } finally { clearInterval(t); }
-}
+// MT5 removed — handleAction is a no-op stub (login-screen is bypassed by auth flow)
+async function handleAction() { /* MT5 removed */ }
 
 function showApp(accountInfo) {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
-  const _unEl = document.getElementById('s-username'); if (_unEl) _unEl.value = accountInfo.name || accountInfo.login;
+  const _unEl = document.getElementById('s-username'); if (_unEl) _unEl.value = accountInfo.display_name || accountInfo.username || '';
   document.getElementById('main-btn').style.background = 'linear-gradient(135deg,var(--accent),var(--accent2))';
-  document.getElementById('main-btn').textContent = 'CONNECT TO MT5 →';
+  document.getElementById('main-btn').textContent = 'LOG IN →';
   document.getElementById('main-btn').disabled = false;
-  setConnStatus(!!(accountInfo && accountInfo.login));
   applySettingsToUI(loadSettings());
   if (!chartsInit) { initCharts(); chartsInit = true; }
-  connectWS();
-  loadAccount();
-  loadPositions();
-  loadDeals();
   setTimeout(_aiRestoreState, 500);
   setTimeout(cryptoCheckStatus, 1000);
 }
@@ -3761,16 +2525,7 @@ async function logout() {
 }
 
 async function disconnectMT5Only() {
-  if (ws) { ws.close(); ws = null; }
-  const r = await apiFetch('/api/disconnect', { method: 'POST' });
-  if (r && r.skipped) {
-    toast(`⚠️ MT5 kept alive — ${r.reason}`);
-  }
-  document.getElementById('app').style.display          = 'none';
-  document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('mt5-password').value = '';
-  setConnStatus(false);
-  setLoginStatus('SERVER READY', 'var(--text2)');
+  // MT5 removed — no-op stub kept for any lingering references
 }
 
 // ── NAVIGATION ─────────────────────────────────────────────────────────────────
@@ -3791,24 +2546,18 @@ function showPage(id, el) {
   const connBar = document.getElementById('conn-bar');
   if (connBar) connBar.style.display = 'none';
 
-  stopAlgoRefresh();
-  stopTradesRefresh();
-  if (id === 'trades')      { startTradesRefresh(); }
   if (id === 'tradingview') { setTimeout(() => { tvInit(_tvSym, _tvTf); window.dispatchEvent(new Event('resize')); }, 80); }
-  if (id === 'algo')        { startAlgoRefresh(); _aiRestoreState(); }
   if (id === 'journal')     { jInit(); }
   if (id === 'risk')        { rcCalcPos(); rcCalcKelly(); rcCalcPropDD(); cpLoadStatus(); }
-  if (id === 'reports')     { loadReports(); }
   if (id === 'crypto')      { cryptoInit(); }
   if (id === 'dashboard')   { loadDashboardReport(); }
   if (id === 'settings')    { applySettingsToUI(loadSettings()); applyStrategyParamsToUI(loadStrategyParams()); if (_getAuthRole() === 'admin') { document.getElementById('admin-clients-panel').style.display = 'block'; document.getElementById('admin-payments-panel').style.display = 'block'; loadAdminClients(); loadAdminPaymentRequests(); } }
-  if (id === 'forexbot')    { fbStartPolling(); } else { fbStopPolling(); }
   if (id === 'telegram')   { telegramInit(); } else { clearInterval(_tgRefTimer); }
   if (id === 'indian')     { indianInit(); }
 }
 
 function tvExitFullPage() {
-  const nav = document.querySelector('.nav-item[onclick*="trades"]');
+  const nav = document.querySelector('.nav-item[onclick*="dashboard"]');
   if (nav) nav.click();
 }
 
@@ -4993,12 +3742,8 @@ async function _afterAuthSuccess() {
     showPage('crypto', document.querySelector('.nav-item[onclick*="\'crypto\'"]'));
     return;
   }
-  const r = await apiFetch('/api/account');
-  // Always go straight to the dashboard — MT5 connects in the background via
-  // the CONNECT MT5 bar/modal if it isn't already attached to a live session.
-  showApp(r.error ? {} : r);
-  loadMT5Symbols();
-  setTimeout(loadAccount, 500);
+  // Go straight to the dashboard
+  showApp({});
   showPage('dashboard', document.querySelector('.nav-item[onclick*="\'dashboard\'"]'));
 }
 
@@ -5172,55 +3917,8 @@ async function fbPollStatus() {
 }
 
 // ── ACCOUNT DATA ───────────────────────────────────────────────────────────────
+// MT5 removed — loadAccount is a no-op stub; dashboard stats still load via loadDashboardStats
 async function loadAccount() {
-  const d = await apiFetch('/api/account');
-  if (d.error) { toast(d.error, false); return; }
-
-  const cur = d.currency;
-  _acctCurrency = cur;
-  const g = id => document.getElementById(id);
-
-  // Account header
-  if (g('kpi-currency')) g('kpi-currency').textContent = d.name + ' · ' + d.server + ' · ' + cur;
-
-  // Hidden compat spans (referenced by WS handler & old code)
-  if (g('kpi-balance'))    g('kpi-balance').textContent    = fmt(d.balance, cur + ' ');
-  if (g('kpi-equity'))     g('kpi-equity').textContent     = fmt(d.equity,  cur + ' ');
-  if (g('kpi-profit'))     g('kpi-profit').textContent     = (d.profit >= 0 ? '+' : '') + fmt(d.profit, cur + ' ');
-  if (g('kpi-free-margin'))g('kpi-free-margin').textContent= fmt(d.free_margin, cur + ' ');
-  if (g('kpi-leverage'))   g('kpi-leverage').textContent   = '1:' + d.leverage;
-  if (g('kpi-margin-level'))g('kpi-margin-level').textContent = 'Margin level: ' + d.margin_level + '%';
-  if (g('kpi-positions'))  g('kpi-positions').textContent  = 'open P&L';
-
-  // Live monitor card
-  if (g('lm-equity'))      g('lm-equity').textContent      = cur + ' ' + fmt(d.equity);
-  if (g('lm-balance'))     g('lm-balance').textContent     = cur + ' ' + fmt(d.balance); // hidden now, used in new design via kpi-balance
-  if (g('lm-free-margin')) g('lm-free-margin').textContent = cur + ' ' + fmt(d.free_margin);
-  if (g('lm-leverage'))    g('lm-leverage').textContent    = '1:' + d.leverage;
-  if (g('lm-margin-lvl'))  g('lm-margin-lvl').textContent  = d.margin_level + '%';
-  if (g('lm-used-margin')) g('lm-used-margin').textContent = cur + ' ' + fmt(d.margin || 0);
-  if (g('lm-profit')) {
-    g('lm-profit').textContent = (d.profit >= 0 ? '+' : '') + fmt(d.profit);
-    g('lm-profit').style.color = d.profit >= 0 ? 'var(--green)' : 'var(--red)';
-  }
-  const eqDiff = parseFloat((d.equity - d.balance).toFixed(2));
-  if (g('lm-eq-diff')) g('lm-eq-diff').textContent = 'vs balance: ' + (eqDiff >= 0 ? '+' : '') + fmt(eqDiff);
-
-  // Wallet page
-  document.getElementById('w-balance').textContent = fmt(d.balance, cur + ' ');
-  document.getElementById('w-equity').textContent = fmt(d.equity, cur + ' ');
-  const wp = document.getElementById('w-profit');
-  wp.textContent = (d.profit >= 0 ? '+' : '') + fmt(d.profit, cur + ' ');
-  wp.style.color = d.profit >= 0 ? 'var(--green)' : 'var(--red)';
-  document.getElementById('w-free-margin').textContent = fmt(d.free_margin, cur + ' ');
-  document.getElementById('w-margin-level').textContent = d.margin_level + '%';
-  document.getElementById('w-leverage').textContent = '1:' + d.leverage;
-  document.getElementById('w-login').textContent = d.login;
-  document.getElementById('w-server').textContent = d.server;
-
-  // Refresh TODAY REALIZED via dedicated endpoint (direct MT5 sum, no matching needed)
-  loadTodayRealized();
-  // Load dashboard stats (today + reports + funding)
   loadDashboardStats();
 }
 
@@ -5304,70 +4002,10 @@ async function loadTodayRealized() {
 }
 
 // ── OPEN POSITIONS ─────────────────────────────────────────────────────────────
+// MT5 removed — loadPositions is a no-op stub
 let _tradesLiveTimer = null;
 
-async function loadPositions() {
-  const data = await apiFetch('/api/positions');
-  const tbody = document.getElementById('positions-tbody');
-
-  // Update live dot + timestamp
-  const dot = document.getElementById('pos-live-dot');
-  const upd = document.getElementById('pos-last-update');
-  if (dot) dot.style.display = 'inline-block';
-  if (upd) upd.textContent = 'Updated ' + new Date().toLocaleTimeString();
-
-  if (!Array.isArray(data) || data.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text3);padding:20px">No open positions</td></tr>';
-    const kpi = document.getElementById('kpi-positions');
-    if (kpi) kpi.textContent = '0 open positions';
-    document.getElementById('trd-pos-count').textContent = '0';
-    document.getElementById('trd-pos-lots').textContent  = 'lots: 0.00';
-    const fpEl = document.getElementById('trd-float-pnl');
-    fpEl.textContent = '$0.00'; fpEl.style.color = 'var(--text2)';
-    document.getElementById('trd-float-sub').textContent = 'no open positions';
-    return;
-  }
-
-  const totalProfit = data.reduce((s, p) => s + p.profit, 0);
-  const totalSwap   = data.reduce((s, p) => s + (p.swap || 0), 0);
-  const grandTotal  = totalProfit + totalSwap;
-  const totalLots   = data.reduce((s, p) => s + p.volume, 0);
-
-  // Update summary strip
-  document.getElementById('trd-pos-count').textContent = data.length;
-  document.getElementById('trd-pos-lots').textContent  = 'lots: ' + totalLots.toFixed(2);
-  const fpEl = document.getElementById('trd-float-pnl');
-  fpEl.textContent = (grandTotal >= 0 ? '+$' : '-$') + Math.abs(grandTotal).toFixed(2);
-  fpEl.style.color = grandTotal >= 0 ? 'var(--green)' : 'var(--red)';
-  document.getElementById('trd-float-sub').textContent = `${data.length} pos · swap $${totalSwap.toFixed(2)}`;
-  const kpi = document.getElementById('kpi-positions');
-  if (kpi) kpi.textContent = data.length + ' open · $' + (grandTotal >= 0 ? '+' : '') + grandTotal.toFixed(2);
-
-  tbody.innerHTML = data.map(p => {
-    const pips_color = p.pips >= 0 ? 'var(--green)' : 'var(--red)';
-    const prof_color = p.profit >= 0 ? 'var(--green)' : 'var(--red)';
-    const slShow = p.sl && p.sl > 0 ? p.sl : '—';
-    const tpShow = p.tp && p.tp > 0 ? p.tp : '—';
-    return `<tr>
-      <td style="font-family:monospace;color:var(--text3);font-size:11px">#${p.ticket}</td>
-      <td style="font-weight:700">${p.symbol}</td>
-      <td><span class="badge ${p.type==='BUY'?'badge-green':'badge-red'}">${p.type}</span></td>
-      <td>${p.volume}</td>
-      <td style="font-family:monospace">${p.open_price}</td>
-      <td style="font-family:monospace;color:var(--cyan)">${p.current_price}</td>
-      <td style="font-size:11px;color:var(--red)">${slShow}</td>
-      <td style="font-size:11px;color:var(--green)">${tpShow}</td>
-      <td style="font-weight:700;color:${pips_color}">${p.pips >= 0 ? '+' : ''}${p.pips}</td>
-      <td style="font-weight:800;color:${prof_color};font-size:14px">${p.profit>=0?'+':''}${p.profit}</td>
-      <td style="font-size:11px;color:var(--text3)">${p.swap}</td>
-      <td style="font-size:11px;color:var(--text3)">${p.duration}</td>
-      <td style="white-space:nowrap">
-        <button class="close-btn" style="color:var(--accent);border-color:var(--accent)" onclick="openModifyModal(${p.ticket},'${p.symbol}',${p.type==='BUY'?1:0},${p.sl||0},${p.tp||0})">✎ MOD</button>
-        <button class="close-btn" onclick="closePosition(${p.ticket})">✕ CLOSE</button>
-      </td>
-    </tr>`;
-  }).join('');
-}
+async function loadPositions() { /* MT5 removed */ }
 
 // ── MODIFY POSITION ────────────────────────────────────────────────────────────
 let modTicket = null, modMode = 'pips';
@@ -6005,22 +4643,8 @@ let _filtDeals  = [];     // after search/date filter
 let _dealsPage  = 1;
 const DEALS_PER_PAGE = 25;
 
-async function loadDeals() {
-  const days  = document.getElementById('history-days')?.value || 30;
-  const tbody = document.getElementById('deals-tbody');
-  tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text3);padding:16px">Syncing with MT5...</td></tr>';
-
-  const data = await apiFetch('/api/deals?days=' + days);
-  if (!Array.isArray(data)) {
-    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text3);padding:20px">No data</td></tr>';
-    return;
-  }
-
-  _allDeals  = data;
-  _dealsPage = 1;
-  _updateDealsKPIs(data);   // always use full dataset for KPIs
-  dealsApplyFilter();
-}
+// MT5 removed — loadDeals is a no-op stub
+async function loadDeals() { /* MT5 removed */ }
 
 function _updateDealsKPIs(data) {
   const wins    = data.filter(d => d.win);
@@ -6178,15 +4802,8 @@ let _tradesTimer = null;
 let _dealsTimer  = null;
 let _todayTimer  = null;
 
-function startTradesRefresh() {
-  stopTradesRefresh();
-  loadPositions();
-  loadDeals();
-  loadTodayRealized();
-  _tradesTimer = setInterval(loadPositions,     5000);
-  _dealsTimer  = setInterval(loadDeals,        30000);
-  _todayTimer  = setInterval(loadTodayRealized, 10000);
-}
+// MT5 removed — startTradesRefresh / stopTradesRefresh are no-op stubs
+function startTradesRefresh() { /* MT5 removed */ }
 
 // ── TRADINGVIEW CHART ──────────────────────────────────────────────────────────
 let _tvTf      = '60';
@@ -6321,11 +4938,7 @@ function tvSetSymbol(mt5sym) {
   tvInit(mt5sym, _tvTf);
 }
 
-function stopTradesRefresh() {
-  if (_tradesTimer) { clearInterval(_tradesTimer); _tradesTimer = null; }
-  if (_dealsTimer)  { clearInterval(_dealsTimer);  _dealsTimer  = null; }
-  if (_todayTimer)  { clearInterval(_todayTimer);  _todayTimer  = null; }
-}
+function stopTradesRefresh() { /* MT5 removed */ }
 
 // ── QUICK ORDER HELPERS ─────────────────────────────────────────────────────────
 let oMode = 'pips';
@@ -6546,89 +5159,20 @@ async function placeOrder(side) {
   loadAccount();
 }
 
-// ── WEBSOCKET — live equity in topbar ──────────────────────────────────────────
+// MT5 WebSocket removed — connectWS and related helpers are no-op stubs
 let _wsReconnectTimer = null;
 let _acctCurrency = 'USD';
 
-function connectWS() {
-  // Detach old WS cleanly without triggering onclose reconnect loop
-  if (ws) {
-    ws.onclose = null;
-    ws.onerror = null;
-    ws.close();
-    ws = null;
-  }
-  if (_wsReconnectTimer) { clearTimeout(_wsReconnectTimer); _wsReconnectTimer = null; }
-
-  try { ws = new WebSocket(WS); } catch { _scheduleWsReconnect(); return; }
-
-  ws.onopen = () => {
-    setConnStatus(true);
-    loadAccount();
-    loadDashboardStats();
-  };
-  ws.onclose = () => {
-    setConnStatus(false);
-    _scheduleWsReconnect();
-  };
-  ws.onerror = () => setConnStatus(false);
-
-  ws.onmessage = (e) => {
-    try {
-      const d = JSON.parse(e.data);
-      setConnStatus(!!d.account);
-      if (d.account) {
-        const a = d.account;
-        const p = a.profit;
-
-
-        const cur = _acctCurrency;
-        const g = id => document.getElementById(id);
-
-        // Hidden compat spans
-        if (g('kpi-balance'))    g('kpi-balance').textContent    = cur + ' ' + fmt(a.balance);
-        if (g('kpi-equity'))     g('kpi-equity').textContent     = cur + ' ' + fmt(a.equity);
-        if (g('kpi-profit'))     g('kpi-profit').textContent     = (p >= 0 ? '+' : '') + fmt(p);
-        if (g('kpi-free-margin'))g('kpi-free-margin').textContent= cur + ' ' + fmt(a.free_margin);
-
-        // Live monitor — visible elements
-        const pColor = p >= 0 ? 'var(--green)' : 'var(--red)';
-        if (g('lm-equity'))      g('lm-equity').textContent      = cur + ' ' + fmt(a.equity);
-        if (g('lm-free-margin')) g('lm-free-margin').textContent = cur + ' ' + fmt(a.free_margin);
-        if (g('lm-used-margin')) g('lm-used-margin').textContent = cur + ' ' + fmt(a.margin || 0);
-        if (g('lm-profit'))      { g('lm-profit').textContent = (p >= 0 ? '+' : '') + fmt(p); g('lm-profit').style.color = pColor; }
-        if (g('lm-pnl-bar'))     g('lm-pnl-bar').style.background = pColor;
-        if (g('lm-profit-sub'))  { const cnt = d.open_count || 0; g('lm-profit-sub').textContent = cnt + ' open position' + (cnt !== 1 ? 's' : ''); g('lm-profit-sub').style.color = pColor; }
-        if (g('lm-open-count'))  { const cnt = d.open_count || 0; g('lm-open-count').textContent = cnt; g('lm-open-count').style.color = cnt > 0 ? 'var(--cyan)' : 'var(--text3)'; }
-        if (g('lm-margin-lvl'))  {
-          const ml = a.margin > 0 ? Math.round(a.equity / a.margin * 100) : 0;
-          g('lm-margin-lvl').textContent = ml > 0 ? ml + '%' : '—';
-          g('lm-margin-lvl').style.color = ml > 200 ? 'var(--green)' : ml > 100 ? 'var(--amber)' : 'var(--red)';
-        }
-        // Equity vs balance diff
-        const eqDiff = parseFloat((a.equity - a.balance).toFixed(2));
-        if (g('lm-eq-diff')) g('lm-eq-diff').textContent = 'vs balance: ' + (eqDiff >= 0 ? '+' : '') + fmt(eqDiff);
-
-        // Wallet page
-        if (g('w-balance')) g('w-balance').textContent = cur + ' ' + fmt(a.balance);
-        if (g('w-equity'))  g('w-equity').textContent  = cur + ' ' + fmt(a.equity);
-        if (g('w-profit'))  { g('w-profit').textContent = (p >= 0 ? '+' : '') + fmt(p); g('w-profit').style.color = p >= 0 ? 'var(--green)' : 'var(--red)'; }
-        if (g('w-free-margin')) g('w-free-margin').textContent = fmt(a.free_margin);
-      }
-    } catch {}
-  };
-}
-
-function _scheduleWsReconnect() {
-  if (_wsReconnectTimer) return;
-  _wsReconnectTimer = setTimeout(() => { _wsReconnectTimer = null; connectWS(); }, 4000);
-}
+function connectWS() { /* MT5 removed */ }
+function _scheduleWsReconnect() { /* MT5 removed */ }
 
 function setConnStatus(online) {
-  document.getElementById('conn-dot').className = 'conn-dot' + (online ? ' live' : '');
-  document.getElementById('conn-label').textContent = online ? 'MT5 LIVE' : 'CONNECT MT5';
-  const bar = document.getElementById('conn-bar');
-  if (bar) { bar.className = 'conn-bar' + (online ? '' : ' disconnected'); }
+  const dot   = document.getElementById('conn-dot');
+  const label = document.getElementById('conn-label');
+  const bar   = document.getElementById('conn-bar');
+  if (dot)   dot.className   = 'conn-dot' + (online ? ' live' : '');
+  if (label) label.textContent = online ? 'LIVE' : 'OFFLINE';
+  if (bar)   bar.className   = 'conn-bar' + (online ? '' : ' disconnected');
 }
 
 function _goToCrypto() {
@@ -6650,10 +5194,7 @@ function setCryptoConnStatus(connectedExchanges) {
   bar.style.display = 'flex';
 }
 
-function onConnBarClick() {
-  const label = document.getElementById('conn-label').textContent;
-  if (label !== 'MT5 LIVE') openMT5Modal();
-}
+function onConnBarClick() { /* MT5 removed */ }
 
 // ── MT5 MODAL ──────────────────────────────────────────────────────────────────
 const _BROKER_SERVERS = {
@@ -6721,86 +5262,9 @@ function closeMT5Modal() {
   btn.style.background = '';
 }
 
-async function doModalConnect() {
-  const login    = parseInt(document.getElementById('m-login').value.trim());
-  const password = document.getElementById('m-password').value.trim();
-  const server   = document.getElementById('m-server').value.trim();
-  const btn      = document.getElementById('m-btn');
-  const errEl    = document.getElementById('mt5-merr');
-  const statusEl = document.getElementById('mt5-mstatus');
-  errEl.style.display = 'none';
-  if (!login || !password || !server) {
-    errEl.textContent = 'Fill Account Number, Password and Server — all required.';
-    errEl.style.display = 'block'; return;
-  }
-
-  btn.disabled = true; btn.textContent = 'CONNECTING...'; btn.style.background = 'var(--cyan)';
-
-  // Animated status messages while waiting (MT5 login can take 10-25s)
-  const msgs = ['Connecting to broker server...','Authenticating credentials...','Retrieving account info...','Almost there...'];
-  let mi = 0;
-  statusEl.textContent = msgs[0];
-  const msgTimer = setInterval(() => { mi = (mi + 1) % msgs.length; statusEl.textContent = msgs[mi]; }, 4000);
-
-  try {
-    const token = _getAuthToken();
-    const ctrl  = new AbortController();
-    const killTimer = setTimeout(() => ctrl.abort(), 38000); // 38s fetch timeout
-    const resp = await fetch(API + '/api/connect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ login, password, server }),
-      signal: ctrl.signal,
-    }).catch(e => null);
-    clearTimeout(killTimer);
-
-    const r = resp ? await resp.json().catch(() => ({ error: 'Server error' })) : { error: 'Connection timed out — check MetaTrader 5 is running' };
-
-    if (r.error) {
-      errEl.textContent = r.error;
-      errEl.style.display = 'block';
-      statusEl.textContent = 'Check credentials and try again';
-      btn.disabled = false; btn.textContent = 'CONNECT →'; btn.style.background = '';
-      return;
-    }
-    statusEl.textContent = `✓ Logged in as ${r.name || r.login}`;
-    btn.textContent = '✓ CONNECTED'; btn.style.background = 'var(--green)';
-    setTimeout(() => {
-      closeMT5Modal();
-      document.getElementById('login-screen').style.display = 'none';
-      showApp(r);
-      loadMT5Symbols();
-      setTimeout(loadAccount, 500);
-    }, 700);
-  } finally {
-    clearInterval(msgTimer);
-  }
-}
-
-async function doModalSession() {
-  const btn = document.getElementById('m-session-btn');
-  const statusEl = document.getElementById('mt5-mstatus');
-  const errEl    = document.getElementById('mt5-merr');
-  errEl.style.display = 'none';
-  btn.disabled = true; btn.textContent = '⚡ CONNECTING...';
-  statusEl.textContent = 'Reading MT5 session...';
-  const r = await apiFetch('/api/account');
-  if (r.error) {
-    btn.disabled = false; btn.textContent = '⚡ USE CURRENT MT5 SESSION';
-    errEl.textContent = r.error.includes('offline') ? 'Server offline — start server.py first' : 'No active MT5 session found';
-    errEl.style.display = 'block';
-    statusEl.textContent = 'Make sure MetaTrader 5 is running';
-    return;
-  }
-  btn.textContent = '✓ SESSION FOUND'; statusEl.textContent = 'Session connected!';
-  setTimeout(() => {
-    closeMT5Modal();
-    document.getElementById('login-screen').style.display = 'none';
-    showApp(r);
-    loadMT5Symbols();
-    setTimeout(loadAccount, 500);
-  }, 500);
-}
+// MT5 removed — modal connect functions are no-op stubs (modal is hidden)
+async function doModalConnect() { closeMT5Modal(); }
+async function doModalSession() { closeMT5Modal(); }
 
 // ── AI MARKET ANALYSIS ─────────────────────────────────────────────────────────
 let aiAutoTimer      = null;   // trade execution timer
