@@ -1444,6 +1444,48 @@ def _macd_calc(closes, fast=12, slow=26, signal=9):
     return macd, sig, hist
 
 
+def _check_fibonacci_level(highs, lows, price, atr):
+    """Check if price is at a key Fibonacci retracement level (38.2/50/61.8%).
+    Returns (direction, detail_string). direction is BUY/SELL/NONE."""
+    if len(highs) < 20 or atr <= 0:
+        return "NONE", "Not enough data"
+    swing_high = max(highs[-20:])
+    swing_low  = min(lows[-20:])
+    rng = swing_high - swing_low
+    if rng < atr * 0.5:
+        return "NONE", "Range too small"
+    fib_382 = swing_high - 0.382 * rng
+    fib_500 = swing_high - 0.500 * rng
+    fib_618 = swing_high - 0.618 * rng
+    tol = atr * 0.3
+    for level, label in [(fib_618, "61.8%"), (fib_500, "50%"), (fib_382, "38.2%")]:
+        if abs(price - level) <= tol:
+            # Near fib level: below midpoint = support → BUY, above = resistance → SELL
+            direction = "BUY" if price < (swing_high + swing_low) / 2 else "SELL"
+            return direction, f"Price at Fib {label} ({level:.2f})"
+    return "NONE", f"No Fib level near price (H={swing_high:.2f} L={swing_low:.2f})"
+
+
+def _check_21ema_bounce(closes, highs, lows, price, atr):
+    """Check if price is bouncing off the 21 EMA.
+    Returns (direction, detail_string)."""
+    if len(closes) < 22 or atr <= 0:
+        return "NONE", "Not enough data"
+    # Calculate 21 EMA
+    ema = closes[0]
+    k = 2 / (21 + 1)
+    for c in closes[1:]:
+        ema = c * k + ema * (1 - k)
+    tol = atr * 0.4
+    if abs(price - ema) <= tol:
+        # Price touching EMA: if above EMA = support bounce → BUY, below = resistance → SELL
+        if price >= ema and lows[-1] <= ema * 1.001:
+            return "BUY", f"21 EMA bounce support ({ema:.2f})"
+        elif price <= ema and highs[-1] >= ema * 0.999:
+            return "SELL", f"21 EMA resistance rejection ({ema:.2f})"
+    return "NONE", f"Price not at 21 EMA ({ema:.2f})"
+
+
 def _detect_price_action(opens, closes, highs, lows):
     """Detect candlestick patterns. Returns list of (name, direction, strength 0-1)."""
     patterns = []
