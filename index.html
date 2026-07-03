@@ -9318,23 +9318,28 @@ async function loadIndianDashboard(autoRefresh=true) {
   const lim = d.limits || {};
   const cash   = parseFloat(lim.Net || lim.cash || lim.availablecash || lim.avlcash || 0);
   const margin  = parseFloat(lim.marginused || lim.utilizedMargin || lim.Utilized || 0);
-  const avail   = parseFloat(lim.availmargin || lim.Available || lim.avlmargin || cash);
+  const avail   = parseFloat(lim.availmargin || lim.Available || lim.avlmargin || 0);
   const poses   = Array.isArray(d.positions) ? d.positions : [];
-  const dayPnl  = poses.reduce((s,p) => s + parseFloat(p.mtomPrs || p.urmtom || p.dayPnl || p.mktValue || 0), 0);
+  const dayPnl  = poses.reduce((s,p) => s + parseFloat(p.mtomPrs || p.urmtom || p.dayPnl || 0), 0);
   const bs = d.bot_stats || {};
+  const upnl2   = bs.unrealized_pnl || 0;
+  const totalBotPnl = (bs.total_pnl || 0) + upnl2;
+  const openCount = (bs.open_trades || 0) + poses.length;
+  const allTrades = (bs.trades || 0) + (bs.open_trades || 0);
   const tiles = [
-    { label:'Net Balance',    val: cash   ? '₹'+cash.toLocaleString('en-IN',{maximumFractionDigits:0}) : '—', color:'var(--accent)',  icon:'💰' },
-    { label:'Avail Margin',   val: avail  ? '₹'+avail.toLocaleString('en-IN',{maximumFractionDigits:0}) : '—', color:'var(--cyan)',    icon:'🏦' },
-    { label:'Margin Used',    val: margin ? '₹'+margin.toLocaleString('en-IN',{maximumFractionDigits:0}) : '—', color:'var(--amber)',   icon:'📊' },
-    { label:'Day P&L',        val: dayPnl ? (dayPnl>=0?'+':'')+dayPnl.toFixed(0) : '—', color: dayPnl>=0?'var(--green)':'var(--red)', icon: dayPnl>=0?'📈':'📉' },
-    { label:'Bot P&L',        val: bs.total_pnl != null ? (bs.total_pnl>=0?'₹+':'₹')+bs.total_pnl.toFixed(0) : '—', color: (bs.total_pnl||0)>=0?'var(--green)':'var(--red)', icon:'🤖' },
-    { label:'Win Rate',       val: bs.win_rate != null ? bs.win_rate+'%' : '—',  color:'var(--green)',  icon:'🎯' },
-    { label:'Total Trades',   val: bs.trades || 0, color:'var(--text2)', icon:'📋' },
-    { label:'Active Bots',    val: bs.active || 0, color:'var(--cyan)',  icon:'⚡' },
-    { label:'Open Positions', val: poses.length,   color:'var(--amber)', icon:'🔓' },
+    { label:'Net Balance',    val: cash   ? '₹'+cash.toLocaleString('en-IN',{maximumFractionDigits:0})  : '—', color:'var(--accent)', icon:'💰' },
+    { label:'Avail Margin',   val: avail  ? '₹'+avail.toLocaleString('en-IN',{maximumFractionDigits:0}) : '—', color:'var(--cyan)',   icon:'🏦' },
+    { label:'Margin Used',    val: margin ? '₹'+margin.toLocaleString('en-IN',{maximumFractionDigits:0}): '—', color:'var(--amber)',  icon:'📊' },
+    { label:'Day P&L',        val: dayPnl!==0?(dayPnl>=0?'₹+':'₹')+dayPnl.toFixed(0):'—', color:dayPnl>=0?'var(--green)':'var(--red)', icon:dayPnl>=0?'📈':'📉' },
+    { label:'Bot P&L (Total)',val: (totalBotPnl>=0?'₹+':'₹')+totalBotPnl.toFixed(2), color:totalBotPnl>=0?'var(--green)':'var(--red)', icon:'🤖' },
+    { label:'Live P&L ⚡',    val: (upnl2>=0?'₹+':'₹')+upnl2.toFixed(2),  color:upnl2>=0?'var(--green)':'var(--red)', icon:'⚡' },
+    { label:'Win Rate',       val: bs.win_rate != null ? bs.win_rate+'%':'—', color:'var(--green)', icon:'🎯' },
+    { label:'Total Trades',   val: allTrades, color:'var(--text2)', icon:'📋' },
+    { label:'Open Positions', val: openCount, color:'var(--amber)', icon:'🔓' },
+    { label:'Active Bots',    val: bs.active || 0, color:'var(--cyan)', icon:'⚡' },
     { label:'Holdings',       val: (d.holdings||[]).length, color:'var(--accent)', icon:'💼' },
   ];
-  document.getElementById('in-dash-tiles').style.gridTemplateColumns = 'repeat(5,1fr)';
+  document.getElementById('in-dash-tiles').style.gridTemplateColumns = 'repeat(auto-fill,minmax(130px,1fr))';
   document.getElementById('in-dash-tiles').innerHTML = tiles.map(t => `
     <div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(0,0,0,0.3));border:1px solid rgba(139,92,246,0.25);border-radius:10px;padding:12px 10px;text-align:center">
       <div style="font-size:18px;margin-bottom:4px">${t.icon}</div>

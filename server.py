@@ -4824,10 +4824,12 @@ def indian_dashboard(current_user: dict = Depends(_get_current_user)):
         {k: v for k, v in b.items() if not k.startswith("_")}
         for b in bots
     ]
+    open_trades = [t for t in enriched_trades if t.get("status") == "open"]
     result["bot_stats"] = {
         "active": len(active_bots),
         "total":  len(bots),
         "trades": len(closed_trades),
+        "open_trades": len(open_trades),
         "wins":   len(wins),
         "win_rate": round(len(wins) / len(closed_trades) * 100, 1) if closed_trades else 0,
         "total_pnl": round(total_pnl, 2),
