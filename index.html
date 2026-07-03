@@ -1148,6 +1148,28 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               </table>
             </div>
           </div>
+          <!-- Strategy Breakdown -->
+          <div class="panel" style="margin-bottom:14px">
+            <div class="panel-title">&#128200; STRATEGY BREAKDOWN <span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:8px">All bots grouped by strategy</span></div>
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:560px">
+                <thead><tr style="color:var(--text3)">
+                  <th style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:left">STRATEGY</th>
+                  <th style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:center">BOTS</th>
+                  <th style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:center">ACTIVE</th>
+                  <th style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:center">MODE</th>
+                  <th style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:center">TRADES</th>
+                  <th style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:center">WIN RATE</th>
+                  <th style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:center">PROFIT FACTOR</th>
+                  <th style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:right">NET PNL</th>
+                  <th style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:left">SYMBOLS</th>
+                </tr></thead>
+                <tbody id="cxd-strategy-tbody">
+                  <tr><td colspan="9" style="text-align:center;color:var(--text3);padding:20px">Loading...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
           <!-- Bot Signals -->
           <div class="panel" style="margin-bottom:14px">
             <div class="panel-title">&#9889; LIVE BOT SIGNALS <span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:8px">Last 2 signals per active bot</span></div>
@@ -8763,6 +8785,86 @@ async function cryptoDashboardLoad() {
     sigBox.innerHTML = sigs.length
       ? sigs.join('')
       : '<span style="color:var(--text3);font-size:12px">No signals yet. Start an Algo Bot to see live signals here.</span>';
+  }
+
+  // ── STRATEGY BREAKDOWN ──
+  const stratTbody = document.getElementById('cxd-strategy-tbody');
+  if (stratTbody && Array.isArray(bots)) {
+    if (!bots.length) {
+      stratTbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:20px">No bots created yet</td></tr>';
+    } else {
+      // Group bots by strategy
+      const strats = {};
+      bots.forEach(function(b) {
+        const key = b.strategy || 'unknown';
+        if (!strats[key]) strats[key] = { bots: 0, active: 0, modes: new Set(), symbols: new Set(), trades: 0, wins: 0, losses: 0, grossWin: 0, grossLoss: 0, netPnl: 0, openPnl: 0 };
+        const s = strats[key];
+        s.bots++;
+        if (b.status === 'active') s.active++;
+        s.modes.add(b.mode || 'demo');
+        s.symbols.add((b.symbol || '').replace('/USDT:USDT','').replace('/USDT',''));
+        s.trades += b.stats ? (b.stats.closed_trades || 0) : 0;
+        if (b.stats && b.stats.net_pnl) s.netPnl += b.stats.net_pnl;
+        if (b.live_pnl) s.openPnl += b.live_pnl;
+        // Recalc win/loss from recent_trades for breakdown detail
+        (b.recent_trades || []).forEach(function(t) {
+          if (t.status === 'closed') {
+            const p = parseFloat(t.pnl || 0);
+            if (p > 0) { s.wins++; s.grossWin += p; }
+            else if (p < 0) { s.losses++; s.grossLoss += Math.abs(p); }
+          }
+        });
+      });
+
+      // Use stats from bot.stats (more accurate than recent_trades)
+      // Rebuild properly
+      const strats2 = {};
+      bots.forEach(function(b) {
+        const key = b.strategy || 'unknown';
+        if (!strats2[key]) strats2[key] = { bots:0, active:0, modes:[], symbols:[], trades:0, wins:0, grossWin:0, grossLoss:0, netPnl:0, openPnl:0 };
+        const s = strats2[key];
+        s.bots++;
+        if (b.status === 'active') s.active++;
+        if (!s.modes.includes(b.mode||'demo')) s.modes.push(b.mode||'demo');
+        const sym = (b.symbol||'').replace('/USDT:USDT','').replace('/USDT','');
+        if (!s.symbols.includes(sym)) s.symbols.push(sym);
+        if (b.stats) {
+          s.trades  += b.stats.closed_trades || 0;
+          s.netPnl  += parseFloat(b.stats.net_pnl || 0);
+          // recalc gross win/loss for PF
+          const allTrades = b.recent_trades || [];
+          allTrades.forEach(function(t) {
+            if ((t.status||'') === 'closed') {
+              const p = parseFloat(t.pnl || 0);
+              if (p > 0) { s.wins++; s.grossWin += p; }
+              else if (p < 0) { s.grossLoss += Math.abs(p); }
+            }
+          });
+        }
+        if (b.live_pnl != null) s.openPnl += b.live_pnl;
+      });
+
+      const rows = Object.entries(strats2).sort(function(a,b){ return b[1].active - a[1].active || b[1].bots - a[1].bots; }).map(function(entry) {
+        const name = entry[0]; const s = entry[1];
+        const wr  = s.trades > 0 ? (s.wins / s.trades * 100).toFixed(1) + '%' : '—';
+        const pf  = s.grossLoss > 0 ? (s.grossWin / s.grossLoss).toFixed(2) : s.grossWin > 0 ? '&#8734;' : '—';
+        const pnl = s.netPnl + s.openPnl;
+        const pC  = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+        const modeTag = s.modes.map(function(m){ return '<span style="font-size:8px;padding:1px 5px;border-radius:3px;background:'+(m==='live'?'rgba(239,68,68,0.15)':'rgba(34,197,94,0.1)')+';color:'+(m==='live'?'var(--red)':'var(--green)')+'">'+m.toUpperCase()+'</span>'; }).join(' ');
+        return '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">'
+          +'<td style="padding:7px 10px;font-weight:700;color:var(--accent)">'+name.replace(/_/g,' ').toUpperCase()+'</td>'
+          +'<td style="padding:7px 10px;text-align:center;font-weight:700">'+s.bots+'</td>'
+          +'<td style="padding:7px 10px;text-align:center"><span style="color:'+(s.active>0?'var(--green)':'var(--text3)')+';font-weight:700">'+s.active+'</span></td>'
+          +'<td style="padding:7px 10px;text-align:center">'+modeTag+'</td>'
+          +'<td style="padding:7px 10px;text-align:center">'+s.trades+'</td>'
+          +'<td style="padding:7px 10px;text-align:center;font-weight:700;color:var(--cyan)">'+wr+'</td>'
+          +'<td style="padding:7px 10px;text-align:center;font-weight:700">'+pf+'</td>'
+          +'<td style="padding:7px 10px;text-align:right;font-weight:800;color:'+pC+'">'+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+'</td>'
+          +'<td style="padding:7px 10px;color:var(--text3);font-size:10px">'+s.symbols.join(', ')+'</td>'
+          +'</tr>';
+      });
+      stratTbody.innerHTML = rows.join('');
+    }
   }
 }
 
