@@ -4789,7 +4789,7 @@ def indian_dashboard(current_user: dict = Depends(_get_current_user)):
             t2 = dict(t)
             if t2.get("status") == "open":
                 cur = b.get("last_price")
-                ep  = b.get("open_entry_price") or t2.get("price")
+                ep  = float(t2.get("price") or b.get("open_entry_price") or 0)
                 side = b.get("open_side", "BUY")
                 if cur and ep:
                     if is_opt:
@@ -5293,7 +5293,6 @@ def indian_algo_history(current_user: dict = Depends(_get_current_user)):
         lot_sz  = _INDIAN_LOT_SIZES.get(bot.get("symbol","").upper(), 1) if is_opt else 1
         qty     = int(bot.get("quantity", 1)) * lot_sz if is_opt else int(bot.get("quantity", 1))
         cur_px  = bot.get("last_price")
-        ep_bot  = bot.get("open_entry_price")
         side    = bot.get("open_side", "BUY")
         for tr in bot.get("trades", []):
             row = {
@@ -5304,14 +5303,16 @@ def indian_algo_history(current_user: dict = Depends(_get_current_user)):
                 "product":  bot.get("product", "MIS"),
                 **tr,
             }
-            if tr.get("status") == "open" and cur_px and ep_bot:
-                if is_opt:
-                    opt_dir = bot.get("_current_opt_dir", "CE")
-                    raw = (cur_px - ep_bot) if opt_dir == "CE" else (ep_bot - cur_px)
-                    row["unrealized_pnl"] = round(raw * 0.5 * lot_sz * int(bot.get("quantity",1)), 2)
-                else:
-                    row["unrealized_pnl"] = round((cur_px - ep_bot) * qty if side == "BUY" else (ep_bot - cur_px) * qty, 2)
-                row["current_price"] = cur_px
+            if tr.get("status") == "open" and cur_px:
+                ep = float(tr.get("price") or bot.get("open_entry_price") or 0)
+                if ep:
+                    if is_opt:
+                        opt_dir = bot.get("_current_opt_dir", "CE")
+                        raw = (cur_px - ep) if opt_dir == "CE" else (ep - cur_px)
+                        row["unrealized_pnl"] = round(raw * 0.5 * lot_sz * int(bot.get("quantity",1)), 2)
+                    else:
+                        row["unrealized_pnl"] = round((cur_px - ep) * qty if side == "BUY" else (ep - cur_px) * qty, 2)
+                    row["current_price"] = cur_px
             rows.append(row)
     rows.sort(key=lambda r: r.get("time", ""), reverse=True)
     return rows
