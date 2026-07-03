@@ -435,15 +435,29 @@ def admin_reject_payment(request_id: str, admin: dict = Depends(_require_admin))
 
 @app.post("/api/admin/restart")
 def admin_restart(admin: dict = Depends(_require_admin)):
-    """Restart the server process (admin only). Uses subprocess on Windows."""
+    """Restart the server via a detached bat file (Windows-safe)."""
     import sys, os, subprocess
     def _do():
         import time
         time.sleep(1)
-        kwargs = {}
+        cwd = os.getcwd()
         if os.name == "nt":
-            kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
-        subprocess.Popen([sys.executable] + sys.argv, cwd=os.getcwd(), **kwargs)
+            bat = os.path.join(cwd, "_restart.bat")
+            with open(bat, "w") as f:
+                f.write(
+                    f'@echo off\r\n'
+                    f'timeout /t 3 /nobreak >nul\r\n'
+                    f'cd /d "{cwd}"\r\n'
+                    f'start "" python server.py\r\n'
+                    f'del "%~f0"\r\n'
+                )
+            subprocess.Popen(
+                bat, shell=True,
+                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                cwd=cwd
+            )
+        else:
+            subprocess.Popen([sys.executable] + sys.argv, cwd=cwd)
         os._exit(0)
     threading.Thread(target=_do, daemon=False).start()
     return {"status": "restarting"}
