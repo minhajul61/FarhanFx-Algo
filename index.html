@@ -9303,11 +9303,16 @@ async function indianSearchScrip() {
   }).join('');
 }
 
-async function loadIndianDashboard() {
+let _inDashRefreshTimer = null;
+async function loadIndianDashboard(autoRefresh=true) {
   document.getElementById('in-dash-updated').textContent = 'Loading...';
   const d = await apiFetch('/api/indian/dashboard');
   if (!d || d.error) { document.getElementById('in-dash-updated').textContent = 'Error loading'; return; }
   document.getElementById('in-dash-updated').textContent = 'Updated: ' + new Date().toLocaleTimeString('en-IN');
+  if (autoRefresh) {
+    clearTimeout(_inDashRefreshTimer);
+    _inDashRefreshTimer = setTimeout(() => loadIndianDashboard(true), 30000);
+  }
 
   // ── STAT TILES ──
   const lim = d.limits || {};
@@ -9425,13 +9430,16 @@ async function loadIndianDashboard() {
 
   // ── BOT PERFORMANCE ──
   const perfEl = document.getElementById('in-dash-perf');
+  const upnl = bs.unrealized_pnl || 0;
   const perfItems = [
     ['Total Bots', bs.total||0, 'var(--text2)'],
     ['Active', bs.active||0, 'var(--green)'],
     ['Total Trades', bs.trades||0, 'var(--text2)'],
     ['Wins', bs.wins||0, 'var(--green)'],
     ['Win Rate', (bs.win_rate||0)+'%', (bs.win_rate||0)>=50?'var(--green)':'var(--red)'],
-    ['Total Bot P&L', (bs.total_pnl>=0?'₹+':'₹')+(bs.total_pnl||0).toFixed(0), (bs.total_pnl||0)>=0?'var(--green)':'var(--red)'],
+    ['Closed P&L', (bs.total_pnl>=0?'₹+':'₹')+(bs.total_pnl||0).toFixed(2), (bs.total_pnl||0)>=0?'var(--green)':'var(--red)'],
+    ['Live P&L ⚡', (upnl>=0?'₹+':'₹')+upnl.toFixed(2), upnl>=0?'var(--green)':'var(--red)'],
+    ['Total P&L', (bs.total_pnl+upnl>=0?'₹+':'₹')+(bs.total_pnl+upnl).toFixed(2), (bs.total_pnl+upnl)>=0?'var(--green)':'var(--red)'],
   ];
   perfEl.innerHTML = perfItems.map(([label,val,color])=>`
     <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
@@ -9448,13 +9456,17 @@ async function loadIndianDashboard() {
       <thead><tr style="color:var(--text3)">${['TIME','MODE','SIGNAL','ENTRY ₹','EXIT ₹','P&L','STATUS','REASON'].map(h=>`<th style="padding:4px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap">${h}</th>`).join('')}</tr></thead>
       <tbody>${allTr.map(t=>{
         const pnl=t.pnl||0; const st=t.status||'open';
+        const upnl=t.unrealized_pnl;
+        const pnlDisplay = st==='open'
+          ? (upnl!=null ? `<span style="color:${upnl>=0?'var(--green)':'var(--red)'};font-weight:700">${upnl>=0?'+':''}₹${upnl.toFixed(2)} ⚡</span>` : '—')
+          : `<span style="color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>=0?'+':''}₹${pnl.toFixed(2)}</span>`;
         return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
           <td style="padding:4px 8px;color:var(--text3);white-space:nowrap">${t.time||'—'}</td>
           <td style="padding:4px 8px"><span style="padding:1px 5px;border-radius:3px;background:${t.mode==='live'?'rgba(239,68,68,0.15)':'rgba(0,200,255,0.1)'};color:${t.mode==='live'?'var(--red)':'var(--cyan)'};font-size:9px">${t.mode?.toUpperCase()||'—'}</span></td>
           <td style="padding:4px 8px;color:${t.signal==='BUY'?'var(--green)':'var(--red)'};font-weight:700">${t.signal||'—'}</td>
           <td style="padding:4px 8px">₹${parseFloat(t.price||0).toFixed(2)}</td>
-          <td style="padding:4px 8px">${t.exit_price?'₹'+parseFloat(t.exit_price).toFixed(2):'open'}</td>
-          <td style="padding:4px 8px;font-weight:700;color:${pnl>=0?'var(--green)':'var(--red)'}">${st==='open'?'—':(pnl>=0?'+':'')+pnl.toFixed(2)}</td>
+          <td style="padding:4px 8px">${t.exit_price?'₹'+parseFloat(t.exit_price).toFixed(2):'<span style="color:var(--amber)">open</span>'}</td>
+          <td style="padding:4px 8px;font-weight:700">${pnlDisplay}</td>
           <td style="padding:4px 8px;color:${st==='open'?'var(--amber)':'var(--text3)'};text-transform:capitalize">${st}</td>
           <td style="padding:4px 8px;color:var(--text3)">${t.exit_reason||'—'}</td>
         </tr>`;}).join('')}</tbody></table>`;

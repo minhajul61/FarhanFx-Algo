@@ -4773,10 +4773,35 @@ def indian_dashboard(current_user: dict = Depends(_get_current_user)):
     # Bot stats
     bots = list(_indian_bots.values())
     active_bots = [b for b in bots if b.get("status") == "active"]
-    all_trades = [t for b in bots for t in b.get("trades", [])]
-    closed_trades = [t for t in all_trades if t.get("status") == "closed"]
+
+    # Build enriched trade list with live unrealized P&L for open trades
+    enriched_trades = []
+    total_unrealized = 0.0
+    for b in bots:
+        is_opt = b.get("options_bot", False)
+        lot_size = _INDIAN_LOT_SIZES.get(b.get("symbol","").upper(), 1) if is_opt else 1
+        qty = int(b.get("quantity", 1)) * lot_size if is_opt else int(b.get("quantity", 1))
+        for t in b.get("trades", []):
+            t2 = dict(t)
+            if t2.get("status") == "open":
+                cur = b.get("last_price")
+                ep  = b.get("open_entry_price") or t2.get("price")
+                side = b.get("open_side", "BUY")
+                if cur and ep:
+                    if is_opt:
+                        opt_dir = b.get("_current_opt_dir", "CE")
+                        raw = (cur - ep) if opt_dir == "CE" else (ep - cur)
+                        upnl = round(raw * 0.5 * lot_size * int(b.get("quantity",1)), 2)
+                    else:
+                        upnl = round((cur - ep) * qty if side == "BUY" else (ep - cur) * qty, 2)
+                    t2["unrealized_pnl"] = upnl
+                    total_unrealized += upnl
+            enriched_trades.append(t2)
+
+    closed_trades = [t for t in enriched_trades if t.get("status") == "closed"]
     wins = [t for t in closed_trades if (t.get("pnl") or 0) > 0]
     total_pnl = sum(t.get("pnl", 0) for t in closed_trades)
+
     result["bots"] = [
         {k: v for k, v in b.items() if not k.startswith("_")}
         for b in bots
@@ -4788,7 +4813,8 @@ def indian_dashboard(current_user: dict = Depends(_get_current_user)):
         "wins":   len(wins),
         "win_rate": round(len(wins) / len(closed_trades) * 100, 1) if closed_trades else 0,
         "total_pnl": round(total_pnl, 2),
-        "all_trades": sorted(all_trades, key=lambda x: x.get("time",""), reverse=True)[:50],
+        "unrealized_pnl": round(total_unrealized, 2),
+        "all_trades": sorted(enriched_trades, key=lambda x: x.get("time",""), reverse=True)[:50],
     }
     return result
 
