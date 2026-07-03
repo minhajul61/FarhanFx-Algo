@@ -3744,11 +3744,16 @@ _SCREENER_EXCLUDE_BASES = {
     "XAU", "XAG", "CL", "UKOIL", "USOIL",                                  # commodities
     "SOXL", "SKHYNIX", "MU", "NVDA", "TSLA", "MSFT", "AAPL", "SNDK", "SPCX", # tokenized stocks
 }
-# Only the 6 out-of-sample validated strategies run in the screener — the
-# experimental ones (fvg, ob_fvg, bos_choch, etc.) are too slow and haven't
-# passed train/validation on more than one coin yet.
+# 6 validated fast strategies + super_breakout (validated across BTC/ETH/BNB).
+# fvg, ob_fvg, bos_choch excluded: too slow, no multi-coin validation yet.
 _SCREENER_STRATEGIES = {k: v for k, v in _STRATEGY_DEFAULTS.items()
-                        if k in {"rsi", "macd_cross", "bb_squeeze", "false_breakout", "trend_breakout", "vwap_bands"}}
+                        if k in {"rsi", "macd_cross", "bb_squeeze", "false_breakout",
+                                 "trend_breakout", "vwap_bands", "super_breakout"}}
+# Per-strategy overrides for screener validation — slow/4h strategies need
+# longer history and lower minimum-trade thresholds to validate meaningfully.
+_SCREENER_VALIDATION_OVERRIDES = {
+    "super_breakout": {"days": 180, "min_train_trades": 5, "min_val_trades": 3},
+}
 _screener_result_cache: dict = {}   # {"result": {...}, "fetched_at": float, "limit": int}
 
 
@@ -3774,12 +3779,16 @@ def _screener_top_coins(limit: int = 12) -> list:
 
 
 def _screener_validate_coin(symbol: str, days: int = 60) -> dict:
-    """Re-run the 6 validated strategies against this coin's own recent
-    history (train/validation split) — PF > 1.1 on both halves, min trades."""
+    """Re-run validated strategies against this coin's own recent history
+    (train/validation split). PF > 1.1 on both halves + min trade counts."""
     results = {}
     for strategy, (tf, params) in _SCREENER_STRATEGIES.items():
+        override       = _SCREENER_VALIDATION_OVERRIDES.get(strategy, {})
+        strat_days     = override.get("days", days)
+        min_train      = override.get("min_train_trades", 10)
+        min_val        = override.get("min_val_trades", 5)
         try:
-            ohlcv = _fetch_backtest_ohlcv(symbol, tf, days)
+            ohlcv = _fetch_backtest_ohlcv(symbol, tf, strat_days)
             if len(ohlcv) < 300:
                 results[strategy] = {"status": "insufficient_data"}
                 continue
@@ -3787,7 +3796,7 @@ def _screener_validate_coin(symbol: str, days: int = 60) -> dict:
             train, val = ohlcv[:half], ohlcv[half:]
             train_r = _run_backtest_strategy(strategy, train, symbol, tf, param_overrides=params)
             val_r   = _run_backtest_strategy(strategy, val, symbol, tf, param_overrides=params)
-            passed = (train_r["total_trades"] >= 10 and val_r["total_trades"] >= 5 and
+            passed = (train_r["total_trades"] >= min_train and val_r["total_trades"] >= min_val and
                       (train_r["profit_factor"] or 0) > 1.1 and (val_r["profit_factor"] or 0) > 1.1)
             results[strategy] = {
                 "status": "pass" if passed else "fail",

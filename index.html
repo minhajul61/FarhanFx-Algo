@@ -9093,6 +9093,10 @@ function botStrategyChange() {
     if (trailEl && parseFloat(trailEl.value) === 0) trailEl.value = '2.0';
     if (tpEl && parseFloat(tpEl.value) === 0) tpEl.value = '2.5';
   }
+  if (st === 'super_breakout') {
+    const tfEl = document.getElementById('bot-timeframe');
+    if (tfEl) tfEl.value = '4h';
+  }
 }
 
 function _gv(id, def, fn) {
