@@ -1954,6 +1954,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 <th style="padding:6px 8px;border-bottom:1px solid var(--border)">24h Volume</th>
                 <th style="padding:6px 8px;border-bottom:1px solid var(--border)">24h Change</th>
                 <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)">Approved Strategies (train PF / val PF)</th>
+                <th style="padding:6px 8px;border-bottom:1px solid var(--border)">Quick Start</th>
               </tr></thead>
               <tbody id="scr-results-tbody"></tbody>
             </table>
@@ -2078,7 +2079,10 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <div id="in-tab-dashboard">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
               <span id="in-dash-updated" style="font-size:10px;color:var(--text3)">Loading...</span>
-              <button class="sbtn" onclick="loadIndianDashboard()" style="font-size:9px;padding:2px 10px">↻ REFRESH ALL</button>
+              <div style="display:flex;gap:6px">
+                <button class="sbtn" id="in-purge-btn" onclick="purgeOffHoursTrades()" style="font-size:9px;padding:2px 10px;background:rgba(239,68,68,0.12);border-color:rgba(239,68,68,0.35);color:var(--red)">🗑 Market-Off Trades মুছো</button>
+                <button class="sbtn" onclick="loadIndianDashboard()" style="font-size:9px;padding:2px 10px">↻ REFRESH ALL</button>
+              </div>
             </div>
 
             <!-- Stat Tiles -->
@@ -2253,6 +2257,10 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 <div class="field" style="margin:0">
                   <label>Strategy</label>
                   <select id="in-optbot-strategy" class="sinput" style="width:100%">
+                    <optgroup label="── Price Action ──">
+                    <option value="pa_structure">🕯 PA Structure — Swing + Level + Volume</option>
+                    </optgroup>
+                    <optgroup label="── Indicator Based ──">
                     <option value="rsi">RSI Reversal</option>
                     <option value="orb">Opening Range Breakout</option>
                     <option value="macd_cross">MACD Cross</option>
@@ -2261,6 +2269,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                     <option value="rsi_divergence">RSI Divergence</option>
                     <option value="trend_breakout">Trend Breakout</option>
                     <option value="bos_choch">BOS/CHoCH</option>
+                    </optgroup>
                   </select>
                 </div>
                 <div class="field" style="margin:0">
@@ -2327,11 +2336,16 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 <div class="field" style="margin:0">
                   <label>Strategy</label>
                   <select id="in-bot-strategy" class="sinput" style="width:100%" onchange="indianBotStrategyChange()">
+                    <optgroup label="── Price Action ──">
+                    <option value="pa_structure" selected>🕯 PA Structure — Swing + Level + Volume</option>
+                    </optgroup>
+                    <optgroup label="── Indicator Based ──">
                     <option value="rsi">RSI Reversal</option>
                     <option value="macd_cross">MACD Cross</option>
                     <option value="bb_squeeze">BB Squeeze</option>
                     <option value="trend_breakout">Trend Breakout</option>
                     <option value="vwap_bands">VWAP Bands</option>
+                    </optgroup>
                     <optgroup label="── High Win Rate ──">
                     <option value="rsi_divergence">RSI Divergence ~62-70% WR</option>
                     <option value="vwap_rsi">VWAP + RSI Confluence ~68-75% WR</option>
@@ -8544,11 +8558,19 @@ async function runCoinScreener(force) {
                 + s.replace(/_/g,' ').toUpperCase() + ' (' + (v.train_pf||'?') + '/' + (v.val_pf||'?') + ')</span>';
             }).join('')
           : '<span style="color:var(--text3);font-size:11px">কোনোটাই pass করেনি</span>';
+        const quickBtns = c.approved_strategies.length
+          ? c.approved_strategies.map(function(s) {
+              return '<button onclick="screenerLaunchBot(\'' + c.symbol + '\',\'' + s + '\')" '
+                + 'style="display:block;width:100%;margin-bottom:4px;padding:3px 8px;background:var(--accent);border:none;color:#fff;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">'
+                + '▶ ' + s.replace(/_/g,' ').toUpperCase() + '</button>';
+            }).join('')
+          : '<span style="color:var(--text3);font-size:11px">—</span>';
         return '<tr style="border-bottom:1px solid var(--border)">'
           + '<td style="padding:6px 8px;color:var(--cyan);font-weight:700">' + c.base + '</td>'
           + '<td style="padding:6px 8px;text-align:center">' + volStr + '</td>'
           + '<td style="padding:6px 8px;text-align:center;color:' + chgColor + '">' + (chg>=0?'+':'') + chg + '%</td>'
           + '<td style="padding:6px 8px">' + approvedHtml + '</td>'
+          + '<td style="padding:6px 8px;min-width:110px">' + quickBtns + '</td>'
           + '</tr>';
       }).join('');
     }
@@ -8560,6 +8582,25 @@ async function runCoinScreener(force) {
     btn.textContent = '🔍 SCAN NOW'; btn.style.opacity = '1';
     if (loading) loading.style.display = 'none';
   }
+}
+
+function screenerLaunchBot(symbol, strategy) {
+  const exEl = document.getElementById('bot-exchange');
+  if (exEl) exEl.value = 'binance';
+  const symEl = document.getElementById('bot-symbol');
+  if (symEl) symEl.value = symbol;
+  const stratEl = document.getElementById('bot-strategy');
+  if (stratEl) {
+    stratEl.value = strategy;
+    if (typeof botStrategyChange === 'function') botStrategyChange();
+  }
+  const tradeBtn = document.getElementById('cst-trade');
+  if (tradeBtn) showCryptoTab('trade', tradeBtn);
+  setTimeout(function() {
+    const formEl = document.getElementById('bot-exchange');
+    if (formEl) formEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 250);
+  toast('Form pre-filled ✔ — amount সেট করে START BOT চাপুন');
 }
 
 // -- SUBSCRIPTION / PAYMENT PROOF (client self-service) --------------------
@@ -9562,6 +9603,20 @@ async function indianSearchScrip() {
 }
 
 let _inDashRefreshTimer = null;
+
+async function purgeOffHoursTrades() {
+  const btn = document.getElementById('in-purge-btn');
+  if (!confirm('Market বন্ধের সময়ের সব bot trade মুছে ফেলবেন?\n(শুধু demo trades — live orders এ কোনো effect নেই)')) return;
+  btn.disabled = true; btn.textContent = '⏳ মুছছে...';
+  try {
+    const r = await apiFetch('/api/indian/algo/purge_offhours_trades', { method: 'POST' });
+    if (r.error) { toastErr('Purge failed: ' + r.error); return; }
+    toast('✔ ' + r.removed + ' টা off-hours trade মোছা হয়েছে');
+    loadIndianDashboard(false);
+  } catch(e) { toastErr('Purge error: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = '🗑 Market-Off Trades মুছো'; }
+}
+
 async function loadIndianDashboard(autoRefresh=true) {
   document.getElementById('in-dash-updated').textContent = 'Loading...';
   const d = await apiFetch('/api/indian/dashboard');
@@ -9970,11 +10025,13 @@ function indianTab(tab) {
 }
 
 // ── INDIAN MARKET — ALGO BOTS ────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() { indianBotStrategyChange(); });
 function indianBotStrategyChange() {
   const st = document.getElementById('in-bot-strategy')?.value;
   const orbRow = document.getElementById('in-bot-orb-row');
   if (orbRow) orbRow.style.display = (st === 'orb') ? '' : 'none';
   const hints = {
+    pa_structure:   '🕯 Price Action Structure — তিনটা layer এর confluence:\n1. Swing structure: HH+HL = uptrend, LH+LL = downtrend\n2. Pattern: Pin Bar / Engulfing / IB False Breakout — key support/resistance এ\n3. Volume spike: signal candle এ average এর ১.৩x বেশি volume\nBUY: bullish pattern + (support zone OR uptrend) + volume. SELL: bearish pattern + (resistance OR downtrend) + volume.',
     rsi_divergence: 'RSI Divergence: price lower low + RSI higher low → BUY. Price higher high + RSI lower high → SELL. ~62-70% WR.',
     vwap_rsi:       'VWAP + RSI Confluence: price within 0.3% of VWAP + RSI < 40 → BUY; RSI > 60 → SELL. ~68-75% WR.',
     bb_rsi_strict:  'BB + RSI Strict: price at lower band + RSI ≤ 30 → BUY; upper band + RSI ≥ 70 → SELL. ~63-68% WR.',

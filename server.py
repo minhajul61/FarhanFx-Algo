@@ -1522,6 +1522,29 @@ def _check_21ema_bounce(closes, highs, lows, price, atr):
     return "NONE", f"Price not at 21 EMA ({ema:.2f})"
 
 
+def _swing_struct(highs, lows, window=3, lookback=50):
+    """Detect market structure from recent bars.
+    Returns (structure, swing_highs_list, swing_lows_list)
+    where structure is 'bull', 'bear', or 'range'."""
+    h = highs[-lookback:] if len(highs) >= lookback else highs
+    l = lows[-lookback:]  if len(lows)  >= lookback else lows
+    n = len(h)
+    sh, sl = [], []
+    for i in range(window, n - window):
+        if all(h[i] >= h[i - j] for j in range(1, window + 1)) and \
+           all(h[i] >= h[i + j] for j in range(1, window + 1)):
+            sh.append(h[i])
+        if all(l[i] <= l[i - j] for j in range(1, window + 1)) and \
+           all(l[i] <= l[i + j] for j in range(1, window + 1)):
+            sl.append(l[i])
+    if len(sh) >= 2 and len(sl) >= 2:
+        if sh[-1] > sh[-2] and sl[-1] > sl[-2]:
+            return 'bull', sh, sl
+        if sh[-1] < sh[-2] and sl[-1] < sl[-2]:
+            return 'bear', sh, sl
+    return 'range', sh, sl
+
+
 def _detect_price_action(opens, closes, highs, lows):
     """Detect candlestick patterns. Returns list of (name, direction, strength 0-1)."""
     patterns = []
@@ -2097,6 +2120,47 @@ def _get_bot_signal(bot, ohlcv):
         if std > 0 and price <= vwap - num_std * std:
             return "BUY"
         if std > 0 and price >= vwap + num_std * std:
+            return "SELL"
+
+    # ── PRICE ACTION STRUCTURE ───────────────────────────────────────────────
+    # Three-layer confluence: (1) market structure from swing highs/lows,
+    # (2) pattern at a key level, (3) volume spike for institutional confirmation.
+    # Designed for NSE equity/futures on 15m — avoid on crypto (no real edge
+    # there; this variant uses level proximity which suits regulated markets).
+    elif strategy == "pa_structure":
+        opens_a = [c[1] for c in ohlcv]
+        if len(closes) < 30:
+            return None
+        atr = _atr_calc(highs, lows, closes, 14)
+        if not atr:
+            return None
+
+        # 1. Market structure
+        struct, sh_vals, sl_vals = _swing_struct(highs, lows, window=3, lookback=50)
+        bot["last_pa_struct"] = struct
+
+        # 2. Is price at a key level? (within ATR*0.4 of last swing high/low)
+        price      = closes[-1]
+        level_tol  = atr * 0.4
+        at_sup = bool(sl_vals and abs(price - sl_vals[-1]) <= level_tol)
+        at_res = bool(sh_vals and abs(price - sh_vals[-1]) <= level_tol)
+
+        # 3. Candlestick pattern (Pin Bar ≥0.70, Engulfing ≥0.80, IB FBO ≥0.90)
+        pa       = _detect_price_action(opens_a, closes, highs, lows)
+        bull_pa  = [p for p in pa if p[1] == "BUY"  and p[2] >= 0.70]
+        bear_pa  = [p for p in pa if p[1] == "SELL" and p[2] >= 0.70]
+
+        # 4. Volume confirmation — signal candle ≥1.3x 20-bar average
+        avg_vol = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else 0
+        vol_ok  = avg_vol <= 0 or volumes[-1] >= avg_vol * 1.3
+
+        # BUY: pattern + (at support OR uptrend) + volume
+        if bull_pa and (at_sup or struct == 'bull') and vol_ok:
+            bot["last_pa_detail"] = bull_pa[0][0] + " | struct=" + struct + (" @sup" if at_sup else "")
+            return "BUY"
+        # SELL: pattern + (at resistance OR downtrend) + volume
+        if bear_pa and (at_res or struct == 'bear') and vol_ok:
+            bot["last_pa_detail"] = bear_pa[0][0] + " | struct=" + struct + (" @res" if at_res else "")
             return "SELL"
 
     # Donchian Channel breakout + long-term EMA trend filter. A well-
@@ -5050,11 +5114,25 @@ def _atm_option_symbol(underlying: str, direction: str, spot: float) -> str:
     return f"{underlying.upper()}{yy}{expiry_part}{atm}{direction}"
 
 
+def _indian_market_open() -> bool:
+    """True if NSE is currently open: Mon–Fri, 09:15–15:30 IST."""
+    from datetime import timezone, timedelta
+    ist = timezone(timedelta(hours=5, minutes=30))
+    now = datetime.now(ist)
+    if now.weekday() >= 5:          # Saturday or Sunday
+        return False
+    t = now.hour * 60 + now.minute
+    return 9 * 60 + 15 <= t <= 15 * 60 + 30
+
+
 def _indian_bot_tick(bot_id):
     bot = _indian_bots.get(bot_id)
     if not bot or bot["status"] != "active":
         return
     try:
+        if not _indian_market_open():
+            bot["last_error"] = "Market closed (NSE 09:15–15:30 IST, Mon–Fri)"
+            return   # finally block still fires → timer rescheduled
         is_opt = bot.get("options_bot", False)
         # For options bots, always fetch underlying index data (not the option symbol)
         fetch_sym = bot["symbol"]
@@ -5358,6 +5436,56 @@ def indian_algo_history(current_user: dict = Depends(_get_current_user)):
             rows.append(row)
     rows.sort(key=lambda r: r.get("time", ""), reverse=True)
     return rows
+
+
+@app.post("/api/indian/algo/purge_offhours_trades")
+def purge_offhours_trades(current_user: dict = Depends(_get_current_user)):
+    """Delete demo trades placed outside NSE market hours (09:15–15:30 IST Mon–Fri).
+    Reverses their PnL from demo_equity so the balance stays accurate."""
+    from datetime import timezone, timedelta
+    ist_offset = timedelta(hours=5, minutes=30)
+
+    # Server local → UTC offset (used to convert stored naive datetimes to IST)
+    utc_offset = datetime.now() - datetime.utcnow()
+
+    removed = 0
+    for bot in _indian_bots.values():
+        if bot.get("username") != current_user["username"]:
+            continue
+        clean = []
+        for tr in bot.get("trades", []):
+            keep = True
+            try:
+                ts_local = datetime.strptime(tr["time"], "%Y-%m-%d %H:%M")
+                ts_ist = ts_local - utc_offset + ist_offset
+                wd   = ts_ist.weekday()
+                mins = ts_ist.hour * 60 + ts_ist.minute
+                in_hours = wd < 5 and (9 * 60 + 15) <= mins <= (15 * 60 + 30)
+                if not in_hours:
+                    keep = False
+                    removed += 1
+                    # Reverse closed-trade PnL so demo_equity stays correct
+                    if tr.get("status") == "closed" and tr.get("pnl"):
+                        bot["demo_equity"] = round(
+                            bot.get("demo_equity", bot.get("demo_balance", 100000)) - tr["pnl"], 2
+                        )
+            except Exception:
+                pass  # unparseable time → keep it
+            if keep:
+                clean.append(tr)
+
+        bot["trades"] = clean
+
+        # If the current open position has no matching open trade, clear it
+        open_trade = next((t for t in clean if t.get("status") == "open"), None)
+        if not open_trade and bot.get("open_side"):
+            bot["open_side"]        = None
+            bot["open_entry_price"] = None
+            bot["open_peak"]        = None
+            bot["open_trough"]      = None
+
+    _save_indian_bots()
+    return {"removed": removed}
 
 
 if __name__ == "__main__":
