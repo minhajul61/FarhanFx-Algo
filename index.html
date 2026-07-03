@@ -9348,168 +9348,196 @@ async function loadIndianDashboard(autoRefresh=true) {
     </div>`).join('');
 
   // ── POSITIONS (Kotak live + bot demo open trades) ──
-  const posEl = document.getElementById('in-dash-positions');
-  const openBotTrades = (bs.all_trades||[]).filter(t=>t.status==='open');
-  if (!poses.length && !openBotTrades.length) {
-    posEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No open positions</div>';
-  } else {
-    const liveRows = poses.map(p=>{
-      const pnl=parseFloat(p.mtomPrs||p.urmtom||p.pnl||0);
-      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
-        <td style="padding:4px 6px;font-weight:700;color:var(--cyan)">${p.trdSym||p.symbol||'—'}</td>
-        <td style="padding:4px 6px">${p.flQty||p.qty||p.netQty||'—'}</td>
-        <td style="padding:4px 6px">₹${parseFloat(p.buyAmt||p.avgBuyPrice||0).toFixed(2)}</td>
-        <td style="padding:4px 6px">₹${parseFloat(p.ltp||p.lastPrice||0).toFixed(2)}</td>
-        <td style="padding:4px 6px;color:${pnl>=0?'var(--green)':'var(--red)'};font-weight:700">${pnl>=0?'+':''}₹${pnl.toFixed(2)}</td>
-        <td style="padding:4px 6px"><span style="font-size:8px;background:rgba(239,68,68,0.2);color:var(--red);padding:1px 4px;border-radius:3px">LIVE</span></td>
-      </tr>`;
-    });
-    const demoRows = openBotTrades.map(t=>{
-      const upnl=t.unrealized_pnl;
-      const pnlCell=upnl!=null?`<span style="color:${upnl>=0?'var(--green)':'var(--red)'};font-weight:700">${upnl>=0?'+':''}₹${upnl.toFixed(2)} ⚡</span>`:'—';
-      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
-        <td style="padding:4px 6px;font-weight:700;color:var(--cyan)">${t.symbol||'—'}</td>
-        <td style="padding:4px 6px">${t.amount||t.qty||'—'}</td>
-        <td style="padding:4px 6px">₹${parseFloat(t.price||0).toFixed(2)}</td>
-        <td style="padding:4px 6px;color:var(--text3)">${t.current_price?'₹'+parseFloat(t.current_price).toFixed(2):'—'}</td>
-        <td style="padding:4px 6px">${pnlCell}</td>
-        <td style="padding:4px 6px"><span style="font-size:8px;background:rgba(0,200,255,0.15);color:var(--cyan);padding:1px 4px;border-radius:3px">DEMO</span> ${t.strategy||''}</td>
-      </tr>`;
-    });
-    posEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:10px">
-      <thead><tr style="color:var(--text3)">${['SYMBOL','QTY','ENTRY ₹','LTP','P&L','TYPE'].map(h=>`<th style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:left">${h}</th>`).join('')}</tr></thead>
-      <tbody>${[...liveRows,...demoRows].join('')}</tbody></table>`;
-  }
+  try {
+    const posEl = document.getElementById('in-dash-positions');
+    const openBotTrades = (bs.all_trades||[]).filter(t=>t.status==='open');
+    if (!poses.length && !openBotTrades.length) {
+      posEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No open positions</div>';
+    } else {
+      const liveRows = poses.map(p=>{
+        const pnl=parseFloat(p.mtomPrs||p.urmtom||p.pnl||0);
+        return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+          <td style="padding:4px 6px;font-weight:700;color:var(--cyan)">${p.trdSym||p.symbol||'—'}</td>
+          <td style="padding:4px 6px">${p.flQty||p.qty||p.netQty||'—'}</td>
+          <td style="padding:4px 6px">&#8377;${parseFloat(p.buyAmt||p.avgBuyPrice||0).toFixed(2)}</td>
+          <td style="padding:4px 6px">&#8377;${parseFloat(p.ltp||p.lastPrice||0).toFixed(2)}</td>
+          <td style="padding:4px 6px;color:${pnl>=0?'var(--green)':'var(--red)'};font-weight:700">${pnl>=0?'+':''}&#8377;${pnl.toFixed(2)}</td>
+          <td style="padding:4px 6px"><span style="font-size:8px;background:rgba(239,68,68,0.2);color:var(--red);padding:1px 4px;border-radius:3px">LIVE</span></td>
+        </tr>`;
+      });
+      const demoRows = openBotTrades.map(t=>{
+        const upnl=t.unrealized_pnl;
+        const pnlCell=upnl!=null?`<span style="color:${upnl>=0?'var(--green)':'var(--red)'};font-weight:700">${upnl>=0?'+':''}&#8377;${Number(upnl).toFixed(2)} &#9889;</span>`:'—';
+        return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+          <td style="padding:4px 6px;font-weight:700;color:var(--cyan)">${t.symbol||'—'}</td>
+          <td style="padding:4px 6px">${t.amount||t.qty||'—'}</td>
+          <td style="padding:4px 6px">&#8377;${parseFloat(t.price||0).toFixed(2)}</td>
+          <td style="padding:4px 6px;color:var(--text3)">${t.current_price?'&#8377;'+parseFloat(t.current_price).toFixed(2):'—'}</td>
+          <td style="padding:4px 6px">${pnlCell}</td>
+          <td style="padding:4px 6px"><span style="font-size:8px;background:rgba(0,200,255,0.15);color:var(--cyan);padding:1px 4px;border-radius:3px">DEMO</span> ${t.strategy||''}</td>
+        </tr>`;
+      });
+      posEl.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:10px">'
+        +'<thead><tr style="color:var(--text3)">'+['SYMBOL','QTY','ENTRY','LTP','P&L','TYPE'].map(h=>'<th style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:left">'+h+'</th>').join('')+'</tr></thead>'
+        +'<tbody>'+[...liveRows,...demoRows].join('')+'</tbody></table>';
+    }
+  } catch(e) { console.error('POSITIONS error:',e); }
 
   // ── HOLDINGS ──
-  const hlds = d.holdings || [];
-  const holdEl = document.getElementById('in-dash-holdings');
-  if (!hlds.length) { holdEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No holdings</div>'; }
-  else {
-    const totalPnl = hlds.reduce((s,h)=>s+parseFloat(h.unrealisedPnl||h.pnl||0),0);
-    holdEl.innerHTML = `<div style="margin-bottom:8px;font-size:11px">Total Unrealised: <b style="color:${totalPnl>=0?'var(--green)':'var(--red)'}">${totalPnl>=0?'+':''}₹${totalPnl.toFixed(0)}</b></div>
-      <table style="width:100%;border-collapse:collapse;font-size:10px">
-        <thead><tr style="color:var(--text3)">${['SYMBOL','QTY','AVG','LTP','P&L%'].map(h=>`<th style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:left">${h}</th>`).join('')}</tr></thead>
-        <tbody>${hlds.slice(0,15).map(h=>{
-          const pnl=parseFloat(h.unrealisedPnl||h.pnl||0);
-          const avg=parseFloat(h.avgPrice||h.buyAvgPrice||0);
-          const ltp=parseFloat(h.ltp||h.lastPrice||0);
-          const pct=avg>0?((ltp-avg)/avg*100).toFixed(1):0;
-          return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
-            <td style="padding:4px 6px;font-weight:700">${h.TradingSymbol||h.symbol||'—'}</td>
-            <td style="padding:4px 6px">${h.Quantity||h.qty||'—'}</td>
-            <td style="padding:4px 6px">₹${avg.toFixed(2)}</td>
-            <td style="padding:4px 6px">₹${ltp.toFixed(2)}</td>
-            <td style="padding:4px 6px;color:${pnl>=0?'var(--green)':'var(--red)'}">${pct}%</td>
-          </tr>`;}).join('')}</tbody></table>`;
-  }
+  try {
+    const hlds = d.holdings || [];
+    const holdEl = document.getElementById('in-dash-holdings');
+    if (!hlds.length) { holdEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No holdings</div>'; }
+    else {
+      const totalPnl = hlds.reduce((s,h)=>s+parseFloat(h.unrealisedPnl||h.pnl||0),0);
+      const hRows = hlds.slice(0,15).map(h=>{
+        const pnl=parseFloat(h.unrealisedPnl||h.pnl||0);
+        const avg=parseFloat(h.avgPrice||h.buyAvgPrice||0);
+        const ltp=parseFloat(h.ltp||h.lastPrice||0);
+        const pct=avg>0?((ltp-avg)/avg*100).toFixed(1):0;
+        return '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">'
+          +'<td style="padding:4px 6px;font-weight:700">'+(h.TradingSymbol||h.symbol||'—')+'</td>'
+          +'<td style="padding:4px 6px">'+(h.Quantity||h.qty||'—')+'</td>'
+          +'<td style="padding:4px 6px">&#8377;'+avg.toFixed(2)+'</td>'
+          +'<td style="padding:4px 6px">&#8377;'+ltp.toFixed(2)+'</td>'
+          +'<td style="padding:4px 6px;color:'+(pnl>=0?'var(--green)':'var(--red)')+'">'+pct+'%</td>'
+          +'</tr>';
+      });
+      holdEl.innerHTML = '<div style="margin-bottom:8px;font-size:11px">Total Unrealised: <b style="color:'+(totalPnl>=0?'var(--green)':'var(--red)')+'">'+( totalPnl>=0?'+':'')+'&#8377;'+totalPnl.toFixed(0)+'</b></div>'
+        +'<table style="width:100%;border-collapse:collapse;font-size:10px">'
+        +'<thead><tr style="color:var(--text3)">'+['SYMBOL','QTY','AVG','LTP','P&L%'].map(h=>'<th style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:left">'+h+'</th>').join('')+'</tr></thead>'
+        +'<tbody>'+hRows.join('')+'</tbody></table>';
+    }
+  } catch(e) { console.error('HOLDINGS error:',e); }
 
   // ── ORDERS (Kotak live + today's bot trades) ──
-  const ords = d.orders || [];
-  const ordEl = document.getElementById('in-dash-orders');
-  const todayStr = new Date().toISOString().slice(0,10);
-  const botOrders = (bs.all_trades||[]).filter(t=>t.time&&t.time.startsWith(todayStr));
-  if (!ords.length && !botOrders.length) {
-    ordEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No orders today</div>';
-  } else {
-    const liveOrdRows = ords.slice(0,20).map(o=>{
-      const st=o.ordSt||o.status||'—';
-      const stColor=st.includes('complete')||st.includes('filled')?'var(--green)':st.includes('reject')||st.includes('cancel')?'var(--red)':'var(--amber)';
-      const tx=o.trnsTp||o.transactionType||'';
-      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
-        <td style="padding:4px 8px;color:var(--text3)">${(o.ordTm||'').slice(0,5)||'—'}</td>
-        <td style="padding:4px 8px;font-weight:700">${o.trdSym||o.symbol||'—'}</td>
-        <td style="padding:4px 8px;color:${tx==='B'?'var(--green)':'var(--red)'};font-weight:700">${tx==='B'?'BUY':'SELL'}</td>
-        <td style="padding:4px 8px">${o.qty||'—'}</td>
-        <td style="padding:4px 8px">₹${parseFloat(o.avgPrc||o.price||0).toFixed(2)}</td>
-        <td style="padding:4px 8px;color:${stColor};font-weight:700">${st}</td>
-        <td style="padding:4px 8px"><span style="font-size:8px;background:rgba(239,68,68,0.2);color:var(--red);padding:1px 4px;border-radius:3px">LIVE</span></td>
-      </tr>`;
-    });
-    const botOrdRows = botOrders.slice(0,20).map(t=>{
-      const pnl=t.pnl||t.unrealized_pnl||0;
-      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
-        <td style="padding:4px 8px;color:var(--text3)">${(t.time||'').slice(11,16)||'—'}</td>
-        <td style="padding:4px 8px;font-weight:700">${t.symbol||'—'}</td>
-        <td style="padding:4px 8px;color:${t.signal==='BUY'?'var(--green)':'var(--red)'};font-weight:700">${t.signal||'—'}</td>
-        <td style="padding:4px 8px">${t.amount||t.qty||'—'}</td>
-        <td style="padding:4px 8px">₹${parseFloat(t.price||0).toFixed(2)}</td>
-        <td style="padding:4px 8px;color:${t.status==='open'?'var(--amber)':'var(--text3)'}">${t.status||'—'}</td>
-        <td style="padding:4px 8px"><span style="font-size:8px;background:rgba(0,200,255,0.15);color:var(--cyan);padding:1px 4px;border-radius:3px">DEMO</span></td>
-      </tr>`;
-    });
-    ordEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:10px;min-width:580px">
-      <thead><tr style="color:var(--text3)">${['TIME','SYMBOL','TYPE','QTY','PRICE','STATUS','MODE'].map(h=>`<th style="padding:4px 8px;border-bottom:1px solid var(--border);text-align:left">${h}</th>`).join('')}</tr></thead>
-      <tbody>${[...liveOrdRows,...botOrdRows].join('')}</tbody></table>`;
-  }
+  try {
+    const ords = d.orders || [];
+    const ordEl = document.getElementById('in-dash-orders');
+    const _now = new Date();
+    const todayStr = _now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0')+'-'+String(_now.getDate()).padStart(2,'0');
+    const allBotTrades = bs.all_trades || [];
+    const botOrders = allBotTrades.filter(function(t){ return t && t.time && String(t.time).slice(0,10)===todayStr; });
+    if (!ords.length && !botOrders.length) {
+      ordEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No orders today</div>';
+    } else {
+      const liveOrdRows = ords.slice(0,20).map(function(o){
+        const st=String(o.ordSt||o.status||'—');
+        const stColor=st.toLowerCase().includes('complete')||st.toLowerCase().includes('filled')?'var(--green)':st.toLowerCase().includes('reject')||st.toLowerCase().includes('cancel')?'var(--red)':'var(--amber)';
+        const tx=String(o.trnsTp||o.transactionType||'');
+        return '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">'
+          +'<td style="padding:4px 8px;color:var(--text3)">'+String(o.ordTm||'—').slice(0,5)+'</td>'
+          +'<td style="padding:4px 8px;font-weight:700">'+(o.trdSym||o.symbol||'—')+'</td>'
+          +'<td style="padding:4px 8px;color:'+(tx==='B'?'var(--green)':'var(--red)')+';font-weight:700">'+(tx==='B'?'BUY':'SELL')+'</td>'
+          +'<td style="padding:4px 8px">'+(o.qty||'—')+'</td>'
+          +'<td style="padding:4px 8px">&#8377;'+parseFloat(o.avgPrc||o.price||0).toFixed(2)+'</td>'
+          +'<td style="padding:4px 8px;color:'+stColor+';font-weight:700">'+st+'</td>'
+          +'<td style="padding:4px 8px"><span style="font-size:8px;background:rgba(239,68,68,0.2);color:var(--red);padding:1px 4px;border-radius:3px">LIVE</span></td>'
+          +'</tr>';
+      });
+      const botOrdRows = botOrders.slice(0,20).map(function(t){
+        const sig=String(t.signal||'—');
+        const tst=String(t.status||'—');
+        return '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">'
+          +'<td style="padding:4px 8px;color:var(--text3)">'+String(t.time||'—').slice(11,16)+'</td>'
+          +'<td style="padding:4px 8px;font-weight:700">'+(t.symbol||'—')+'</td>'
+          +'<td style="padding:4px 8px;color:'+(sig==='BUY'?'var(--green)':'var(--red)')+';font-weight:700">'+sig+'</td>'
+          +'<td style="padding:4px 8px">'+(t.amount||t.qty||'—')+'</td>'
+          +'<td style="padding:4px 8px">&#8377;'+parseFloat(t.price||0).toFixed(2)+'</td>'
+          +'<td style="padding:4px 8px;color:'+(tst==='open'?'var(--amber)':'var(--text3)')+'">'+tst+'</td>'
+          +'<td style="padding:4px 8px"><span style="font-size:8px;background:rgba(0,200,255,0.15);color:var(--cyan);padding:1px 4px;border-radius:3px">DEMO</span></td>'
+          +'</tr>';
+      });
+      ordEl.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:10px;min-width:580px">'
+        +'<thead><tr style="color:var(--text3)">'+['TIME','SYMBOL','TYPE','QTY','PRICE','STATUS','MODE'].map(h=>'<th style="padding:4px 8px;border-bottom:1px solid var(--border);text-align:left">'+h+'</th>').join('')+'</tr></thead>'
+        +'<tbody>'+[...liveOrdRows,...botOrdRows].join('')+'</tbody></table>';
+    }
+  } catch(e) { console.error('ORDERS error:',e); document.getElementById('in-dash-orders').innerHTML='<div style="color:var(--red);font-size:10px;padding:8px">Orders render error: '+e.message+'</div>'; }
 
   // ── ACTIVE BOTS ──
-  const botsEl = document.getElementById('in-dash-bots');
-  const bots = d.bots || [];
-  if (!bots.length) { botsEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No bots created</div>'; }
-  else {
-    botsEl.innerHTML = bots.map(b => {
-      const pnl = (b.demo_equity||b.demo_balance||0) - (b.demo_balance||0);
-      const isOpt = b.options_bot;
-      return `<div style="border:1px solid ${b.status==='active'?'rgba(34,197,94,0.3)':'rgba(255,255,255,0.08)'};border-radius:8px;padding:8px 10px;margin-bottom:6px">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-weight:700;font-size:11px">${isOpt?'⚡':'🤖'} ${b.symbol} <span style="color:var(--text3);font-weight:400">${b.strategy}</span></span>
-          <span style="font-size:9px;padding:2px 6px;border-radius:4px;background:${b.status==='active'?'rgba(34,197,94,0.15)':'rgba(255,255,255,0.06)'};color:${b.status==='active'?'var(--green)':'var(--text3)'}">${b.status?.toUpperCase()}</span>
-        </div>
-        <div style="display:flex;gap:12px;margin-top:5px;font-size:10px;color:var(--text3)">
-          <span>TF: <b style="color:var(--text2)">${b.timeframe}</b></span>
-          <span>Mode: <b style="color:var(--${b.mode==='live'?'red':'cyan'})">${b.mode}</b></span>
-          <span>Trades: <b style="color:var(--text2)">${(b.trades||[]).length}</b></span>
-          <span>P&L: <b style="color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>=0?'+':''}₹${pnl.toFixed(0)}</b></span>
-        </div>
-        ${b.last_signal?`<div style="font-size:9px;margin-top:4px;color:var(--text3)">Last: <b style="color:${b.last_signal==='BUY'?'var(--green)':'var(--red)'}">${b.last_signal}</b> @ ${b.last_run||'—'}</div>`:''}
-      </div>`;
-    }).join('');
-  }
+  try {
+    const botsEl = document.getElementById('in-dash-bots');
+    const bots = d.bots || [];
+    if (!bots.length) {
+      botsEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No bots created</div>';
+    } else {
+      botsEl.innerHTML = bots.map(function(b){
+        const bPnl = parseFloat(b.demo_equity||b.demo_balance||0) - parseFloat(b.demo_balance||0);
+        const isOpt = b.options_bot ? true : false;
+        const bSt = String(b.status||'stopped');
+        const bSig = String(b.last_signal||'');
+        return '<div style="border:1px solid '+(bSt==='active'?'rgba(34,197,94,0.3)':'rgba(255,255,255,0.08)')+';border-radius:8px;padding:8px 10px;margin-bottom:6px">'
+          +'<div style="display:flex;justify-content:space-between;align-items:center">'
+          +'<span style="font-weight:700;font-size:11px">'+(isOpt?'&#9889;':'&#129302;')+' '+(b.symbol||'?')+' <span style="color:var(--text3);font-weight:400">'+(b.strategy||'')+'</span></span>'
+          +'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:'+(bSt==='active'?'rgba(34,197,94,0.15)':'rgba(255,255,255,0.06)')+';color:'+(bSt==='active'?'var(--green)':'var(--text3)')+'">'+bSt.toUpperCase()+'</span>'
+          +'</div>'
+          +'<div style="display:flex;gap:12px;margin-top:5px;font-size:10px;color:var(--text3)">'
+          +'<span>TF: <b style="color:var(--text2)">'+(b.timeframe||'—')+'</b></span>'
+          +'<span>Mode: <b style="color:var(--'+(b.mode==='live'?'red':'cyan')+')">'+(b.mode||'demo')+'</b></span>'
+          +'<span>Trades: <b style="color:var(--text2)">'+((b.trades||[]).length)+'</b></span>'
+          +'<span>P&L: <b style="color:'+(bPnl>=0?'var(--green)':'var(--red)')+'">'+( bPnl>=0?'+':'')+'&#8377;'+bPnl.toFixed(0)+'</b></span>'
+          +'</div>'
+          +(bSig?'<div style="font-size:9px;margin-top:4px;color:var(--text3)">Last: <b style="color:'+(bSig==='BUY'?'var(--green)':'var(--red)')+'">'+bSig+'</b> @ '+(b.last_run||'—')+'</div>':'')
+          +'</div>';
+      }).join('');
+    }
+  } catch(e) { console.error('ACTIVE BOTS error:',e); document.getElementById('in-dash-bots').innerHTML='<div style="color:var(--red);font-size:10px;padding:8px">Bots render error: '+e.message+'</div>'; }
 
   // ── BOT PERFORMANCE ──
-  const perfEl = document.getElementById('in-dash-perf');
-  const upnl = bs.unrealized_pnl || 0;
-  const perfItems = [
-    ['Total Bots', bs.total||0, 'var(--text2)'],
-    ['Active', bs.active||0, 'var(--green)'],
-    ['Total Trades', bs.trades||0, 'var(--text2)'],
-    ['Wins', bs.wins||0, 'var(--green)'],
-    ['Win Rate', (bs.win_rate||0)+'%', (bs.win_rate||0)>=50?'var(--green)':'var(--red)'],
-    ['Closed P&L', (bs.total_pnl>=0?'₹+':'₹')+(bs.total_pnl||0).toFixed(2), (bs.total_pnl||0)>=0?'var(--green)':'var(--red)'],
-    ['Live P&L ⚡', (upnl>=0?'₹+':'₹')+upnl.toFixed(2), upnl>=0?'var(--green)':'var(--red)'],
-    ['Total P&L', (bs.total_pnl+upnl>=0?'₹+':'₹')+(bs.total_pnl+upnl).toFixed(2), (bs.total_pnl+upnl)>=0?'var(--green)':'var(--red)'],
-  ];
-  perfEl.innerHTML = perfItems.map(([label,val,color])=>`
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
-      <span style="font-size:11px;color:var(--text3)">${label}</span>
-      <span style="font-size:13px;font-weight:800;color:${color}">${val}</span>
-    </div>`).join('');
+  try {
+    const perfEl = document.getElementById('in-dash-perf');
+    const upnl = parseFloat(bs.unrealized_pnl||0);
+    const closedPnl = parseFloat(bs.total_pnl||0);
+    const perfItems = [
+      ['Total Bots', bs.total||0, 'var(--text2)'],
+      ['Active', bs.active||0, 'var(--green)'],
+      ['Total Trades', bs.trades||0, 'var(--text2)'],
+      ['Wins', bs.wins||0, 'var(--green)'],
+      ['Win Rate', (bs.win_rate||0)+'%', (bs.win_rate||0)>=50?'var(--green)':'var(--red)'],
+      ['Closed P&L', (closedPnl>=0?'&#8377;+':'&#8377;')+closedPnl.toFixed(2), closedPnl>=0?'var(--green)':'var(--red)'],
+      ['Live P&L &#9889;', (upnl>=0?'&#8377;+':'&#8377;')+upnl.toFixed(2), upnl>=0?'var(--green)':'var(--red)'],
+      ['Total P&L', ((closedPnl+upnl)>=0?'&#8377;+':'&#8377;')+(closedPnl+upnl).toFixed(2), (closedPnl+upnl)>=0?'var(--green)':'var(--red)'],
+    ];
+    perfEl.innerHTML = perfItems.map(function(item){
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.05)">'
+        +'<span style="font-size:11px;color:var(--text3)">'+item[0]+'</span>'
+        +'<span style="font-size:13px;font-weight:800;color:'+item[2]+'">'+item[1]+'</span>'
+        +'</div>';
+    }).join('');
+  } catch(e) { console.error('BOT PERFORMANCE error:',e); document.getElementById('in-dash-perf').innerHTML='<div style="color:var(--red);font-size:10px;padding:8px">Perf render error: '+e.message+'</div>'; }
 
   // ── ALL BOT TRADES ──
-  const trEl = document.getElementById('in-dash-trades');
-  const allTr = bs.all_trades || [];
-  if (!allTr.length) { trEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No trades yet</div>'; }
-  else {
-    trEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:10px;min-width:600px">
-      <thead><tr style="color:var(--text3)">${['TIME','MODE','SIGNAL','ENTRY ₹','EXIT ₹','P&L','STATUS','REASON'].map(h=>`<th style="padding:4px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap">${h}</th>`).join('')}</tr></thead>
-      <tbody>${allTr.map(t=>{
-        const pnl=t.pnl||0; const st=t.status||'open';
+  try {
+    const trEl = document.getElementById('in-dash-trades');
+    const allTr = bs.all_trades || [];
+    if (!allTr.length) {
+      trEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No trades yet</div>';
+    } else {
+      const trRows = allTr.map(function(t){
+        const pnl=parseFloat(t.pnl||0);
+        const st=String(t.status||'open');
         const upnl=t.unrealized_pnl;
+        const sig=String(t.signal||'—');
+        const md=String(t.mode||'demo');
         const pnlDisplay = st==='open'
-          ? (upnl!=null ? `<span style="color:${upnl>=0?'var(--green)':'var(--red)'};font-weight:700">${upnl>=0?'+':''}₹${upnl.toFixed(2)} ⚡</span>` : '—')
-          : `<span style="color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>=0?'+':''}₹${pnl.toFixed(2)}</span>`;
-        return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
-          <td style="padding:4px 8px;color:var(--text3);white-space:nowrap">${t.time||'—'}</td>
-          <td style="padding:4px 8px"><span style="padding:1px 5px;border-radius:3px;background:${t.mode==='live'?'rgba(239,68,68,0.15)':'rgba(0,200,255,0.1)'};color:${t.mode==='live'?'var(--red)':'var(--cyan)'};font-size:9px">${t.mode?.toUpperCase()||'—'}</span></td>
-          <td style="padding:4px 8px;color:${t.signal==='BUY'?'var(--green)':'var(--red)'};font-weight:700">${t.signal||'—'}</td>
-          <td style="padding:4px 8px">₹${parseFloat(t.price||0).toFixed(2)}</td>
-          <td style="padding:4px 8px">${t.exit_price?'₹'+parseFloat(t.exit_price).toFixed(2):'<span style="color:var(--amber)">open</span>'}</td>
-          <td style="padding:4px 8px;font-weight:700">${pnlDisplay}</td>
-          <td style="padding:4px 8px;color:${st==='open'?'var(--amber)':'var(--text3)'};text-transform:capitalize">${st}</td>
-          <td style="padding:4px 8px;color:var(--text3)">${t.exit_reason||'—'}</td>
-        </tr>`;}).join('')}</tbody></table>`;
-  }
+          ? (upnl!=null ? '<span style="color:'+(upnl>=0?'var(--green)':'var(--red)')+';font-weight:700">'+(upnl>=0?'+':'')+'&#8377;'+Number(upnl).toFixed(2)+' &#9889;</span>' : '—')
+          : '<span style="color:'+(pnl>=0?'var(--green)':'var(--red)')+'">'+( pnl>=0?'+':'')+'&#8377;'+pnl.toFixed(2)+'</span>';
+        return '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">'
+          +'<td style="padding:4px 8px;color:var(--text3);white-space:nowrap">'+(t.time||'—')+'</td>'
+          +'<td style="padding:4px 8px"><span style="padding:1px 5px;border-radius:3px;background:'+(md==='live'?'rgba(239,68,68,0.15)':'rgba(0,200,255,0.1)')+';color:'+(md==='live'?'var(--red)':'var(--cyan)')+';font-size:9px">'+md.toUpperCase()+'</span></td>'
+          +'<td style="padding:4px 8px;color:'+(sig==='BUY'?'var(--green)':'var(--red)')+';font-weight:700">'+sig+'</td>'
+          +'<td style="padding:4px 8px">&#8377;'+parseFloat(t.price||0).toFixed(2)+'</td>'
+          +'<td style="padding:4px 8px">'+(t.exit_price?'&#8377;'+parseFloat(t.exit_price).toFixed(2):'<span style="color:var(--amber)">open</span>')+'</td>'
+          +'<td style="padding:4px 8px;font-weight:700">'+pnlDisplay+'</td>'
+          +'<td style="padding:4px 8px;color:'+(st==='open'?'var(--amber)':'var(--text3)')+';text-transform:capitalize">'+st+'</td>'
+          +'<td style="padding:4px 8px;color:var(--text3)">'+(t.exit_reason||'—')+'</td>'
+          +'</tr>';
+      });
+      trEl.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:10px;min-width:600px">'
+        +'<thead><tr style="color:var(--text3)">'+['TIME','MODE','SIGNAL','ENTRY','EXIT','P&L','STATUS','REASON'].map(h=>'<th style="padding:4px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap">'+h+'</th>').join('')+'</tr></thead>'
+        +'<tbody>'+trRows.join('')+'</tbody></table>';
+    }
+  } catch(e) { console.error('ALL TRADES error:',e); document.getElementById('in-dash-trades').innerHTML='<div style="color:var(--red);font-size:10px;padding:8px">Trades render error: '+e.message+'</div>'; }
 }
 
 async function indianOptBotStart() {
