@@ -1061,15 +1061,159 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
         <!-- Sub-tab navigation -->
         <div class="crypto-sub-tabs">
-          <button class="crypto-sub-tab active" id="cst-trade"     onclick="showCryptoTab('trade',this)">TRADE</button>
-          <button class="crypto-sub-tab" id="cst-algo"      onclick="showCryptoTab('algo',this)">ALGO BOTS (MY BOTS)</button>
+          <button class="crypto-sub-tab active" id="cst-dashboard"  onclick="showCryptoTab('dashboard',this)">&#128202; DASHBOARD</button>
+          <button class="crypto-sub-tab" id="cst-trade"     onclick="showCryptoTab('trade',this)">TRADE</button>
+          <button class="crypto-sub-tab" id="cst-algo"      onclick="showCryptoTab('algo',this)">ALGO BOTS</button>
           <button class="crypto-sub-tab" id="cst-backtest"  onclick="showCryptoTab('backtest',this)">BACKTEST</button>
           <button class="crypto-sub-tab" id="cst-subscription" onclick="showCryptoTab('subscription',this)">SUBSCRIPTION</button>
           <button class="crypto-sub-tab" id="cst-payhistory"   onclick="showCryptoTab('payhistory',this)">PAYMENT HISTORY</button>
         </div>
 
         <!-- ═══ DASHBOARD SUB-TAB ════════════════════════════════ -->
-                <!-- ═══ TRADE SUB-TAB ════════════════════════════════════ -->
+        <div class="crypto-sub-page" id="csp-dashboard">
+          <!-- KPI Tiles -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:14px">
+            <div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(0,0,0,0.3));border:1px solid rgba(139,92,246,0.25);border-radius:10px;padding:14px 12px;text-align:center">
+              <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">TOTAL BALANCE</div>
+              <div id="cxd-total-usdt" style="font-size:20px;font-weight:800;color:var(--green)">$—</div>
+              <div style="font-size:9px;color:var(--text3);margin-top:3px">USDT across exchanges</div>
+            </div>
+            <div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(0,0,0,0.3));border:1px solid rgba(139,92,246,0.25);border-radius:10px;padding:14px 12px;text-align:center">
+              <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">UNREALIZED PNL</div>
+              <div id="cxd-open-pnl" style="font-size:20px;font-weight:800;color:var(--text2)">$—</div>
+              <div style="font-size:9px;color:var(--text3);margin-top:3px">Open positions</div>
+            </div>
+            <div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(0,0,0,0.3));border:1px solid rgba(139,92,246,0.25);border-radius:10px;padding:14px 12px;text-align:center">
+              <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">OPEN POSITIONS</div>
+              <div id="cxd-pos-count" style="font-size:20px;font-weight:800;color:var(--amber)">0</div>
+              <div style="font-size:9px;color:var(--text3);margin-top:3px">Across all exchanges</div>
+            </div>
+            <div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(0,0,0,0.3));border:1px solid rgba(139,92,246,0.25);border-radius:10px;padding:14px 12px;text-align:center">
+              <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">ACTIVE BOTS</div>
+              <div id="cxd-bot-count" style="font-size:20px;font-weight:800;color:var(--cyan)">0</div>
+              <div style="font-size:9px;color:var(--text3);margin-top:3px">Running strategies</div>
+            </div>
+          </div>
+          <!-- Exchange cards -->
+          <div id="cxd-empty-state" style="display:none;text-align:center;padding:30px 20px;background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.15);border-radius:12px;margin-bottom:14px">
+            <div style="font-size:13px;color:var(--text2);margin-bottom:12px">No exchange connected — connect one to see live data.</div>
+            <button onclick="openCxModal()" style="padding:10px 24px;background:var(--cyan);border:none;color:#000;font-weight:700;border-radius:6px;font-family:var(--font);font-size:12px;cursor:pointer">CONNECT EXCHANGE</button>
+          </div>
+          <div id="cxd-cards-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">
+            <div id="cxd-card-binance" style="display:none;background:rgba(0,0,0,0.25);border:1px solid rgba(240,185,11,0.3);border-radius:10px;padding:12px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                <span class="cp-dot" id="cxd-dot-binance"></span>
+                <span style="font-size:11px;font-weight:700;color:#f0b90b;letter-spacing:1px">BINANCE</span>
+                <span style="font-size:9px;color:var(--text3)">USDM Futures</span>
+              </div>
+              <div id="cxd-inner-binance" style="font-size:11px;color:var(--text3)">Loading...</div>
+            </div>
+            <div id="cxd-card-bybit" style="display:none;background:rgba(0,0,0,0.25);border:1px solid rgba(255,100,0,0.3);border-radius:10px;padding:12px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                <span class="cp-dot" id="cxd-dot-bybit"></span>
+                <span style="font-size:11px;font-weight:700;color:#ff6400;letter-spacing:1px">BYBIT</span>
+                <span style="font-size:9px;color:var(--text3)">Linear Perp</span>
+              </div>
+              <div id="cxd-inner-bybit" style="font-size:11px;color:var(--text3)">Loading...</div>
+            </div>
+            <div id="cxd-card-coinswitch" style="display:none;background:rgba(0,0,0,0.25);border:1px solid rgba(0,200,150,0.3);border-radius:10px;padding:12px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                <span class="cp-dot" id="cxd-dot-coinswitch"></span>
+                <span style="font-size:11px;font-weight:700;color:#00c896;letter-spacing:1px">COINSWITCH</span>
+                <span style="font-size:9px;color:var(--text3)">Futures</span>
+              </div>
+              <div id="cxd-inner-coinswitch" style="font-size:11px;color:var(--text3)">Loading...</div>
+            </div>
+          </div>
+          <!-- Open Positions table -->
+          <div class="panel" style="margin-bottom:14px">
+            <div class="panel-title">&#128275; OPEN POSITIONS <span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:8px">Live from exchange · 10s refresh</span></div>
+            <div style="overflow-x:auto;max-height:220px;overflow-y:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:640px">
+                <thead><tr style="color:var(--text3)">
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">EXCHANGE</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">SYMBOL</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">SIDE</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">SIZE</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">ENTRY</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">MARK</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">LEV</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">PNL $</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">PNL %</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">CLOSE</th>
+                </tr></thead>
+                <tbody id="cxd-pos-tbody">
+                  <tr><td colspan="10" style="text-align:center;color:var(--text3);padding:20px">No open positions</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <!-- Bot Signals -->
+          <div class="panel" style="margin-bottom:14px">
+            <div class="panel-title">&#9889; LIVE BOT SIGNALS <span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:8px">Last 2 signals per active bot</span></div>
+            <div id="cxd-signals" style="max-height:200px;overflow-y:auto;padding-top:4px">
+              <span style="color:var(--text3);font-size:12px">No signals yet. Start an Algo Bot to see live signals here.</span>
+            </div>
+          </div>
+          <!-- Trade History Report -->
+          <div class="panel">
+            <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+              <span>&#128203; TRADE HISTORY REPORT</span>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <select id="rpt-exchange" onchange="cryptoLoadReports()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-family:var(--font);font-size:11px">
+                  <option value="binance">Binance</option>
+                  <option value="bybit">Bybit</option>
+                  <option value="coinswitch">CoinSwitch</option>
+                </select>
+                <input type="text" id="rpt-symbol" value="BTC/USDT:USDT" placeholder="Symbol" onchange="cryptoLoadReports()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-family:var(--font);font-size:11px;width:140px"/>
+                <select id="rpt-limit" onchange="cryptoLoadReports()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-family:var(--font);font-size:11px">
+                  <option value="50">50 trades</option>
+                  <option value="100" selected>100 trades</option>
+                  <option value="200">200 trades</option>
+                  <option value="500">500 trades</option>
+                </select>
+                <button class="sbtn" onclick="cryptoLoadReports()" style="font-size:10px;padding:5px 12px">&#128260; REFRESH</button>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
+              <div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px">
+                <div style="font-size:9px;color:var(--text3);margin-bottom:4px">NET PNL</div>
+                <div id="rpt-net-pnl" style="font-size:16px;font-weight:800;color:var(--text2)">—</div>
+              </div>
+              <div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px">
+                <div style="font-size:9px;color:var(--text3);margin-bottom:4px">WIN RATE</div>
+                <div id="rpt-win-rate" style="font-size:16px;font-weight:800;color:var(--text2)">—</div>
+              </div>
+              <div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px">
+                <div style="font-size:9px;color:var(--text3);margin-bottom:4px">PROFIT FACTOR</div>
+                <div id="rpt-profit-factor" style="font-size:16px;font-weight:800;color:var(--text2)">—</div>
+              </div>
+              <div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px">
+                <div style="font-size:9px;color:var(--text3);margin-bottom:4px">TOTAL TRADES</div>
+                <div id="rpt-total-trades" style="font-size:16px;font-weight:800;color:var(--text2)">—</div>
+              </div>
+            </div>
+            <div style="height:160px;margin-bottom:14px"><canvas id="rpt-monthly-chart"></canvas></div>
+            <div style="overflow-x:auto;max-height:280px;overflow-y:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:540px">
+                <thead><tr style="color:var(--text3)">
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">TIME</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">SYMBOL</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">SIDE</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">QTY</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">PRICE</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">REALIZED PNL</th>
+                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">FEE</th>
+                </tr></thead>
+                <tbody id="rpt-trades-tbody">
+                  <tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px">Select exchange &amp; symbol then click Refresh</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div><!-- end csp-dashboard -->
+
+        <!-- ═══ TRADE SUB-TAB ════════════════════════════════════ -->
         <div class="crypto-sub-page" id="csp-trade" style="display:none">
 
           <!-- Empty state — shown only when no exchange is connected yet -->
@@ -7348,7 +7492,7 @@ async function cryptoInit() {
   _clearCryptoTimers();
   await cryptoCheckStatus();
   cryptoLoadMarkets();   // don't await — markets can load in background
-  showCryptoTab('trade', document.getElementById('cst-trade'));
+  showCryptoTab('dashboard', document.getElementById('cst-dashboard'));
 }
 
 // Telegram signal bot is its own top-level page now (was a panel inside
