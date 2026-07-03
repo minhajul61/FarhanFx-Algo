@@ -448,6 +448,7 @@ def admin_restart(admin: dict = Depends(_require_admin)):
                     f'@echo off\r\n'
                     f'timeout /t 3 /nobreak >nul\r\n'
                     f'cd /d "{cwd}"\r\n'
+                    f'git pull\r\n'
                     f'start "" python server.py\r\n'
                     f'del "%~f0"\r\n'
                 )
