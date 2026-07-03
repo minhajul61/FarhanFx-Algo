@@ -433,6 +433,18 @@ def admin_reject_payment(request_id: str, admin: dict = Depends(_require_admin))
     return {"success": True}
 
 
+@app.post("/api/admin/restart")
+def admin_restart(admin: dict = Depends(_require_admin)):
+    """Restart the server process in-place (admin only)."""
+    import sys, os
+    def _do():
+        import time
+        time.sleep(1)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    threading.Thread(target=_do, daemon=False).start()
+    return {"status": "restarting"}
+
+
 # ── CRYPTO EXCHANGE (Binance Futures + Bybit Perpetual + CoinSwitch) ────────────
 import urllib.parse as _urlparse
 import requests as _requests
