@@ -1660,6 +1660,9 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                   <option value="vwap_rsi">VWAP + RSI Confluence — ~68-75% WR</option>
                   <option value="bb_rsi_strict">BB + RSI Strict — ~63-68% WR</option>
                   <option value="orb">Opening Range Breakout (ORB) — ~65-75% WR</option>
+                  <option value="bpr">BPR Balanced Price Range — PF 4.43, 71% WR</option>
+                  <option value="fibonacci_retracement">Fibonacci Golden Zone — PF 2.93, 62% WR</option>
+                  <option value="inducement_continuation">Inducement Continuation — PF 1.74, 55% WR</option>
                 </select>
               </div>
               <div class="field" style="margin-bottom:8px">
@@ -1698,6 +1701,17 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                   <option value="vwap_rsi">🎯 VWAP + RSI Confluence — ~68-75% WR</option>
                   <option value="bb_rsi_strict">🏹 BB + RSI Strict — ~63-68% WR</option>
                   <option value="orb">🚀 Opening Range Breakout (ORB) — ~65-75% WR</option>
+                  </optgroup>
+                  <optgroup label="── SMC / ICT (Course-Validated) ──">
+                  <option value="bpr">⚡ BPR — Balanced Price Range — PF 4.43, 71% WR (4h)</option>
+                  <option value="fibonacci_retracement">📐 Fibonacci Golden Zone (0.382–0.618) — PF 2.93, 62% WR (4h)</option>
+                  <option value="inducement_continuation">🔁 Inducement Continuation — PF 1.74, 55% WR (1h)</option>
+                  <option value="fvg">🕳 Fair Value Gap (FVG) — SMC imbalance fill</option>
+                  <option value="ifvg">🔄 Inverse FVG — violated gap flip zone</option>
+                  <option value="liquidity_sweep">💧 Liquidity Sweep Reversal — stop hunt trap</option>
+                  <option value="ob_fvg">🧲 Order Block + FVG Confluence — 65-68% WR</option>
+                  <option value="bos_choch">📊 BOS / CHoCH — structure break & reversal</option>
+                  <option value="silver_bullet">🎯 Silver Bullet (ICT) — FVG in kill zone</option>
                   </optgroup>
                 </select>
               </div>
@@ -9032,6 +9046,18 @@ const _strategyHints = {
   bb_rsi_strict: 'BB + RSI Strict — price tags the lower BB AND RSI ≤ 30 → BUY; upper BB AND RSI ≥ 70 → SELL. Stricter than bb_squeeze (no volume filter, tighter RSI threshold). ~63-68% WR.',
   orb:         'Opening Range Breakout — price range from the first 30 min after open sets the ORB high/low. Breakout above range → BUY, breakdown below → SELL. Best on Indian equities 9:15–9:45 AM IST. ~65-75% WR.',
   super_breakout: 'Booming Bulls Crypto Super Breakout — 200 EMA consolidation box (20 bars, ATR×5.5) with 200 EMA inside. Big candle (1.5× avg range) breakout above/below box → entry. Hard SL at EMA18/50 level; EMA18 trailing exit when profit ≥ 3%. Backtest BTC 4h 1yr: 24 trades, 58% WR, PF 2.77, DD 0.59%. Best on 4h timeframe.',
+  fvg:             'Fair Value Gap (FVG) — 3-candle imbalance: candle[i-2] high < candle[i] low (bull) or candle[i-2] low > candle[i] high (bear). Price revisits the gap to fill the imbalance. SMC core concept. Works best on 1h-4h.',
+  ifvg:            'Inverse FVG — a previously formed FVG that price has since violated (traded through). The violated gap flips polarity: former support becomes resistance and vice versa. Stronger than a regular FVG because it traps traders who faded the original gap.',
+  liquidity_sweep: 'Liquidity Sweep Reversal — price spikes beyond a key swing high/low (stop-hunt), then closes back inside within 2 bars. The sweep hunts retail stops; the reversal candle signals smart money absorption. ~60-65% WR on 1h-4h.',
+  ob_fvg:          'Order Block + FVG Confluence — OB (the manipulation candle before a strong move) combined with a FVG in the same zone. When price returns to this overlap, both imbalance and institutional order book align. 65-68% WR historically.',
+  bos_choch:       'BOS / CHoCH — Break of Structure (BoS): continuation signal when price breaks beyond the last swing in trend direction. Change of Character (CHoCH/MSS): reversal signal when structure breaks in the opposite direction. CSOD variant anticipates CHoCH via the body-line of the preceding candle.',
+  silver_bullet:   'Silver Bullet (ICT) — FVG formed during a kill zone (NY 10-11 AM, London 2-3 AM). Kill-zone timing + imbalance = high-probability entry. Specifically: first FVG that forms after 10 AM NY time during the AM session.',
+  funding_rate:    'Funding Rate — on perpetual futures, high positive funding means longs are overloaded → SELL; high negative means shorts are overloaded → BUY. Contrarian mean-reversion. Best when funding extremes coincide with price at key levels.',
+  volume_profile:  'Volume Profile — identifies high-volume nodes (HVN, price attraction) and low-volume nodes (LVN, price flies through quickly). Entry at LVN edge targeting HVN; exit at next HVN. Best on 4h+ with sufficient volume data.',
+  // ── Course-validated (1-year backtest) ────────────────────────────────────
+  bpr:                     'BPR (Balanced Price Range) — strongest SMC zone: a violated FVG (IFVG) that overlaps with a fresh opposite-direction FVG. Both gaps share the same price space = double institutional interest. 1yr backtest: BTC/4h PF 4.43, 71.4% WR, DD 0.68%. Recommended: 4h timeframe.',
+  fibonacci_retracement:   'Fibonacci Golden Zone (0.382-0.618) — identify the most recent swing leg, wait for pullback into the 38.2%-61.8% retracement zone + RSI confirming trend is not over-extended. 1yr backtest: BTC/4h PF 2.93, 62.1% WR. Recommended: 4h timeframe.',
+  inducement_continuation: 'Inducement Continuation — in an established trend (confirmed by swing structure), wait for a minor V-shape sweep of the last swing low (bull) or swing high (bear) followed by a strong continuation candle. 1yr backtest: ETH/1h PF 1.74, 55% WR, PnL +7.71%. Recommended: 1h timeframe.',
 };
 
 // Each entry mirrors this strategy's validated defaults (server.py
@@ -9045,8 +9071,12 @@ const _BOT_PRESETS = {
   macd_cross:     { timeframe: '15m', trailing_atr: 0,   tp_atr: 0   },
   bb_squeeze:     { timeframe: '1h',  trailing_atr: 0,   tp_atr: 0   },
   false_breakout: { timeframe: '1h',  trailing_atr: 0,   tp_atr: 0   },
-  trend_breakout: { timeframe: '15m', trailing_atr: 2.0, tp_atr: 0   },
-  vwap_bands:     { timeframe: '15m', trailing_atr: 2.0, tp_atr: 2.5 },
+  trend_breakout:          { timeframe: '15m', trailing_atr: 2.0, tp_atr: 0   },
+  vwap_bands:              { timeframe: '15m', trailing_atr: 2.0, tp_atr: 2.5 },
+  // ── Course-validated presets (1yr backtest defaults) ──────────────────────
+  bpr:                     { timeframe: '4h',  trailing_atr: 0,   tp_atr: 0   },
+  fibonacci_retracement:   { timeframe: '4h',  trailing_atr: 0,   tp_atr: 0   },
+  inducement_continuation: { timeframe: '1h',  trailing_atr: 0,   tp_atr: 0   },
 };
 
 function applyBotPreset() {
