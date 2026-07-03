@@ -1682,12 +1682,17 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               <div class="field" style="margin-bottom:6px">
                 <label>Strategy</label>
                 <select id="bot-strategy" onchange="botStrategyChange()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--font);font-size:12px;width:100%">
+                  <optgroup label="── Price Action ──">
+                  <option value="super_breakout">🚀 Super Breakout — 200 EMA Box + Big Candle</option>
+                  </optgroup>
+                  <optgroup label="── Indicator Based ──">
                   <option value="rsi">📉 RSI(7) Mean Reversion — val PF 1.57, 71% WR</option>
                   <option value="bb_squeeze">⚡ BB Squeeze(30,2.5) + Volume — val PF 1.28</option>
                   <option value="false_breakout">🎣 False Breakout Trap — PF 1.15, 55% WR</option>
                   <option value="macd_cross">📈 MACD(12,17,9) Crossover — val PF 1.07</option>
                   <option value="trend_breakout">📊 Trend Breakout (Donchian 55 + EMA150) — val PF 1.03</option>
                   <option value="vwap_bands">📐 VWAP Bands(14, 2.5σ) Mean-Reversion — val PF 1.24</option>
+                  </optgroup>
                   <optgroup label="── High Win Rate ──">
                   <option value="rsi_divergence">🔀 RSI Divergence — ~62-70% WR</option>
                   <option value="vwap_rsi">🎯 VWAP + RSI Confluence — ~68-75% WR</option>
@@ -9026,6 +9031,7 @@ const _strategyHints = {
   vwap_rsi:    'VWAP + RSI Confluence — institutional entry: only trades when price is within 0.3% of VWAP AND RSI < 40 (BUY) or RSI > 60 (SELL). Fewer but much higher-conviction signals. ~68-75% WR.',
   bb_rsi_strict: 'BB + RSI Strict — price tags the lower BB AND RSI ≤ 30 → BUY; upper BB AND RSI ≥ 70 → SELL. Stricter than bb_squeeze (no volume filter, tighter RSI threshold). ~63-68% WR.',
   orb:         'Opening Range Breakout — price range from the first 30 min after open sets the ORB high/low. Breakout above range → BUY, breakdown below → SELL. Best on Indian equities 9:15–9:45 AM IST. ~65-75% WR.',
+  super_breakout: 'Booming Bulls Crypto Super Breakout — 200 EMA consolidation box (40 bars, ATR×3) with 200 EMA inside. Big candle breakout above/below box → entry. EMA trailing exit when profit ≥ 3%. Requires 210+ candles. Best on 4h/1d timeframes.',
 };
 
 // Each entry mirrors this strategy's validated defaults (server.py

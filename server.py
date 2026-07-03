@@ -2186,6 +2186,82 @@ def _get_bot_signal(bot, ohlcv):
         if price < lower and price < ema_trend[-1]:
             return "SELL"
 
+    # ── CRYPTO SUPER BREAKOUT (Booming Bulls Academy) ────────────────────────
+    # 15m: price consolidates near 200 EMA (box) → big breakout candle entry.
+    # Entry:  breakout candle range > max of last 20 candles, close outside box.
+    # 1 shot: once box is broken, no second entry on same box. If price returns
+    #         inside, box extends — wait for fresh breakout.
+    # Exit:   after 3% profit → trail 18 EMA; close crosses = signal_flip exit.
+    # SL:     set bot sl_pct to cover below min(ema18, ema50) at entry (~1-2%).
+    elif strategy == "super_breakout":
+        if len(closes) < 210:
+            return None
+        ema18_s  = _ema_calc(closes, 18)
+        ema50_s  = _ema_calc(closes, 50)
+        ema200_s = _ema_calc(closes, 200)
+        if not (ema18_s and ema50_s and ema200_s):
+            return None
+        ema18  = ema18_s[-1]
+        ema50  = ema50_s[-1]
+        ema200 = ema200_s[-1]
+        price  = closes[-1]
+        bot["last_ema18"]  = round(ema18, 6)
+        bot["last_ema50"]  = round(ema50, 6)
+        bot["last_ema200"] = round(ema200, 6)
+
+        # ── EMA TRAILING EXIT (when in position, profit ≥ 3%) ───────────────
+        if bot.get("open_side"):
+            ep      = bot.get("open_entry_price", price)
+            pnl_pct = ((price - ep) / ep * 100) if bot["open_side"] == "BUY" \
+                      else ((ep - price) / ep * 100)
+            if pnl_pct >= 3.0:
+                if bot["open_side"] == "BUY"  and price < ema18:
+                    return "SELL"   # 18 EMA cross → exit long
+                if bot["open_side"] == "SELL" and price > ema18:
+                    return "BUY"    # 18 EMA cross → exit short
+            return None  # stay in trade, let SL / TP handle it
+
+        # ── BOX DETECTION ──────────────────────────────────────────────────
+        lookback  = bot.get("csb_lookback", 40)
+        atr_mult  = bot.get("csb_atr_mult", 3.0)
+        if len(closes) < lookback + 5:
+            return None
+        box_h    = highs[-(lookback + 1):-1]
+        box_l    = lows[-(lookback + 1):-1]
+        box_high = max(box_h)
+        box_low  = min(box_l)
+        atr      = _atr_calc(highs, lows, closes, 14)
+        if not atr:
+            return None
+        is_consolidation = (box_high - box_low) < atr * atr_mult
+        ema200_in_box    = any(box_low <= e <= box_high for e in ema200_s[-lookback:])
+
+        # Price returned inside box → reset (box extends, fresh breakout needed)
+        if bot.get("_csb_box_broken") and box_low <= price <= box_high:
+            bot["_csb_box_broken"] = False
+
+        if not (is_consolidation and ema200_in_box):
+            bot["_csb_box_broken"] = False
+            return None
+
+        if bot.get("_csb_box_broken"):
+            return None   # already used 1 chance on this box
+
+        # ── BREAKOUT CANDLE (range > max of last 20) ────────────────────────
+        cur_range   = highs[-1] - lows[-1]
+        prev_ranges = [highs[i] - lows[i] for i in range(-21, -1)]
+        if not prev_ranges or cur_range <= max(prev_ranges):
+            return None
+
+        if price > box_high:
+            bot["_csb_box_broken"] = True
+            bot["_csb_sl_ref"]     = round(min(ema18, ema50), 6)
+            return "BUY"
+        if price < box_low:
+            bot["_csb_box_broken"] = True
+            bot["_csb_sl_ref"]     = round(max(ema18, ema50), 6)
+            return "SELL"
+
     # ── HIGH WIN RATE STRATEGIES ────────────────────────────────────────────
 
     # RSI Divergence — price action contradicts RSI momentum, forecasting reversal.
