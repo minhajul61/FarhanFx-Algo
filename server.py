@@ -3584,6 +3584,12 @@ _SCREENER_EXCLUDE_BASES = {
     "XAU", "XAG", "CL", "UKOIL", "USOIL",                                  # commodities
     "SOXL", "SKHYNIX", "MU", "NVDA", "TSLA", "MSFT", "AAPL", "SNDK", "SPCX", # tokenized stocks
 }
+# Only the 6 out-of-sample validated strategies run in the screener — the
+# experimental ones (fvg, ob_fvg, bos_choch, etc.) are too slow and haven't
+# passed train/validation on more than one coin yet.
+_SCREENER_STRATEGIES = {k: v for k, v in _STRATEGY_DEFAULTS.items()
+                        if k in {"rsi", "macd_cross", "bb_squeeze", "false_breakout", "trend_breakout", "vwap_bands"}}
+_screener_result_cache: dict = {}   # {"result": {...}, "fetched_at": float, "limit": int}
 
 
 def _screener_top_coins(limit: int = 12) -> list:
@@ -3607,12 +3613,11 @@ def _screener_top_coins(limit: int = 12) -> list:
     return rows[:limit]
 
 
-def _screener_validate_coin(symbol: str, days: int = 120) -> dict:
-    """Re-run every strategy's validated params against this coin's own
-    recent history (train/validation split) — same pass bar used throughout
-    this engagement: PF > 1.1 on both halves with a minimum trade count."""
+def _screener_validate_coin(symbol: str, days: int = 60) -> dict:
+    """Re-run the 6 validated strategies against this coin's own recent
+    history (train/validation split) — PF > 1.1 on both halves, min trades."""
     results = {}
-    for strategy, (tf, params) in _STRATEGY_DEFAULTS.items():
+    for strategy, (tf, params) in _SCREENER_STRATEGIES.items():
         try:
             ohlcv = _fetch_backtest_ohlcv(symbol, tf, days)
             if len(ohlcv) < 300:
@@ -3637,26 +3642,45 @@ def _screener_validate_coin(symbol: str, days: int = 120) -> dict:
 
 
 @app.get("/api/crypto/screener/scan")
-def crypto_screener_scan(limit: int = 12, days: int = 120,
+def crypto_screener_scan(limit: int = 8, days: int = 60, force: bool = False,
                           current_user: dict = Depends(_get_current_user)):
-    """Screen top-volume coins and re-validate every strategy's existing
-    params against each one's own history. Read-only report — does not
-    start, stop, or modify any bot."""
+    """Screen top-volume coins and re-validate the 6 core strategies against
+    each coin's own history. Results cached 4 hours — pass force=true to bypass."""
     if not _CCXT_OK:
         return JSONResponse(status_code=503, content={"error": "ccxt not available on this server"})
+
+    # Return cached result if fresh and same params
+    cached = _screener_result_cache.get("result")
+    cache_age = _time.time() - _screener_result_cache.get("fetched_at", 0)
+    if not force and cached and cache_age < 14400 and _screener_result_cache.get("limit") == limit:
+        return {**cached, "cached": True, "cache_age_min": int(cache_age / 60)}
+
     try:
         coins = _screener_top_coins(limit)
     except Exception as e:
         return JSONResponse(status_code=502, content={"error": f"Failed to fetch market list: {e}"})
 
+    # Validate all coins in parallel (max 4 workers to avoid Binance rate limits)
+    from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
     report = []
-    for coin in coins:
-        validation = _screener_validate_coin(coin["symbol"], days)
-        approved = [s for s, r in validation.items() if r.get("status") == "pass"]
-        report.append({**coin, "validation": validation, "approved_strategies": approved})
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        future_map = {pool.submit(_screener_validate_coin, c["symbol"], days): c for c in coins}
+        for fut in _as_completed(future_map):
+            coin = future_map[fut]
+            try:
+                validation = fut.result()
+            except Exception as e:
+                validation = {}
+                print(f"screener error {coin['symbol']}: {e}")
+            approved = [s for s, r in validation.items() if r.get("status") == "pass"]
+            report.append({**coin, "validation": validation, "approved_strategies": approved})
 
     report.sort(key=lambda c: len(c["approved_strategies"]), reverse=True)
-    return {"scanned": len(report), "days": days, "coins": report}
+    result = {"scanned": len(report), "days": days, "coins": report, "cached": False, "cache_age_min": 0}
+    _screener_result_cache["result"] = result
+    _screener_result_cache["fetched_at"] = _time.time()
+    _screener_result_cache["limit"] = limit
+    return result
 
 
 @app.get("/api/crypto/algo/list")

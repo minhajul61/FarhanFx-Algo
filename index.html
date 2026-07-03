@@ -1935,12 +1935,13 @@ tr:hover td{background:rgba(139,92,246,0.05)}
               <div class="field" style="margin-bottom:0">
                 <label>Coins to Scan</label>
                 <select id="scr-limit" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:var(--font);font-size:12px;outline:none">
-                  <option value="8">Top 8</option>
-                  <option value="12" selected>Top 12</option>
+                  <option value="8" selected>Top 8</option>
+                  <option value="12">Top 12</option>
                   <option value="20">Top 20</option>
                 </select>
               </div>
-              <button id="scr-run-btn" onclick="runCoinScreener()" style="padding:9px 22px;background:var(--accent);border:none;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:0.5px">🔍 SCAN NOW</button>
+              <button id="scr-run-btn" onclick="runCoinScreener(false)" style="padding:9px 22px;background:var(--accent);border:none;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:0.5px">🔍 SCAN NOW</button>
+              <button id="scr-force-btn" onclick="runCoinScreener(true)" style="padding:9px 16px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:8px;font-size:11px;cursor:pointer">↺ Force Refresh</button>
             </div>
             <div id="scr-meta" style="font-size:10px;color:var(--text3);margin-top:10px"></div>
           </div>
@@ -8507,46 +8508,57 @@ async function runCryptoBacktestAll() {
   }
 }
 
-async function runCoinScreener() {
+async function runCoinScreener(force) {
   const btn = document.getElementById('scr-run-btn');
+  const fBtn = document.getElementById('scr-force-btn');
   const loading = document.getElementById('scr-loading');
   const resultsPanel = document.getElementById('scr-results-panel');
+  const metaEl = document.getElementById('scr-meta');
   const limit = document.getElementById('scr-limit').value;
 
-  btn.disabled = true; btn.textContent = '⏳ SCANNING...'; btn.style.opacity = '0.6';
-  loading.style.display = 'block';
+  btn.disabled = true; fBtn.disabled = true;
+  btn.textContent = '⏳ SCANNING...'; btn.style.opacity = '0.6';
+  if (loading) { loading.style.display = 'block'; loading.textContent = force
+    ? '⏳ Running fresh scan — 6 strategies × ' + limit + ' coins in parallel... ~20-40s'
+    : '⏳ Loading screener results...'; }
   resultsPanel.style.display = 'none';
 
   try {
-    const r = await apiFetch(`/api/crypto/screener/scan?limit=${limit}&days=120`);
+    const url = '/api/crypto/screener/scan?limit=' + limit + '&days=60' + (force ? '&force=true' : '');
+    const r = await apiFetch(url);
     if (!r || r.error) { toastErr('Screener failed: ' + (r && r.error || 'unknown error')); return; }
 
-    document.getElementById('scr-meta').textContent = `${r.scanned} coins scanned · ${r.days} days of history per coin`;
+    const cacheNote = r.cached ? ' · cached ' + r.cache_age_min + 'm ago (click ↺ to refresh)' : ' · fresh scan';
+    if (metaEl) metaEl.textContent = r.scanned + ' coins scanned · ' + r.days + ' days · 6 strategies' + cacheNote;
 
     const tbody = document.getElementById('scr-results-tbody');
-    tbody.innerHTML = r.coins.map(c => {
-      const chg = c.change_24h;
-      const chgColor = chg >= 0 ? 'var(--green)' : 'var(--red)';
-      const volStr = c.volume_24h >= 1e9 ? '$' + (c.volume_24h/1e9).toFixed(2) + 'B' : '$' + (c.volume_24h/1e6).toFixed(1) + 'M';
-      const approvedHtml = c.approved_strategies.length
-        ? c.approved_strategies.map(s => {
-            const v = c.validation[s];
-            return `<span style="display:inline-block;background:rgba(34,197,94,0.12);color:var(--green);border-radius:5px;padding:2px 8px;margin:2px;font-size:10px;font-weight:700">${s} (${v.train_pf}/${v.val_pf})</span>`;
-          }).join('')
-        : '<span style="color:var(--text3);font-size:11px">কোনোটাই pass করেনি</span>';
-      return `<tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:6px 8px;color:var(--cyan);font-weight:700">${c.base}</td>
-        <td style="padding:6px 8px;text-align:center">${volStr}</td>
-        <td style="padding:6px 8px;text-align:center;color:${chgColor}">${chg>=0?'+':''}${chg}%</td>
-        <td style="padding:6px 8px">${approvedHtml}</td>
-      </tr>`;
-    }).join('');
+    if (tbody) {
+      tbody.innerHTML = r.coins.map(function(c) {
+        const chg = c.change_24h;
+        const chgColor = chg >= 0 ? 'var(--green)' : 'var(--red)';
+        const volStr = c.volume_24h >= 1e9 ? '$' + (c.volume_24h/1e9).toFixed(2) + 'B' : '$' + (c.volume_24h/1e6).toFixed(1) + 'M';
+        const approvedHtml = c.approved_strategies.length
+          ? c.approved_strategies.map(function(s) {
+              const v = c.validation[s] || {};
+              return '<span style="display:inline-block;background:rgba(34,197,94,0.12);color:var(--green);border-radius:5px;padding:2px 8px;margin:2px;font-size:10px;font-weight:700">'
+                + s.replace(/_/g,' ').toUpperCase() + ' (' + (v.train_pf||'?') + '/' + (v.val_pf||'?') + ')</span>';
+            }).join('')
+          : '<span style="color:var(--text3);font-size:11px">কোনোটাই pass করেনি</span>';
+        return '<tr style="border-bottom:1px solid var(--border)">'
+          + '<td style="padding:6px 8px;color:var(--cyan);font-weight:700">' + c.base + '</td>'
+          + '<td style="padding:6px 8px;text-align:center">' + volStr + '</td>'
+          + '<td style="padding:6px 8px;text-align:center;color:' + chgColor + '">' + (chg>=0?'+':'') + chg + '%</td>'
+          + '<td style="padding:6px 8px">' + approvedHtml + '</td>'
+          + '</tr>';
+      }).join('');
+    }
     resultsPanel.style.display = 'block';
   } catch (e) {
     toastErr('Screener failed: ' + e.message);
   } finally {
-    btn.disabled = false; btn.textContent = '🔍 SCAN NOW'; btn.style.opacity = '1';
-    loading.style.display = 'none';
+    btn.disabled = false; fBtn.disabled = false;
+    btn.textContent = '🔍 SCAN NOW'; btn.style.opacity = '1';
+    if (loading) loading.style.display = 'none';
   }
 }
 
