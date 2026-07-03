@@ -5285,15 +5285,30 @@ def indian_algo_history(current_user: dict = Depends(_get_current_user)):
     for bot in _indian_bots.values():
         if bot.get("username") != uname:
             continue
+        is_opt  = bot.get("options_bot", False)
+        lot_sz  = _INDIAN_LOT_SIZES.get(bot.get("symbol","").upper(), 1) if is_opt else 1
+        qty     = int(bot.get("quantity", 1)) * lot_sz if is_opt else int(bot.get("quantity", 1))
+        cur_px  = bot.get("last_price")
+        ep_bot  = bot.get("open_entry_price")
+        side    = bot.get("open_side", "BUY")
         for tr in bot.get("trades", []):
-            rows.append({
+            row = {
                 "bot_id":   bot["id"],
                 "symbol":   bot["symbol"],
                 "strategy": bot["strategy"],
                 "timeframe":bot["timeframe"],
                 "product":  bot.get("product", "MIS"),
                 **tr,
-            })
+            }
+            if tr.get("status") == "open" and cur_px and ep_bot:
+                if is_opt:
+                    opt_dir = bot.get("_current_opt_dir", "CE")
+                    raw = (cur_px - ep_bot) if opt_dir == "CE" else (ep_bot - cur_px)
+                    row["unrealized_pnl"] = round(raw * 0.5 * lot_sz * int(bot.get("quantity",1)), 2)
+                else:
+                    row["unrealized_pnl"] = round((cur_px - ep_bot) * qty if side == "BUY" else (ep_bot - cur_px) * qty, 2)
+                row["current_price"] = cur_px
+            rows.append(row)
     rows.sort(key=lambda r: r.get("time", ""), reverse=True)
     return rows
 

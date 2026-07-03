@@ -9747,10 +9747,15 @@ async function indianAlgoLoadHistory() {
       <td>${modeBadge}</td>
       <td style="color:${r.signal==='BUY'?'var(--green)':'var(--red)'};font-weight:700">${r.signal}</td>
       <td>₹${r.price||'—'}</td>
-      <td>${r.exit_price?'₹'+r.exit_price:'open'}</td>
-      <td>${r.amount||'—'}</td>
-      <td style="color:${pnl>=0?'var(--green)':'var(--red)'};font-weight:700">${r.status==='open'?'—':(pnl>=0?'+':'')+'₹'+pnl.toFixed(2)}</td>
-      <td style="color:${r.status==='closed'?'var(--text2)':'var(--green)'}">${r.status||'—'}</td>
+      <td>${r.exit_price?'₹'+r.exit_price:'<span style="color:var(--amber)">open</span>'}</td>
+      <td>${r.amount||r.qty||'—'}</td>
+      <td style="font-weight:700">${r.status==='open'
+        ? (r.unrealized_pnl!=null
+            ? `<span style="color:${r.unrealized_pnl>=0?'var(--green)':'var(--red)'}">${r.unrealized_pnl>=0?'+':''}₹${r.unrealized_pnl.toFixed(2)} ⚡</span>`
+            : '—')
+        : `<span style="color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>=0?'+':''}₹${pnl.toFixed(2)}</span>`
+      }</td>
+      <td style="color:${r.status==='closed'?'var(--text2)':'var(--amber)'}">${r.status||'—'}</td>
       <td style="font-size:10px;color:var(--text3)">${r.exit_reason||'—'}</td>
     </tr>`;
   }).join('');
