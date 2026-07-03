@@ -576,6 +576,19 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <tbody id="dr-symbol-tbody"><tr><td colspan="4" style="text-align:center;color:var(--text3);padding:16px">No data yet</td></tr></tbody>
           </table>
         </div>
+
+        <div class="panel" style="margin-top:14px" id="dash-tg-panel">
+          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
+            📨 Telegram Signal Bot (Demo)
+            <span id="dash-tg-mode-badge" style="font-size:9px;background:var(--bg3);border-radius:4px;padding:2px 6px;color:var(--text3)">demo</span>
+          </div>
+          <div id="dash-tg-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:8px">
+            <div class="kpi" style="margin:0;padding:10px"><div class="kpi-label">EQUITY</div><div class="kpi-value" id="dash-tg-equity">—</div></div>
+            <div class="kpi" style="margin:0;padding:10px"><div class="kpi-label">SIGNALS</div><div class="kpi-value" id="dash-tg-signals">—</div></div>
+            <div class="kpi" style="margin:0;padding:10px"><div class="kpi-label">WIN RATE</div><div class="kpi-value cyan" id="dash-tg-wr">—</div></div>
+            <div class="kpi" style="margin:0;padding:10px"><div class="kpi-label">NET P&amp;L</div><div class="kpi-value" id="dash-tg-pnl">—</div></div>
+          </div>
+        </div>
       </div>
 
       <!-- TRADING VIEW PAGE (full-screen flex layout) -->
@@ -1888,13 +1901,61 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         <div id="in-trade-section" style="display:none">
           <!-- Tab bar -->
           <div class="crypto-sub-tabs" style="margin-bottom:14px">
-            <button class="crypto-sub-tab active" id="in-tab-btn-manual" onclick="indianTab('manual')">MANUAL TRADE</button>
+            <button class="crypto-sub-tab active" id="in-tab-btn-dashboard" onclick="indianTab('dashboard')">📊 DASHBOARD</button>
+            <button class="crypto-sub-tab" id="in-tab-btn-manual" onclick="indianTab('manual')">MANUAL TRADE</button>
             <button class="crypto-sub-tab" id="in-tab-btn-algo" onclick="indianTab('algo')">ALGO BOTS</button>
             <button class="crypto-sub-tab" id="in-tab-btn-history" onclick="indianTab('history')">BOT HISTORY</button>
           </div>
 
+          <!-- ── DASHBOARD TAB ── -->
+          <div id="in-tab-dashboard">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <span id="in-dash-updated" style="font-size:10px;color:var(--text3)">Loading...</span>
+              <button class="sbtn" onclick="loadIndianDashboard()" style="font-size:9px;padding:2px 10px">↻ REFRESH ALL</button>
+            </div>
+
+            <!-- Stat Tiles -->
+            <div id="in-dash-tiles" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px"></div>
+
+            <!-- Positions + Holdings -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+              <div class="panel" style="margin:0">
+                <div class="panel-title" style="margin-bottom:10px">📈 Open Positions</div>
+                <div id="in-dash-positions" style="overflow-x:auto"></div>
+              </div>
+              <div class="panel" style="margin:0">
+                <div class="panel-title" style="margin-bottom:10px">💼 Holdings</div>
+                <div id="in-dash-holdings" style="overflow-x:auto"></div>
+              </div>
+            </div>
+
+            <!-- Today's Orders -->
+            <div class="panel" style="margin-bottom:14px">
+              <div class="panel-title" style="margin-bottom:10px">📋 Today's Orders</div>
+              <div id="in-dash-orders" style="overflow-x:auto;max-height:220px;overflow-y:auto"></div>
+            </div>
+
+            <!-- Bot Stats + Performance -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+              <div class="panel" style="margin:0">
+                <div class="panel-title" style="margin-bottom:10px">🤖 Active Bots</div>
+                <div id="in-dash-bots" style="overflow-x:auto;max-height:240px;overflow-y:auto"></div>
+              </div>
+              <div class="panel" style="margin:0">
+                <div class="panel-title" style="margin-bottom:10px">📊 Bot Performance</div>
+                <div id="in-dash-perf"></div>
+              </div>
+            </div>
+
+            <!-- All Bot Trades -->
+            <div class="panel">
+              <div class="panel-title" style="margin-bottom:10px">📜 All Bot Trades</div>
+              <div id="in-dash-trades" style="overflow-x:auto;max-height:300px;overflow-y:auto"></div>
+            </div>
+          </div>
+
           <!-- ── MANUAL TRADE TAB ── -->
-          <div id="in-tab-manual">
+          <div id="in-tab-manual" style="display:none">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
               <!-- Scrip search -->
               <div class="panel" style="margin:0">
@@ -1986,10 +2047,100 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 </table>
               </div>
             </div>
+
           </div>
 
           <!-- ── ALGO BOTS TAB ── -->
           <div id="in-tab-algo" style="display:none">
+
+            <!-- Options Chain -->
+            <div class="panel" style="margin-bottom:14px">
+              <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between">
+                <span>🎯 Options Chain — Current Week</span>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <select id="in-opt-symbol" class="sinput" style="width:110px;padding:3px 6px;font-size:11px" onchange="indianLoadOptionsChain()">
+                    <option value="NIFTY">NIFTY</option>
+                    <option value="BANKNIFTY">BANKNIFTY</option>
+                    <option value="FINNIFTY">FINNIFTY</option>
+                  </select>
+                  <button class="sbtn" onclick="indianLoadOptionsChain()" style="font-size:9px;padding:2px 10px">↻ REFRESH</button>
+                </div>
+              </div>
+              <div id="in-opt-info" style="font-size:11px;color:var(--text3);margin-bottom:8px">—</div>
+              <div id="in-opt-table" style="max-height:300px;overflow-y:auto"></div>
+            </div>
+
+            <!-- ⚡ Options Bot Panel -->
+            <div class="panel" style="margin-bottom:14px;border-color:rgba(139,92,246,0.4)">
+              <div class="panel-title">⚡ Create Options Bot</div>
+              <div style="font-size:10px;color:var(--text3);margin-bottom:12px">Strategy signal → auto CE/PE buy at ATM strike. TP/SL based on underlying % move.</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+                <div class="field" style="margin:0">
+                  <label>Underlying</label>
+                  <select id="in-optbot-underlying" class="sinput" style="width:100%">
+                    <option value="NIFTY">NIFTY (lot=75)</option>
+                    <option value="BANKNIFTY">BANKNIFTY (lot=30)</option>
+                    <option value="FINNIFTY">FINNIFTY (lot=65)</option>
+                  </select>
+                </div>
+                <div class="field" style="margin:0">
+                  <label>Strategy</label>
+                  <select id="in-optbot-strategy" class="sinput" style="width:100%">
+                    <option value="rsi">RSI Reversal</option>
+                    <option value="orb">Opening Range Breakout</option>
+                    <option value="macd_cross">MACD Cross</option>
+                    <option value="vwap_rsi">VWAP + RSI</option>
+                    <option value="bb_rsi_strict">BB + RSI Strict</option>
+                    <option value="rsi_divergence">RSI Divergence</option>
+                    <option value="trend_breakout">Trend Breakout</option>
+                    <option value="bos_choch">BOS/CHoCH</option>
+                  </select>
+                </div>
+                <div class="field" style="margin:0">
+                  <label>Direction</label>
+                  <select id="in-optbot-direction" class="sinput" style="width:100%">
+                    <option value="auto">🤖 Auto (Strategy decides)</option>
+                    <option value="CE">📈 Call Buy only (CE)</option>
+                    <option value="PE">📉 Put Buy only (PE)</option>
+                  </select>
+                </div>
+                <div class="field" style="margin:0">
+                  <label>Timeframe</label>
+                  <select id="in-optbot-tf" class="sinput" style="width:100%">
+                    <option value="1m">1m</option>
+                    <option value="5m" selected>5m</option>
+                    <option value="15m">15m</option>
+                    <option value="1h">1h</option>
+                  </select>
+                </div>
+                <div class="field" style="margin:0">
+                  <label>Qty (Lots)</label>
+                  <input type="number" id="in-optbot-qty" class="sinput" style="width:100%" value="1" min="1"/>
+                </div>
+                <div class="field" style="margin:0">
+                  <label>Mode</label>
+                  <select id="in-optbot-mode" class="sinput" style="width:100%">
+                    <option value="demo">Demo (Paper)</option>
+                    <option value="live">Live (Real Money)</option>
+                  </select>
+                </div>
+                <div class="field" style="margin:0">
+                  <label>TP % <span style="color:var(--text3);font-size:9px">(0=off)</span></label>
+                  <input type="number" id="in-optbot-tp" class="sinput" style="width:100%" value="20" min="0" step="1"/>
+                </div>
+                <div class="field" style="margin:0">
+                  <label>SL % <span style="color:var(--text3);font-size:9px">(0=off)</span></label>
+                  <input type="number" id="in-optbot-sl" class="sinput" style="width:100%" value="30" min="0" step="1"/>
+                </div>
+                <div class="field" style="margin:0">
+                  <label>Demo Balance (₹)</label>
+                  <input type="number" id="in-optbot-balance" class="sinput" style="width:100%" value="100000"/>
+                </div>
+              </div>
+              <button class="sbtn" onclick="indianOptBotStart()" style="padding:8px 24px;background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700">⚡ START OPTIONS BOT</button>
+              <div id="in-optbot-err" style="font-size:11px;color:var(--red);margin-top:8px;display:none"></div>
+            </div>
+
             <div class="panel" style="margin-bottom:14px">
               <div class="panel-title">🤖 Create Indian Market Bot</div>
               <div style="font-size:10px;color:var(--text3);margin-bottom:12px">Market data via yfinance (NSE/BSE). Live mode places real orders via Kotak Neo.</div>
@@ -2533,7 +2684,7 @@ function showPage(id, el) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
-  el.classList.add('active');
+  if (el) el.classList.add('active');
   // Full-page mode only for Trading View
   if (id === 'tradingview') {
     document.body.classList.add('tv-mode');
@@ -3557,7 +3708,13 @@ async function doAuthLogin() {
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('auth-username').value = '';
     document.getElementById('auth-password').value = '';
-    await _afterAuthSuccess();
+    try {
+      await _afterAuthSuccess();
+    } catch(dashErr) {
+      document.getElementById('auth-screen').style.display = 'flex';
+      document.getElementById('app').style.display = 'none';
+      errEl.textContent = 'Dashboard load error — please refresh the page'; errEl.style.display = 'block';
+    }
   } catch(e) {
     errEl.textContent = 'Server offline — start server.py first'; errEl.style.display = 'block';
   } finally {
@@ -7997,6 +8154,29 @@ async function loadDashboardReport() {
         <td style="padding:6px 8px;text-align:right;color:${s.pnl >= 0 ? 'var(--green)' : 'var(--red)'}">${s.pnl >= 0 ? '+' : ''}$${s.pnl.toFixed(2)}</td>
       </tr>`).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:16px">No data yet</td></tr>';
   }
+
+  // Telegram Signal Bot mini-panel
+  const tgStatus = await apiFetch('/api/telegram/status');
+  const tgStats  = await apiFetch('/api/telegram/demo_stats');
+  const tgMode   = tgStatus?.mode || 'demo';
+  const badge = document.getElementById('dash-tg-mode-badge');
+  const panel = document.getElementById('dash-tg-panel');
+  if (badge) {
+    badge.textContent = tgMode.toUpperCase();
+    badge.style.color = tgMode === 'live' ? 'var(--green)' : 'var(--cyan)';
+    badge.style.background = tgMode === 'live' ? 'rgba(0,255,170,0.1)' : 'rgba(0,212,255,0.1)';
+  }
+  if (panel) { const pt = panel.querySelector('.panel-title'); if (pt && pt.firstChild) pt.firstChild.textContent = `\ud83d\udce8 Telegram Signal Bot (${tgMode === 'live' ? 'Live' : 'Demo'}) `; }
+  if (tgStats && !tgStats.error) {
+    const pnl = tgStats.net_pnl || 0;
+    const setText2 = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    const setCol2  = (id, c) => { const e = document.getElementById(id); if (e) e.style.color = c; };
+    setText2('dash-tg-equity',  '$' + (tgStats.equity || 0).toFixed(2));
+    setText2('dash-tg-signals', tgStats.closed_trades ?? 0);
+    setText2('dash-tg-wr',      tgStats.win_rate != null ? tgStats.win_rate + '%' : '\u2014');
+    setText2('dash-tg-pnl',     (pnl >= 0 ? '+$' : '-$') + Math.abs(pnl).toFixed(2));
+    setCol2('dash-tg-pnl', pnl >= 0 ? 'var(--green)' : 'var(--red)');
+  }
 }
 
 function showCryptoTab(tab, el) {
@@ -9053,8 +9233,7 @@ async function indianInit() {
     if (connectSec) connectSec.style.display = 'none';
     if (banner) { banner.style.display = 'flex'; document.getElementById('in-ucc-display').textContent = r.ucc; document.getElementById('in-env-display').textContent = r.environment; }
     if (tradeSec) tradeSec.style.display = 'block';
-    indianLoadPositions();
-    indianLoadHoldings();
+    indianTab('dashboard');
   } else {
     if (connectSec) connectSec.style.display = 'block';
     if (banner) banner.style.display = 'none';
@@ -9104,6 +9283,238 @@ async function indianSearchScrip() {
     const sym = s.pTrdSymbol || s.trading_symbol || s.symbol || JSON.stringify(s);
     return `<div onclick='indianPickScrip(${JSON.stringify(s).replace(/'/g,"&apos;")})' style="padding:6px 8px;border-bottom:1px solid var(--border);cursor:pointer;font-size:11px" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">${sym}</div>`;
   }).join('');
+}
+
+async function loadIndianDashboard() {
+  document.getElementById('in-dash-updated').textContent = 'Loading...';
+  const d = await apiFetch('/api/indian/dashboard');
+  if (!d || d.error) { document.getElementById('in-dash-updated').textContent = 'Error loading'; return; }
+  document.getElementById('in-dash-updated').textContent = 'Updated: ' + new Date().toLocaleTimeString('en-IN');
+
+  // ── STAT TILES ──
+  const lim = d.limits || {};
+  const cash   = parseFloat(lim.Net || lim.cash || lim.availablecash || lim.avlcash || 0);
+  const margin  = parseFloat(lim.marginused || lim.utilizedMargin || lim.Utilized || 0);
+  const avail   = parseFloat(lim.availmargin || lim.Available || lim.avlmargin || cash);
+  const poses   = Array.isArray(d.positions) ? d.positions : [];
+  const dayPnl  = poses.reduce((s,p) => s + parseFloat(p.mtomPrs || p.urmtom || p.dayPnl || p.mktValue || 0), 0);
+  const bs = d.bot_stats || {};
+  const tiles = [
+    { label:'Net Balance',    val: cash   ? '₹'+cash.toLocaleString('en-IN',{maximumFractionDigits:0}) : '—', color:'var(--accent)',  icon:'💰' },
+    { label:'Avail Margin',   val: avail  ? '₹'+avail.toLocaleString('en-IN',{maximumFractionDigits:0}) : '—', color:'var(--cyan)',    icon:'🏦' },
+    { label:'Margin Used',    val: margin ? '₹'+margin.toLocaleString('en-IN',{maximumFractionDigits:0}) : '—', color:'var(--amber)',   icon:'📊' },
+    { label:'Day P&L',        val: dayPnl ? (dayPnl>=0?'+':'')+dayPnl.toFixed(0) : '—', color: dayPnl>=0?'var(--green)':'var(--red)', icon: dayPnl>=0?'📈':'📉' },
+    { label:'Bot P&L',        val: bs.total_pnl != null ? (bs.total_pnl>=0?'₹+':'₹')+bs.total_pnl.toFixed(0) : '—', color: (bs.total_pnl||0)>=0?'var(--green)':'var(--red)', icon:'🤖' },
+    { label:'Win Rate',       val: bs.win_rate != null ? bs.win_rate+'%' : '—',  color:'var(--green)',  icon:'🎯' },
+    { label:'Total Trades',   val: bs.trades || 0, color:'var(--text2)', icon:'📋' },
+    { label:'Active Bots',    val: bs.active || 0, color:'var(--cyan)',  icon:'⚡' },
+    { label:'Open Positions', val: poses.length,   color:'var(--amber)', icon:'🔓' },
+    { label:'Holdings',       val: (d.holdings||[]).length, color:'var(--accent)', icon:'💼' },
+  ];
+  document.getElementById('in-dash-tiles').style.gridTemplateColumns = 'repeat(5,1fr)';
+  document.getElementById('in-dash-tiles').innerHTML = tiles.map(t => `
+    <div style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(0,0,0,0.3));border:1px solid rgba(139,92,246,0.25);border-radius:10px;padding:12px 10px;text-align:center">
+      <div style="font-size:18px;margin-bottom:4px">${t.icon}</div>
+      <div style="font-size:15px;font-weight:800;color:${t.color};font-variant-numeric:tabular-nums">${t.val}</div>
+      <div style="font-size:9px;color:var(--text3);margin-top:3px;letter-spacing:0.5px;text-transform:uppercase">${t.label}</div>
+    </div>`).join('');
+
+  // ── POSITIONS ──
+  const posEl = document.getElementById('in-dash-positions');
+  if (!poses.length) { posEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No open positions</div>'; }
+  else {
+    posEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:10px">
+      <thead><tr style="color:var(--text3)">${['SYMBOL','QTY','BUY AVG','LTP','P&L','PRODUCT'].map(h=>`<th style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:left">${h}</th>`).join('')}</tr></thead>
+      <tbody>${poses.map(p => {
+        const pnl = parseFloat(p.mtomPrs || p.urmtom || p.pnl || 0);
+        return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+          <td style="padding:4px 6px;font-weight:700">${p.trdSym||p.symbol||'—'}</td>
+          <td style="padding:4px 6px">${p.flQty||p.qty||p.netQty||'—'}</td>
+          <td style="padding:4px 6px">₹${parseFloat(p.buyAmt||p.avgBuyPrice||0).toFixed(2)}</td>
+          <td style="padding:4px 6px">₹${parseFloat(p.ltp||p.lastPrice||0).toFixed(2)}</td>
+          <td style="padding:4px 6px;color:${pnl>=0?'var(--green)':'var(--red)'};font-weight:700">${pnl>=0?'+':''}₹${pnl.toFixed(2)}</td>
+          <td style="padding:4px 6px;color:var(--text3)">${p.prod||p.product||'—'}</td>
+        </tr>`;}).join('')}</tbody></table>`;
+  }
+
+  // ── HOLDINGS ──
+  const hlds = d.holdings || [];
+  const holdEl = document.getElementById('in-dash-holdings');
+  if (!hlds.length) { holdEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No holdings</div>'; }
+  else {
+    const totalPnl = hlds.reduce((s,h)=>s+parseFloat(h.unrealisedPnl||h.pnl||0),0);
+    holdEl.innerHTML = `<div style="margin-bottom:8px;font-size:11px">Total Unrealised: <b style="color:${totalPnl>=0?'var(--green)':'var(--red)'}">${totalPnl>=0?'+':''}₹${totalPnl.toFixed(0)}</b></div>
+      <table style="width:100%;border-collapse:collapse;font-size:10px">
+        <thead><tr style="color:var(--text3)">${['SYMBOL','QTY','AVG','LTP','P&L%'].map(h=>`<th style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:left">${h}</th>`).join('')}</tr></thead>
+        <tbody>${hlds.slice(0,15).map(h=>{
+          const pnl=parseFloat(h.unrealisedPnl||h.pnl||0);
+          const avg=parseFloat(h.avgPrice||h.buyAvgPrice||0);
+          const ltp=parseFloat(h.ltp||h.lastPrice||0);
+          const pct=avg>0?((ltp-avg)/avg*100).toFixed(1):0;
+          return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+            <td style="padding:4px 6px;font-weight:700">${h.TradingSymbol||h.symbol||'—'}</td>
+            <td style="padding:4px 6px">${h.Quantity||h.qty||'—'}</td>
+            <td style="padding:4px 6px">₹${avg.toFixed(2)}</td>
+            <td style="padding:4px 6px">₹${ltp.toFixed(2)}</td>
+            <td style="padding:4px 6px;color:${pnl>=0?'var(--green)':'var(--red)'}">${pct}%</td>
+          </tr>`;}).join('')}</tbody></table>`;
+  }
+
+  // ── ORDERS ──
+  const ords = d.orders || [];
+  const ordEl = document.getElementById('in-dash-orders');
+  if (!ords.length) { ordEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No orders today</div>'; }
+  else {
+    ordEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:10px;min-width:600px">
+      <thead><tr style="color:var(--text3)">${['TIME','SYMBOL','TYPE','QTY','PRICE','STATUS','PRODUCT'].map(h=>`<th style="padding:4px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap">${h}</th>`).join('')}</tr></thead>
+      <tbody>${ords.slice(0,30).map(o=>{
+        const st=o.ordSt||o.status||'—'; const stColor=st.includes('complete')||st.includes('filled')?'var(--green)':st.includes('reject')||st.includes('cancel')?'var(--red)':'var(--amber)';
+        const tx=o.trnsTp||o.transactionType||'';
+        return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+          <td style="padding:4px 8px;color:var(--text3);white-space:nowrap">${(o.ordTm||o.orderTime||'').slice(0,5)||'—'}</td>
+          <td style="padding:4px 8px;font-weight:700">${o.trdSym||o.symbol||'—'}</td>
+          <td style="padding:4px 8px;color:${tx==='B'?'var(--green)':'var(--red)'};font-weight:700">${tx==='B'?'BUY':'SELL'}</td>
+          <td style="padding:4px 8px">${o.qty||o.quantity||'—'}</td>
+          <td style="padding:4px 8px">₹${parseFloat(o.avgPrc||o.price||0).toFixed(2)}</td>
+          <td style="padding:4px 8px;color:${stColor};font-weight:700;text-transform:capitalize">${st}</td>
+          <td style="padding:4px 8px;color:var(--text3)">${o.prod||o.product||'—'}</td>
+        </tr>`;}).join('')}</tbody></table>`;
+  }
+
+  // ── ACTIVE BOTS ──
+  const botsEl = document.getElementById('in-dash-bots');
+  const bots = d.bots || [];
+  if (!bots.length) { botsEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No bots created</div>'; }
+  else {
+    botsEl.innerHTML = bots.map(b => {
+      const pnl = (b.demo_equity||b.demo_balance||0) - (b.demo_balance||0);
+      const isOpt = b.options_bot;
+      return `<div style="border:1px solid ${b.status==='active'?'rgba(34,197,94,0.3)':'rgba(255,255,255,0.08)'};border-radius:8px;padding:8px 10px;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-weight:700;font-size:11px">${isOpt?'⚡':'🤖'} ${b.symbol} <span style="color:var(--text3);font-weight:400">${b.strategy}</span></span>
+          <span style="font-size:9px;padding:2px 6px;border-radius:4px;background:${b.status==='active'?'rgba(34,197,94,0.15)':'rgba(255,255,255,0.06)'};color:${b.status==='active'?'var(--green)':'var(--text3)'}">${b.status?.toUpperCase()}</span>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:5px;font-size:10px;color:var(--text3)">
+          <span>TF: <b style="color:var(--text2)">${b.timeframe}</b></span>
+          <span>Mode: <b style="color:var(--${b.mode==='live'?'red':'cyan'})">${b.mode}</b></span>
+          <span>Trades: <b style="color:var(--text2)">${(b.trades||[]).length}</b></span>
+          <span>P&L: <b style="color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>=0?'+':''}₹${pnl.toFixed(0)}</b></span>
+        </div>
+        ${b.last_signal?`<div style="font-size:9px;margin-top:4px;color:var(--text3)">Last: <b style="color:${b.last_signal==='BUY'?'var(--green)':'var(--red)'}">${b.last_signal}</b> @ ${b.last_run||'—'}</div>`:''}
+      </div>`;
+    }).join('');
+  }
+
+  // ── BOT PERFORMANCE ──
+  const perfEl = document.getElementById('in-dash-perf');
+  const perfItems = [
+    ['Total Bots', bs.total||0, 'var(--text2)'],
+    ['Active', bs.active||0, 'var(--green)'],
+    ['Total Trades', bs.trades||0, 'var(--text2)'],
+    ['Wins', bs.wins||0, 'var(--green)'],
+    ['Win Rate', (bs.win_rate||0)+'%', (bs.win_rate||0)>=50?'var(--green)':'var(--red)'],
+    ['Total Bot P&L', (bs.total_pnl>=0?'₹+':'₹')+(bs.total_pnl||0).toFixed(0), (bs.total_pnl||0)>=0?'var(--green)':'var(--red)'],
+  ];
+  perfEl.innerHTML = perfItems.map(([label,val,color])=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
+      <span style="font-size:11px;color:var(--text3)">${label}</span>
+      <span style="font-size:13px;font-weight:800;color:${color}">${val}</span>
+    </div>`).join('');
+
+  // ── ALL BOT TRADES ──
+  const trEl = document.getElementById('in-dash-trades');
+  const allTr = bs.all_trades || [];
+  if (!allTr.length) { trEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No trades yet</div>'; }
+  else {
+    trEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:10px;min-width:600px">
+      <thead><tr style="color:var(--text3)">${['TIME','MODE','SIGNAL','ENTRY ₹','EXIT ₹','P&L','STATUS','REASON'].map(h=>`<th style="padding:4px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap">${h}</th>`).join('')}</tr></thead>
+      <tbody>${allTr.map(t=>{
+        const pnl=t.pnl||0; const st=t.status||'open';
+        return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+          <td style="padding:4px 8px;color:var(--text3);white-space:nowrap">${t.time||'—'}</td>
+          <td style="padding:4px 8px"><span style="padding:1px 5px;border-radius:3px;background:${t.mode==='live'?'rgba(239,68,68,0.15)':'rgba(0,200,255,0.1)'};color:${t.mode==='live'?'var(--red)':'var(--cyan)'};font-size:9px">${t.mode?.toUpperCase()||'—'}</span></td>
+          <td style="padding:4px 8px;color:${t.signal==='BUY'?'var(--green)':'var(--red)'};font-weight:700">${t.signal||'—'}</td>
+          <td style="padding:4px 8px">₹${parseFloat(t.price||0).toFixed(2)}</td>
+          <td style="padding:4px 8px">${t.exit_price?'₹'+parseFloat(t.exit_price).toFixed(2):'open'}</td>
+          <td style="padding:4px 8px;font-weight:700;color:${pnl>=0?'var(--green)':'var(--red)'}">${st==='open'?'—':(pnl>=0?'+':'')+pnl.toFixed(2)}</td>
+          <td style="padding:4px 8px;color:${st==='open'?'var(--amber)':'var(--text3)'};text-transform:capitalize">${st}</td>
+          <td style="padding:4px 8px;color:var(--text3)">${t.exit_reason||'—'}</td>
+        </tr>`;}).join('')}</tbody></table>`;
+  }
+}
+
+async function indianOptBotStart() {
+  const errEl = document.getElementById('in-optbot-err');
+  errEl.style.display = 'none';
+  const underlying = document.getElementById('in-optbot-underlying').value;
+  const body = {
+    symbol:            underlying,
+    exchange_segment:  'nse_fo',
+    strategy:          document.getElementById('in-optbot-strategy').value,
+    timeframe:         document.getElementById('in-optbot-tf').value,
+    mode:              document.getElementById('in-optbot-mode').value,
+    product:           'MIS',
+    quantity:          document.getElementById('in-optbot-qty').value,
+    demo_balance:      parseFloat(document.getElementById('in-optbot-balance').value) || 100000,
+    options_bot:       true,
+    options_direction: document.getElementById('in-optbot-direction').value,
+    tp_pct:            parseFloat(document.getElementById('in-optbot-tp').value) || 0,
+    sl_pct:            parseFloat(document.getElementById('in-optbot-sl').value) || 0,
+  };
+  const r = await apiFetch('/api/indian/algo/start', { method: 'POST', body: JSON.stringify(body) });
+  if (r.error) { errEl.textContent = r.error; errEl.style.display = 'block'; return; }
+  const dirLabel = body.options_direction === 'CE' ? 'Call only' : body.options_direction === 'PE' ? 'Put only' : 'Auto';
+  toast(`Options bot started — ${underlying} (${body.strategy}, ${dirLabel})`, true);
+  indianAlgoLoadBots();
+}
+
+async function indianLoadOptionsChain() {
+  const symbol = (document.getElementById('in-opt-symbol') || {}).value || 'NIFTY';
+  const infoEl = document.getElementById('in-opt-info');
+  const tableEl = document.getElementById('in-opt-table');
+  if (!infoEl) return;
+  infoEl.textContent = 'Loading...';
+  tableEl.innerHTML = '';
+  const r = await apiFetch(`/api/indian/options_chain?symbol=${symbol}&strikes=8`);
+  if (r.error) { infoEl.textContent = 'Error: ' + r.error; return; }
+  infoEl.innerHTML = `Spot: <b style="color:var(--accent)">₹${r.spot.toLocaleString('en-IN')}</b> &nbsp;|&nbsp; Expiry: <b style="color:var(--cyan)">${r.expiry_display}</b> &nbsp;|&nbsp; ATM: <b>${r.atm_strike}</b>`;
+  const rows = r.strikes.map(s => {
+    const bg = s.atm ? 'background:rgba(139,92,246,0.18);font-weight:700' : '';
+    const badge = s.atm ? ' <span style="background:var(--accent);color:#fff;font-size:8px;padding:1px 4px;border-radius:3px;vertical-align:middle">ATM</span>' : '';
+    return `<tr style="${bg}">
+      <td style="padding:5px 8px;font-size:10px;color:var(--green)">
+        <span style="cursor:pointer;text-decoration:underline" onclick="indianOptPick('${s.ce_symbol}')">${s.ce_symbol}</span>
+        <button class="sbtn" onclick="indianOptBot('${s.ce_symbol}')" style="font-size:8px;padding:1px 5px;margin-left:4px;color:var(--green);border-color:var(--green)">BOT</button>
+      </td>
+      <td style="text-align:center;padding:5px 8px;font-size:12px;border-left:1px solid var(--border);border-right:1px solid var(--border);white-space:nowrap">${s.strike}${badge}</td>
+      <td style="padding:5px 8px;font-size:10px;color:var(--red);text-align:right">
+        <button class="sbtn" onclick="indianOptBot('${s.pe_symbol}')" style="font-size:8px;padding:1px 5px;margin-right:4px;color:var(--red);border-color:var(--red)">BOT</button>
+        <span style="cursor:pointer;text-decoration:underline" onclick="indianOptPick('${s.pe_symbol}')">${s.pe_symbol}</span>
+      </td>
+    </tr>`;
+  }).join('');
+  tableEl.innerHTML = `<table style="width:100%;border-collapse:collapse">
+    <thead><tr style="font-size:10px;color:var(--text3)">
+      <th style="padding:4px 8px;border-bottom:1px solid var(--border);text-align:left">📈 CALL (CE)</th>
+      <th style="padding:4px 8px;border-bottom:1px solid var(--border);border-left:1px solid var(--border);border-right:1px solid var(--border);text-align:center">STRIKE</th>
+      <th style="padding:4px 8px;border-bottom:1px solid var(--border);text-align:right">📉 PUT (PE)</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function indianOptPick(symbol) {
+  document.getElementById('in-order-symbol').value = symbol;
+  document.getElementById('in-order-segment').value = 'nse_fo';
+  document.getElementById('in-order-product').value = 'MIS';
+  window.scrollTo(0, 0);
+  toast('Order form-এ set হয়েছে: ' + symbol, true);
+}
+
+function indianOptBot(symbol) {
+  indianTab('algo');
+  document.getElementById('in-bot-symbol').value = symbol;
+  document.getElementById('in-bot-segment').value = 'nse_fo';
+  document.getElementById('in-bot-product').value = 'MIS';
+  toast('Bot form-এ set হয়েছে: ' + symbol, true);
 }
 
 function indianPickScrip(s) {
@@ -9192,13 +9603,15 @@ async function indianLoadHoldings() {
 
 // ── INDIAN MARKET — TAB SWITCHING ───────────────────────────────────────────
 function indianTab(tab) {
-  ['manual','algo','history'].forEach(t => {
-    document.getElementById(`in-tab-${t}`).style.display = t === tab ? 'block' : 'none';
+  ['dashboard','manual','algo','history'].forEach(t => {
+    const el = document.getElementById(`in-tab-${t}`);
+    if (el) el.style.display = t === tab ? 'block' : 'none';
     const btn = document.getElementById(`in-tab-btn-${t}`);
     if (btn) btn.classList.toggle('active', t === tab);
   });
-  if (tab === 'algo')    indianAlgoLoadBots();
-  if (tab === 'history') indianAlgoLoadHistory();
+  if (tab === 'dashboard') loadIndianDashboard();
+  if (tab === 'algo')      { indianAlgoLoadBots(); indianLoadOptionsChain(); }
+  if (tab === 'history')   indianAlgoLoadHistory();
 }
 
 // ── INDIAN MARKET — ALGO BOTS ────────────────────────────────────────────────
