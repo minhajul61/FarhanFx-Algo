@@ -1957,6 +1957,8 @@ def _bot_lookback_bars(bot) -> int:
         base = max(base, bot.get("dc_ema", 150) + 50)
     if st == "bb_rsi_strict":
         base = max(base, 220)   # needs EMA(200) + warmup
+    if st == "super_breakout":
+        base = max(base, 250)   # needs EMA(200) + 40-bar box + warmup
     if st == "rsi_divergence":
         base = max(base, bot.get("div_lookback", 25) + bot.get("swing_window", 5) + 30)
     return base
@@ -3471,7 +3473,8 @@ def _bot_stats(trades: list) -> dict:
 _ALL_CRYPTO_STRATEGIES = ["rsi", "macd_cross", "bb_squeeze", "false_breakout", "trend_breakout", "vwap_bands",
                           "rsi_divergence", "vwap_rsi", "bb_rsi_strict", "orb",
                           "fvg", "liquidity_sweep", "ob_fvg", "silver_bullet",
-                          "funding_rate", "volume_profile", "ifvg", "bos_choch"]
+                          "funding_rate", "volume_profile", "ifvg", "bos_choch",
+                          "super_breakout"]
 
 _backtest_data_cache: dict = {}   # f"{symbol}:{timeframe}:{days}" -> {"data": [...], "fetched_at": ts}
 
@@ -3720,6 +3723,7 @@ _STRATEGY_DEFAULTS = {
     "volume_profile":  ("1h",  {"vp_lookback": 100, "vp_min_bars": 30, "trailing_atr": 1.5, "tp_atr": 2.0}),
     "ifvg":            ("1h",  {"fvg_lookback": 60, "fvg_min_gap": 0.3, "trailing_atr": 1.5, "tp_atr": 2.0}),
     "bos_choch":       ("15m", {"bos_lookback": 30, "trailing_atr": 1.5, "tp_atr": 2.5}),
+    "super_breakout":  ("4h",  {"csb_lookback": 40, "csb_atr_mult": 3.0}),
 }
 _SCREENER_EXCLUDE_BASES = {
     "XAU", "XAG", "CL", "UKOIL", "USOIL",                                  # commodities
