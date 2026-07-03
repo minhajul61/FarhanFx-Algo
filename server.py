@@ -435,12 +435,16 @@ def admin_reject_payment(request_id: str, admin: dict = Depends(_require_admin))
 
 @app.post("/api/admin/restart")
 def admin_restart(admin: dict = Depends(_require_admin)):
-    """Restart the server process in-place (admin only)."""
-    import sys, os
+    """Restart the server process (admin only). Uses subprocess on Windows."""
+    import sys, os, subprocess
     def _do():
         import time
         time.sleep(1)
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        kwargs = {}
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+        subprocess.Popen([sys.executable] + sys.argv, cwd=os.getcwd(), **kwargs)
+        os._exit(0)
     threading.Thread(target=_do, daemon=False).start()
     return {"status": "restarting"}
 
