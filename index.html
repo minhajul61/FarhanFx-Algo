@@ -9347,22 +9347,38 @@ async function loadIndianDashboard(autoRefresh=true) {
       <div style="font-size:9px;color:var(--text3);margin-top:3px;letter-spacing:0.5px;text-transform:uppercase">${t.label}</div>
     </div>`).join('');
 
-  // ── POSITIONS ──
+  // ── POSITIONS (Kotak live + bot demo open trades) ──
   const posEl = document.getElementById('in-dash-positions');
-  if (!poses.length) { posEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No open positions</div>'; }
-  else {
+  const openBotTrades = (bs.all_trades||[]).filter(t=>t.status==='open');
+  if (!poses.length && !openBotTrades.length) {
+    posEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No open positions</div>';
+  } else {
+    const liveRows = poses.map(p=>{
+      const pnl=parseFloat(p.mtomPrs||p.urmtom||p.pnl||0);
+      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+        <td style="padding:4px 6px;font-weight:700;color:var(--cyan)">${p.trdSym||p.symbol||'—'}</td>
+        <td style="padding:4px 6px">${p.flQty||p.qty||p.netQty||'—'}</td>
+        <td style="padding:4px 6px">₹${parseFloat(p.buyAmt||p.avgBuyPrice||0).toFixed(2)}</td>
+        <td style="padding:4px 6px">₹${parseFloat(p.ltp||p.lastPrice||0).toFixed(2)}</td>
+        <td style="padding:4px 6px;color:${pnl>=0?'var(--green)':'var(--red)'};font-weight:700">${pnl>=0?'+':''}₹${pnl.toFixed(2)}</td>
+        <td style="padding:4px 6px"><span style="font-size:8px;background:rgba(239,68,68,0.2);color:var(--red);padding:1px 4px;border-radius:3px">LIVE</span></td>
+      </tr>`;
+    });
+    const demoRows = openBotTrades.map(t=>{
+      const upnl=t.unrealized_pnl;
+      const pnlCell=upnl!=null?`<span style="color:${upnl>=0?'var(--green)':'var(--red)'};font-weight:700">${upnl>=0?'+':''}₹${upnl.toFixed(2)} ⚡</span>`:'—';
+      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+        <td style="padding:4px 6px;font-weight:700;color:var(--cyan)">${t.symbol||'—'}</td>
+        <td style="padding:4px 6px">${t.amount||t.qty||'—'}</td>
+        <td style="padding:4px 6px">₹${parseFloat(t.price||0).toFixed(2)}</td>
+        <td style="padding:4px 6px;color:var(--text3)">${t.current_price?'₹'+parseFloat(t.current_price).toFixed(2):'—'}</td>
+        <td style="padding:4px 6px">${pnlCell}</td>
+        <td style="padding:4px 6px"><span style="font-size:8px;background:rgba(0,200,255,0.15);color:var(--cyan);padding:1px 4px;border-radius:3px">DEMO</span> ${t.strategy||''}</td>
+      </tr>`;
+    });
     posEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:10px">
-      <thead><tr style="color:var(--text3)">${['SYMBOL','QTY','BUY AVG','LTP','P&L','PRODUCT'].map(h=>`<th style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:left">${h}</th>`).join('')}</tr></thead>
-      <tbody>${poses.map(p => {
-        const pnl = parseFloat(p.mtomPrs || p.urmtom || p.pnl || 0);
-        return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
-          <td style="padding:4px 6px;font-weight:700">${p.trdSym||p.symbol||'—'}</td>
-          <td style="padding:4px 6px">${p.flQty||p.qty||p.netQty||'—'}</td>
-          <td style="padding:4px 6px">₹${parseFloat(p.buyAmt||p.avgBuyPrice||0).toFixed(2)}</td>
-          <td style="padding:4px 6px">₹${parseFloat(p.ltp||p.lastPrice||0).toFixed(2)}</td>
-          <td style="padding:4px 6px;color:${pnl>=0?'var(--green)':'var(--red)'};font-weight:700">${pnl>=0?'+':''}₹${pnl.toFixed(2)}</td>
-          <td style="padding:4px 6px;color:var(--text3)">${p.prod||p.product||'—'}</td>
-        </tr>`;}).join('')}</tbody></table>`;
+      <thead><tr style="color:var(--text3)">${['SYMBOL','QTY','ENTRY ₹','LTP','P&L','TYPE'].map(h=>`<th style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:left">${h}</th>`).join('')}</tr></thead>
+      <tbody>${[...liveRows,...demoRows].join('')}</tbody></table>`;
   }
 
   // ── HOLDINGS ──
@@ -9388,25 +9404,43 @@ async function loadIndianDashboard(autoRefresh=true) {
           </tr>`;}).join('')}</tbody></table>`;
   }
 
-  // ── ORDERS ──
+  // ── ORDERS (Kotak live + today's bot trades) ──
   const ords = d.orders || [];
   const ordEl = document.getElementById('in-dash-orders');
-  if (!ords.length) { ordEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No orders today</div>'; }
-  else {
-    ordEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:10px;min-width:600px">
-      <thead><tr style="color:var(--text3)">${['TIME','SYMBOL','TYPE','QTY','PRICE','STATUS','PRODUCT'].map(h=>`<th style="padding:4px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap">${h}</th>`).join('')}</tr></thead>
-      <tbody>${ords.slice(0,30).map(o=>{
-        const st=o.ordSt||o.status||'—'; const stColor=st.includes('complete')||st.includes('filled')?'var(--green)':st.includes('reject')||st.includes('cancel')?'var(--red)':'var(--amber)';
-        const tx=o.trnsTp||o.transactionType||'';
-        return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
-          <td style="padding:4px 8px;color:var(--text3);white-space:nowrap">${(o.ordTm||o.orderTime||'').slice(0,5)||'—'}</td>
-          <td style="padding:4px 8px;font-weight:700">${o.trdSym||o.symbol||'—'}</td>
-          <td style="padding:4px 8px;color:${tx==='B'?'var(--green)':'var(--red)'};font-weight:700">${tx==='B'?'BUY':'SELL'}</td>
-          <td style="padding:4px 8px">${o.qty||o.quantity||'—'}</td>
-          <td style="padding:4px 8px">₹${parseFloat(o.avgPrc||o.price||0).toFixed(2)}</td>
-          <td style="padding:4px 8px;color:${stColor};font-weight:700;text-transform:capitalize">${st}</td>
-          <td style="padding:4px 8px;color:var(--text3)">${o.prod||o.product||'—'}</td>
-        </tr>`;}).join('')}</tbody></table>`;
+  const todayStr = new Date().toISOString().slice(0,10);
+  const botOrders = (bs.all_trades||[]).filter(t=>t.time&&t.time.startsWith(todayStr));
+  if (!ords.length && !botOrders.length) {
+    ordEl.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:12px;text-align:center">No orders today</div>';
+  } else {
+    const liveOrdRows = ords.slice(0,20).map(o=>{
+      const st=o.ordSt||o.status||'—';
+      const stColor=st.includes('complete')||st.includes('filled')?'var(--green)':st.includes('reject')||st.includes('cancel')?'var(--red)':'var(--amber)';
+      const tx=o.trnsTp||o.transactionType||'';
+      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+        <td style="padding:4px 8px;color:var(--text3)">${(o.ordTm||'').slice(0,5)||'—'}</td>
+        <td style="padding:4px 8px;font-weight:700">${o.trdSym||o.symbol||'—'}</td>
+        <td style="padding:4px 8px;color:${tx==='B'?'var(--green)':'var(--red)'};font-weight:700">${tx==='B'?'BUY':'SELL'}</td>
+        <td style="padding:4px 8px">${o.qty||'—'}</td>
+        <td style="padding:4px 8px">₹${parseFloat(o.avgPrc||o.price||0).toFixed(2)}</td>
+        <td style="padding:4px 8px;color:${stColor};font-weight:700">${st}</td>
+        <td style="padding:4px 8px"><span style="font-size:8px;background:rgba(239,68,68,0.2);color:var(--red);padding:1px 4px;border-radius:3px">LIVE</span></td>
+      </tr>`;
+    });
+    const botOrdRows = botOrders.slice(0,20).map(t=>{
+      const pnl=t.pnl||t.unrealized_pnl||0;
+      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">
+        <td style="padding:4px 8px;color:var(--text3)">${(t.time||'').slice(11,16)||'—'}</td>
+        <td style="padding:4px 8px;font-weight:700">${t.symbol||'—'}</td>
+        <td style="padding:4px 8px;color:${t.signal==='BUY'?'var(--green)':'var(--red)'};font-weight:700">${t.signal||'—'}</td>
+        <td style="padding:4px 8px">${t.amount||t.qty||'—'}</td>
+        <td style="padding:4px 8px">₹${parseFloat(t.price||0).toFixed(2)}</td>
+        <td style="padding:4px 8px;color:${t.status==='open'?'var(--amber)':'var(--text3)'}">${t.status||'—'}</td>
+        <td style="padding:4px 8px"><span style="font-size:8px;background:rgba(0,200,255,0.15);color:var(--cyan);padding:1px 4px;border-radius:3px">DEMO</span></td>
+      </tr>`;
+    });
+    ordEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:10px;min-width:580px">
+      <thead><tr style="color:var(--text3)">${['TIME','SYMBOL','TYPE','QTY','PRICE','STATUS','MODE'].map(h=>`<th style="padding:4px 8px;border-bottom:1px solid var(--border);text-align:left">${h}</th>`).join('')}</tr></thead>
+      <tbody>${[...liveOrdRows,...botOrdRows].join('')}</tbody></table>`;
   }
 
   // ── ACTIVE BOTS ──
