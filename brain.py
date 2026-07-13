@@ -19,7 +19,8 @@ from datetime import datetime
 from pathlib import Path
 
 try:
-    import google.generativeai as genai
+    from google import genai as genai
+    from google.genai import types as _genai_types
     _GEMINI_OK = True
 except ImportError:
     _GEMINI_OK = False
@@ -319,10 +320,12 @@ def run_analysis():
             metrics = calculate_metrics(bots)
             prompt  = _build_prompt(metrics, state)
 
-            genai.configure(api_key=api_key)
-            model    = genai.GenerativeModel(BRAIN_MODEL)
-            response = model.generate_content(prompt)
-            raw      = response.text.strip()
+            client   = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model=BRAIN_MODEL,
+                contents=prompt,
+            )
+            raw = response.text.strip()
 
             # Extract JSON from response
             json_match = re.search(r"\{.*\}", raw, re.DOTALL)
