@@ -5,7 +5,9 @@ Self-learning AI that monitors all bots, analyzes trade performance,
 learns from patterns, and autonomously fixes underperforming strategies.
 
 Runs every BRAIN_INTERVAL_HOURS (default 6h).
-Uses Claude API (claude-haiku-4-5-20251001) for intelligent analysis.
+Uses Google Gemini API (gemini-2.0-flash) — 100% FREE, 1500 req/day.
+Get free API key: https://aistudio.google.com/app/apikey
+Set env var: GEMINI_API_KEY=your_key_here
 """
 
 import json
@@ -17,17 +19,17 @@ from datetime import datetime
 from pathlib import Path
 
 try:
-    import anthropic
-    _ANTHROPIC_OK = True
+    import google.generativeai as genai
+    _GEMINI_OK = True
 except ImportError:
-    _ANTHROPIC_OK = False
+    _GEMINI_OK = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
 BRAIN_FILE            = "brain_state.json"
 BOTS_FILE             = "bots.json"
 BRAIN_INTERVAL_HOURS  = 6
-BRAIN_MODEL           = "claude-haiku-4-5-20251001"
-ANTHROPIC_API_KEY     = os.environ.get("ANTHROPIC_API_KEY", "")
+BRAIN_MODEL           = "gemini-2.0-flash"
+GEMINI_API_KEY        = os.environ.get("GEMINI_API_KEY", "")
 
 # Thresholds for autonomous decisions
 MIN_TRADES_TO_JUDGE   = 10   # need at least this many trades before pausing
@@ -266,10 +268,10 @@ def run_analysis():
     Run one full brain analysis cycle.
     Returns a result dict. Called by the background loop and the manual API endpoint.
     """
-    if not _ANTHROPIC_OK:
-        return {"error": "anthropic library not installed — run: pip install anthropic"}
-    if not ANTHROPIC_API_KEY:
-        return {"error": "ANTHROPIC_API_KEY environment variable not set"}
+    if not _GEMINI_OK:
+        return {"error": "google-generativeai not installed — run: pip install google-generativeai"}
+    if not GEMINI_API_KEY:
+        return {"error": "GEMINI_API_KEY not set — get free key at aistudio.google.com"}
 
     with _brain_lock:
         try:
@@ -281,13 +283,10 @@ def run_analysis():
             metrics = calculate_metrics(bots)
             prompt  = _build_prompt(metrics, state)
 
-            client   = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-            response = client.messages.create(
-                model=BRAIN_MODEL,
-                max_tokens=2500,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            raw = response.content[0].text.strip()
+            genai.configure(api_key=GEMINI_API_KEY)
+            model    = genai.GenerativeModel(BRAIN_MODEL)
+            response = model.generate_content(prompt)
+            raw      = response.text.strip()
 
             # Extract JSON from response
             json_match = re.search(r"\{.*\}", raw, re.DOTALL)
@@ -363,11 +362,11 @@ def _loop():
 def start():
     """Start the brain background thread. Called once at server startup."""
     global _brain_thread
-    if not ANTHROPIC_API_KEY:
-        print("[Brain] ANTHROPIC_API_KEY not set — brain disabled")
+    if not GEMINI_API_KEY:
+        print("[Brain] GEMINI_API_KEY not set — brain disabled. Get free key: aistudio.google.com")
         return
-    if not _ANTHROPIC_OK:
-        print("[Brain] 'anthropic' not installed — run: pip install anthropic")
+    if not _GEMINI_OK:
+        print("[Brain] google-generativeai not installed — run: pip install google-generativeai")
         return
     _brain_thread = threading.Thread(target=_loop, daemon=True)
     _brain_thread.start()
@@ -378,7 +377,7 @@ def get_status():
     """Return current brain state for the /api/brain/status endpoint."""
     state = _load_state()
     return {
-        "enabled":          bool(ANTHROPIC_API_KEY and _ANTHROPIC_OK),
+        "enabled":          bool(GEMINI_API_KEY and _GEMINI_OK),
         "last_run":         state.get("last_run"),
         "total_analyses":   state.get("total_analyses", 0),
         "latest_journal":   state["journal"][-1] if state.get("journal") else None,
