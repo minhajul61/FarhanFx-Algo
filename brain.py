@@ -30,7 +30,7 @@ BRAIN_FILE            = "brain_state.json"
 BRAIN_CONFIG_FILE     = "brain_config.json"
 BOTS_FILE             = "bots.json"
 BRAIN_INTERVAL_HOURS  = 6
-BRAIN_MODEL           = "gemini-2.0-flash"
+BRAIN_MODEL           = "gemini-1.5-flash"
 
 # Thresholds for autonomous decisions
 MIN_TRADES_TO_JUDGE   = 10   # need at least this many trades before pausing
