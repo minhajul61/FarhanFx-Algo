@@ -320,7 +320,10 @@ def run_analysis():
             metrics = calculate_metrics(bots)
             prompt  = _build_prompt(metrics, state)
 
-            client   = genai.Client(api_key=api_key)
+            client   = genai.Client(
+                api_key=api_key,
+                http_options={"api_version": "v1"},
+            )
             response = client.models.generate_content(
                 model=BRAIN_MODEL,
                 contents=prompt,
