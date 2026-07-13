@@ -1583,6 +1583,23 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <!-- Status bar -->
           <div id="brain-status-bar" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>
 
+          <!-- ── Gemini API Key Configure Panel (shown when key not set) ── -->
+          <div id="brain-config-panel" style="display:none;margin-bottom:16px">
+            <div style="background:linear-gradient(135deg,rgba(168,85,247,0.12),rgba(56,189,248,0.06));border:1px solid rgba(168,85,247,0.35);border-radius:12px;padding:20px">
+              <div style="font-size:13px;font-weight:800;color:#a855f7;margin-bottom:6px">🔑 Gemini API Key সেট করো</div>
+              <div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.6">
+                AI Brain চালু করতে একটি free Gemini key দরকার।<br>
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#38bdf8;text-decoration:none;font-weight:700">👉 aistudio.google.com/app/apikey</a> — এ গিয়ে "Create API Key" করো, তারপর এখানে paste করো।
+              </div>
+              <div style="display:flex;gap:10px;align-items:center">
+                <input type="password" id="brain-key-input" placeholder="AIza... (paste your free Gemini API key here)"
+                  style="flex:1;padding:10px 14px;background:var(--bg2);border:1px solid rgba(168,85,247,0.4);border-radius:8px;color:var(--text);font-size:12px;font-family:var(--font);outline:none"/>
+                <button onclick="saveBrainKey()" style="padding:10px 22px;background:linear-gradient(135deg,#7c3aed,#a855f7);border:none;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">💾 Save & Activate</button>
+              </div>
+              <div id="brain-key-msg" style="font-size:11px;margin-top:8px;min-height:16px"></div>
+            </div>
+          </div>
+
           <!-- Overall assessment -->
           <div class="panel" id="brain-overall-panel" style="display:none;margin-bottom:14px;border-left:3px solid #a855f7">
             <div style="font-size:11px;color:#a855f7;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">🧠 Latest AI Assessment</div>
@@ -9091,6 +9108,26 @@ async function loadBrainStatus() {
   } catch(e) { console.error('Brain load error:', e); }
 }
 
+async function saveBrainKey() {
+  const inp = document.getElementById('brain-key-input');
+  const msg = document.getElementById('brain-key-msg');
+  const key = inp ? inp.value.trim() : '';
+  if (!key) { if (msg) msg.innerHTML = '<span style="color:var(--red)">Key খালি — paste করো</span>'; return; }
+  if (msg) msg.innerHTML = '<span style="color:var(--text3)">⏳ Saving...</span>';
+  try {
+    const r = await apiFetch('/api/brain/configure', { method: 'POST', body: JSON.stringify({ api_key: key }) });
+    if (r.success) {
+      if (msg) msg.innerHTML = '<span style="color:#22c55e">✅ Saved! Brain activating in 2 min...</span>';
+      if (inp) inp.value = '';
+      setTimeout(loadBrainStatus, 2000);
+    } else {
+      if (msg) msg.innerHTML = `<span style="color:var(--red)">❌ ${r.detail || r.error || 'Failed'}</span>`;
+    }
+  } catch(e) {
+    if (msg) msg.innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`;
+  }
+}
+
 async function brainRunNow() {
   const btn = document.querySelector('[onclick="brainRunNow()"]');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyzing...'; }
@@ -9112,10 +9149,14 @@ function _renderBrainStatus(data) {
   const latest  = data.latest_journal;
   const decisions = data.recent_decisions || [];
 
+  // Configure panel: show if key not configured
+  const cfgPanel = document.getElementById('brain-config-panel');
+  if (cfgPanel) cfgPanel.style.display = data.key_configured ? 'none' : 'block';
+
   // Status bar
   document.getElementById('brain-status-bar').innerHTML = `
     <div style="padding:8px 14px;background:${enabled?'rgba(168,85,247,0.12)':'rgba(255,60,60,0.1)'};border:1px solid ${enabled?'#a855f7':'var(--red)'};border-radius:8px;font-size:12px;color:${enabled?'#a855f7':'var(--red)'}">
-      ${enabled ? '🟢 Brain Active' : '🔴 Brain Disabled — set ANTHROPIC_API_KEY'}
+      ${enabled ? '🟢 Brain Active' : (data.key_configured ? '🟡 Key Set — Activating' : '🔴 Key Not Set — Enter below')}
     </div>
     <div style="padding:8px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text3)">
       Last Run: <span style="color:var(--text)">${last}</span>

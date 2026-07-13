@@ -24,5 +24,6 @@ payment_requests.json
 users.json
 auth_sessions.json
 kotak_neo_cfg.json
+brain_config.json
 Trading Meterial/
 .gstack/

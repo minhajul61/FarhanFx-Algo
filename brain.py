@@ -26,18 +26,53 @@ except ImportError:
 
 # ── Config ────────────────────────────────────────────────────────────────────
 BRAIN_FILE            = "brain_state.json"
+BRAIN_CONFIG_FILE     = "brain_config.json"
 BOTS_FILE             = "bots.json"
 BRAIN_INTERVAL_HOURS  = 6
 BRAIN_MODEL           = "gemini-2.0-flash"
-GEMINI_API_KEY        = os.environ.get("GEMINI_API_KEY", "")
 
 # Thresholds for autonomous decisions
 MIN_TRADES_TO_JUDGE   = 10   # need at least this many trades before pausing
 PAUSE_WR_THRESHOLD    = 40   # pause if win rate below this %
 RESUME_WR_THRESHOLD   = 55   # resume a paused strategy if recent WR recovers
 
-_brain_lock   = threading.Lock()
-_brain_thread = None
+_brain_lock    = threading.Lock()
+_brain_thread  = None
+_api_key_cache = ""   # updated at runtime via set_api_key()
+
+
+def _get_api_key() -> str:
+    """Read key: in-memory cache → env var → brain_config.json."""
+    if _api_key_cache:
+        return _api_key_cache
+    key = os.environ.get("GEMINI_API_KEY", "")
+    if key:
+        return key
+    cfg_path = Path(BRAIN_CONFIG_FILE)
+    if cfg_path.exists():
+        try:
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            return cfg.get("gemini_api_key", "")
+        except Exception:
+            pass
+    return ""
+
+
+def set_api_key(key: str):
+    """Save key to brain_config.json and (re)start the brain thread."""
+    global _api_key_cache
+    _api_key_cache = key.strip()
+    cfg = {}
+    cfg_path = Path(BRAIN_CONFIG_FILE)
+    if cfg_path.exists():
+        try:
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    cfg["gemini_api_key"] = _api_key_cache
+    with open(BRAIN_CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+    start()  # safe to call multiple times — guards with _brain_thread check
 
 
 # ── State I/O ─────────────────────────────────────────────────────────────────
@@ -270,8 +305,9 @@ def run_analysis():
     """
     if not _GEMINI_OK:
         return {"error": "google-generativeai not installed — run: pip install google-generativeai"}
-    if not GEMINI_API_KEY:
-        return {"error": "GEMINI_API_KEY not set — get free key at aistudio.google.com"}
+    api_key = _get_api_key()
+    if not api_key:
+        return {"error": "Gemini API key not set — enter it in the AI BRAIN tab of the dashboard"}
 
     with _brain_lock:
         try:
@@ -283,7 +319,7 @@ def run_analysis():
             metrics = calculate_metrics(bots)
             prompt  = _build_prompt(metrics, state)
 
-            genai.configure(api_key=GEMINI_API_KEY)
+            genai.configure(api_key=api_key)
             model    = genai.GenerativeModel(BRAIN_MODEL)
             response = model.generate_content(prompt)
             raw      = response.text.strip()
@@ -360,14 +396,16 @@ def _loop():
 
 
 def start():
-    """Start the brain background thread. Called once at server startup."""
+    """Start the brain background thread. Safe to call multiple times."""
     global _brain_thread
-    if not GEMINI_API_KEY:
-        print("[Brain] GEMINI_API_KEY not set — brain disabled. Get free key: aistudio.google.com")
-        return
     if not _GEMINI_OK:
         print("[Brain] google-generativeai not installed — run: pip install google-generativeai")
         return
+    if not _get_api_key():
+        print("[Brain] API key not set — enter it in the AI BRAIN dashboard tab")
+        return
+    if _brain_thread and _brain_thread.is_alive():
+        return  # already running
     _brain_thread = threading.Thread(target=_loop, daemon=True)
     _brain_thread.start()
     print(f"[Brain] Started — first analysis in 2 min, then every {BRAIN_INTERVAL_HOURS}h")
@@ -376,8 +414,11 @@ def start():
 def get_status():
     """Return current brain state for the /api/brain/status endpoint."""
     state = _load_state()
+    key   = _get_api_key()
     return {
-        "enabled":          bool(GEMINI_API_KEY and _GEMINI_OK),
+        "enabled":          bool(key and _GEMINI_OK),
+        "key_configured":   bool(key),
+        "gemini_ok":        _GEMINI_OK,
         "last_run":         state.get("last_run"),
         "total_analyses":   state.get("total_analyses", 0),
         "latest_journal":   state["journal"][-1] if state.get("journal") else None,

@@ -5795,5 +5795,18 @@ def brain_run_now(current_user: dict = Depends(_get_current_user)):
     return result
 
 
+class BrainConfigureRequest(BaseModel):
+    api_key: str
+
+@app.post("/api/brain/configure")
+def brain_configure(body: BrainConfigureRequest, current_user: dict = Depends(_get_current_user)):
+    """Save Gemini API key to brain_config.json and activate the brain."""
+    key = body.api_key.strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="api_key required")
+    _brain.set_api_key(key)
+    return {"success": True, "message": "Gemini API key saved — Brain is now activating!"}
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
