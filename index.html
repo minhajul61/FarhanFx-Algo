@@ -1064,6 +1064,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <button class="crypto-sub-tab active" id="cst-dashboard"  onclick="showCryptoTab('dashboard',this)">&#128202; DASHBOARD</button>
           <button class="crypto-sub-tab" id="cst-trade"     onclick="showCryptoTab('trade',this)">TRADE</button>
           <button class="crypto-sub-tab" id="cst-algo"      onclick="showCryptoTab('algo',this)">ALGO BOTS</button>
+          <button class="crypto-sub-tab" id="cst-brain"     onclick="showCryptoTab('brain',this)">🧠 AI BRAIN</button>
           <button class="crypto-sub-tab" id="cst-backtest"  onclick="showCryptoTab('backtest',this)">BACKTEST</button>
           <button class="crypto-sub-tab" id="cst-subscription" onclick="showCryptoTab('subscription',this)">SUBSCRIPTION</button>
           <button class="crypto-sub-tab" id="cst-payhistory"   onclick="showCryptoTab('payhistory',this)">PAYMENT HISTORY</button>
@@ -1566,6 +1567,54 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
         <!-- ═══ REPORTS SUB-TAB ══════════════════════════════════ -->
         
+        <!-- ═══ AI BRAIN SUB-TAB ════════════════════════════════ -->
+        <div class="crypto-sub-page" id="csp-brain" style="display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+            <div>
+              <div style="font-size:18px;font-weight:800;color:var(--text)">🧠 AI Trading Brain</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px">Self-learning AI — monitors all bots, finds patterns, auto-fixes underperformers</div>
+            </div>
+            <div style="display:flex;gap:10px">
+              <button onclick="brainRunNow()" style="padding:9px 20px;background:linear-gradient(135deg,#7c3aed,#a855f7);border:none;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:0.5px">⚡ Run Analysis Now</button>
+              <button onclick="loadBrainStatus()" style="padding:9px 14px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:8px;font-size:11px;cursor:pointer">↺ Refresh</button>
+            </div>
+          </div>
+
+          <!-- Status bar -->
+          <div id="brain-status-bar" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px"></div>
+
+          <!-- Overall assessment -->
+          <div class="panel" id="brain-overall-panel" style="display:none;margin-bottom:14px;border-left:3px solid #a855f7">
+            <div style="font-size:11px;color:#a855f7;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">🧠 Latest AI Assessment</div>
+            <div id="brain-overall-text" style="font-size:13px;color:var(--text);line-height:1.6"></div>
+            <div id="brain-market-insight" style="font-size:12px;color:var(--text3);margin-top:8px;font-style:italic"></div>
+          </div>
+
+          <!-- Key learnings -->
+          <div class="panel" id="brain-learnings-panel" style="display:none;margin-bottom:14px">
+            <div style="font-size:11px;color:var(--cyan);font-weight:700;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">📚 Key Learnings</div>
+            <div id="brain-learnings-list"></div>
+          </div>
+
+          <!-- Strategy analysis -->
+          <div class="panel" style="margin-bottom:14px">
+            <div style="font-size:11px;color:var(--text3);font-weight:700;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">📊 Strategy Health Scores</div>
+            <div id="brain-strategy-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px"></div>
+          </div>
+
+          <!-- Decision log -->
+          <div class="panel" style="margin-bottom:14px">
+            <div style="font-size:11px;color:var(--text3);font-weight:700;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">⚡ Brain Decisions Log</div>
+            <div id="brain-decisions-log" style="font-size:12px"></div>
+          </div>
+
+          <!-- Full journal -->
+          <div class="panel">
+            <div style="font-size:11px;color:var(--text3);font-weight:700;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">📓 Analysis Journal</div>
+            <div id="brain-journal-list"></div>
+          </div>
+        </div>
+
         <!-- ═══ ALGO BOTS SUB-TAB ════════════════════════════════ -->
         <div class="crypto-sub-page" id="csp-algo" style="display:none">
 
@@ -8412,6 +8461,9 @@ function showCryptoTab(tab, el) {
     _dashRefTimer = setInterval(cryptoDashboardLoad, 10000);
     _rptRefTimer = setInterval(cryptoLoadReports, 60000);
   }
+  if (tab === 'brain') {
+    loadBrainStatus();
+  }
   if (tab === 'trade') {
     tpInit();
     _dashRefTimer = setInterval(cryptoRefresh, 10000);
@@ -9026,6 +9078,130 @@ async function cryptoLoadReports() {
         <td style="color:var(--text3)">$${(t.fee||0).toFixed(4)}</td>
       </tr>`;
     }).join('');
+  }
+}
+
+// ── AI BRAIN ──────────────────────────────────────────────────────────────────
+
+async function loadBrainStatus() {
+  try {
+    const r = await apiFetch('/api/brain/status');
+    if (r.error) { document.getElementById('brain-status-bar').innerHTML = `<span style="color:var(--red);font-size:12px">⚠️ ${r.error}</span>`; return; }
+    _renderBrainStatus(r);
+  } catch(e) { console.error('Brain load error:', e); }
+}
+
+async function brainRunNow() {
+  const btn = document.querySelector('[onclick="brainRunNow()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyzing...'; }
+  try {
+    const r = await apiFetch('/api/brain/run', { method: 'POST' });
+    if (r.error) { toast('Brain error: ' + r.error, false); }
+    else { toast('🧠 Brain analysis complete! ' + (r.decisions?.length || 0) + ' decision(s) made', true); }
+    await loadBrainStatus();
+  } catch(e) { toast('Brain error: ' + e.message, false); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '⚡ Run Analysis Now'; } }
+}
+
+function _renderBrainStatus(data) {
+  const enabled = data.enabled;
+  const last    = data.last_run || 'Never';
+  const total   = data.total_analyses || 0;
+  const scores  = data.strategy_scores || {};
+  const journal = data.all_journal || [];
+  const latest  = data.latest_journal;
+  const decisions = data.recent_decisions || [];
+
+  // Status bar
+  document.getElementById('brain-status-bar').innerHTML = `
+    <div style="padding:8px 14px;background:${enabled?'rgba(168,85,247,0.12)':'rgba(255,60,60,0.1)'};border:1px solid ${enabled?'#a855f7':'var(--red)'};border-radius:8px;font-size:12px;color:${enabled?'#a855f7':'var(--red)'}">
+      ${enabled ? '🟢 Brain Active' : '🔴 Brain Disabled — set ANTHROPIC_API_KEY'}
+    </div>
+    <div style="padding:8px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text3)">
+      Last Run: <span style="color:var(--text)">${last}</span>
+    </div>
+    <div style="padding:8px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text3)">
+      Total Analyses: <span style="color:var(--cyan);font-weight:700">${total}</span>
+    </div>
+    <div style="padding:8px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text3)">
+      Decisions Made: <span style="color:var(--accent);font-weight:700">${decisions.length}</span>
+    </div>`;
+
+  // Overall assessment
+  if (latest) {
+    document.getElementById('brain-overall-panel').style.display = 'block';
+    document.getElementById('brain-overall-text').textContent = latest.overall || '';
+    document.getElementById('brain-market-insight').textContent = '📈 ' + (latest.market_insight || '');
+
+    // Key learnings
+    const learnings = latest.key_learnings || [];
+    if (learnings.length) {
+      document.getElementById('brain-learnings-panel').style.display = 'block';
+      document.getElementById('brain-learnings-list').innerHTML = learnings.map((l,i) =>
+        `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;color:var(--text)">
+          <span style="color:var(--cyan);font-weight:700">${i+1}.</span> ${l}
+        </div>`
+      ).join('');
+    }
+  }
+
+  // Strategy health grid
+  const grid = document.getElementById('brain-strategy-grid');
+  if (Object.keys(scores).length === 0) {
+    grid.innerHTML = '<div style="color:var(--text3);font-size:12px">No analysis run yet. Click "Run Analysis Now"</div>';
+  } else {
+    grid.innerHTML = Object.entries(scores)
+      .sort((a,b) => b[1].total_pnl - a[1].total_pnl)
+      .map(([strat, s]) => {
+        const wr  = s.win_rate || 0;
+        const pnl = s.total_pnl || 0;
+        const cls = wr >= 60 ? '#22c55e' : wr >= 45 ? '#f59e0b' : wr === 0 ? 'var(--text3)' : '#ef4444';
+        const pnlCol = pnl > 0 ? '#22c55e' : pnl < 0 ? '#ef4444' : 'var(--text3)';
+        const badge = wr >= 60 ? '✅' : wr >= 45 ? '⚠️' : s.total_closed === 0 ? '🆕' : '🔴';
+        return `<div style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-size:12px;font-weight:700;color:var(--text)">${badge} ${strat.replace(/_/g,' ')}</span>
+            <span style="font-size:11px;color:${pnlCol};font-weight:700">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</span>
+          </div>
+          <div style="display:flex;gap:12px">
+            <span style="font-size:11px;color:var(--text3)">WR: <span style="color:${cls};font-weight:700">${wr}%</span></span>
+            <span style="font-size:11px;color:var(--text3)">PF: <span style="color:var(--text)">${s.profit_factor || 0}</span></span>
+            <span style="font-size:11px;color:var(--text3)">Trades: <span style="color:var(--text)">${s.total_closed || 0}</span></span>
+          </div>
+        </div>`;
+      }).join('');
+  }
+
+  // Decisions log
+  const dlog = document.getElementById('brain-decisions-log');
+  if (!decisions.length) {
+    dlog.innerHTML = '<div style="color:var(--text3);font-size:12px">No decisions made yet.</div>';
+  } else {
+    dlog.innerHTML = [...decisions].reverse().map(d => {
+      const aCol = d.action.includes('pause') ? '#ef4444' : d.action.includes('resume') ? '#22c55e' : '#f59e0b';
+      return `<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start">
+        <span style="font-size:10px;color:var(--text3);white-space:nowrap;margin-top:1px">${d.time}</span>
+        <span style="font-size:11px;font-weight:700;color:${aCol};white-space:nowrap">[${d.action.toUpperCase()}]</span>
+        <span style="font-size:11px;color:var(--text)"><b>${d.strategy}</b> — ${d.reason}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Journal
+  const jlist = document.getElementById('brain-journal-list');
+  if (!journal.length) {
+    jlist.innerHTML = '<div style="color:var(--text3);font-size:12px">No analysis journal yet. Run first analysis.</div>';
+  } else {
+    jlist.innerHTML = [...journal].reverse().map((j, i) => `
+      <div style="padding:12px;background:${i===0?'rgba(168,85,247,0.06)':'var(--bg2)'};border:1px solid ${i===0?'rgba(168,85,247,0.3)':'var(--border)'};border-radius:10px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:11px;color:var(--text3)">${j.time}</span>
+          <span style="font-size:11px;color:var(--accent)">${j.decisions_count || 0} decision(s)</span>
+        </div>
+        <div style="font-size:12px;color:var(--text);margin-bottom:6px">${j.overall || ''}</div>
+        ${j.key_learnings?.length ? `<div style="font-size:11px;color:var(--text3)">📚 ${j.key_learnings.join(' • ')}</div>` : ''}
+        ${j.next_focus ? `<div style="font-size:11px;color:var(--cyan);margin-top:4px">🎯 Next: ${j.next_focus}</div>` : ''}
+      </div>`).join('');
   }
 }
 

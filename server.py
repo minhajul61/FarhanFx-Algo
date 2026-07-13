@@ -17,6 +17,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 
+import brain as _brain
+
 
 # ── FASTAPI APP ─────────────────────────────────────────────────────────────────
 
@@ -824,6 +826,8 @@ def _restore_exchanges():
                 print(f"Crypto: {username}/{name} restore failed — {e}")
     # After exchanges are ready, restore bots
     _load_saved_bots()
+    # Start AI brain (self-learning trade monitor)
+    _brain.start()
 
 
 _BOTS_FILE = "bots.json"
@@ -5775,6 +5779,20 @@ def purge_offhours_trades(current_user: dict = Depends(_get_current_user)):
 
     _save_indian_bots()
     return {"removed": removed}
+
+
+# ── AI BRAIN ENDPOINTS ────────────────────────────────────────────────────────
+
+@app.get("/api/brain/status")
+def brain_status(current_user: dict = Depends(_get_current_user)):
+    return _brain.get_status()
+
+
+@app.post("/api/brain/run")
+def brain_run_now(current_user: dict = Depends(_get_current_user)):
+    """Trigger an immediate brain analysis (don't wait for the 6h timer)."""
+    result = _brain.run_analysis()
+    return result
 
 
 if __name__ == "__main__":
