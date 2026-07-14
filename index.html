@@ -2741,7 +2741,8 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                     <th style="padding:8px 12px;color:var(--text3);font-size:10px;font-weight:600;text-align:left">SIDE</th>
                     <th style="padding:8px 12px;color:var(--text3);font-size:10px;font-weight:600;text-align:right">ENTRY</th>
                     <th style="padding:8px 12px;color:var(--text3);font-size:10px;font-weight:600;text-align:right">EXIT</th>
-                    <th style="padding:8px 12px;color:var(--text3);font-size:10px;font-weight:600;text-align:right">PNL</th>
+                    <th style="padding:8px 12px;color:var(--text3);font-size:10px;font-weight:600;text-align:right">TRADE PNL</th>
+                    <th style="padding:8px 12px;color:var(--text3);font-size:10px;font-weight:600;text-align:right">CUMULATIVE</th>
                   </tr>
                 </thead>
                 <tbody id="tgr-demo-trades-tbody">
@@ -7257,10 +7258,11 @@ function showTgTab(tab, el) {
 }
 
 async function loadTgReport() {
-  const [status, signals, demo] = await Promise.all([
+  const [status, signals, demo, demoTrades] = await Promise.all([
     apiFetch('/api/telegram/status'),
     apiFetch('/api/telegram/signals'),
     apiFetch('/api/telegram/demo_stats'),
+    apiFetch('/api/telegram/demo_trades'),
   ]);
 
   // ── Summary cards ──
@@ -7341,16 +7343,32 @@ async function loadTgReport() {
     }).join('');
   }
 
-  // ── Demo closed trades ──
-  const dTbody = document.getElementById('tgr-demo-trades-tbody');
-  // demo_stats doesn't return trade list — fetch full demo state via signals (trades embedded in results)
-  // Extract closed trades from demo state — we only have stats summary, show placeholder if no trades
-  if (!(demo.closed_trades)) {
-    dTbody.innerHTML = '<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--text3)">এখনো কোনো closed trade নেই — Demo-তে signal execute হলে এখানে আসবে</td></tr>';
+  // ── Demo closed trades — full trade-by-trade ──
+  const dTbody   = document.getElementById('tgr-demo-trades-tbody');
+  const tradeArr = Array.isArray(demoTrades) ? demoTrades : [];
+  if (!tradeArr.length) {
+    dTbody.innerHTML = '<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--text3)">এখনো কোনো closed trade নেই — Demo-তে signal execute হলে প্রতিটা trade এখানে দেখাবে</td></tr>';
   } else {
-    dTbody.innerHTML = `<tr><td colspan="6" style="padding:14px;text-align:center;color:var(--text3)">
-      মোট ${demo.closed_trades} closed trade | Net PnL: <b style="color:${netPnl>=0?'#22c55e':'#ef4444'}">${netPnl>=0?'+':''}${netPnl.toFixed(2)} USDT</b> | WR: <b>${demo.win_rate != null ? demo.win_rate+'%' : '—'}</b>
-    </td></tr>`;
+    let cumPnl = 0;
+    dTbody.innerHTML = tradeArr.map((t, i) => {
+      const pnl    = t.pnl || 0;
+      cumPnl      += pnl;
+      const pc     = pnl > 0 ? '#22c55e' : pnl < 0 ? '#ef4444' : 'var(--text3)';
+      const cpc    = cumPnl > 0 ? '#22c55e' : cumPnl < 0 ? '#ef4444' : 'var(--text3)';
+      const icon   = pnl > 0 ? '✅' : pnl < 0 ? '❌' : '➖';
+      const side   = (t.side || '').toUpperCase();
+      const sc     = side === 'BUY' ? '#22c55e' : '#ef4444';
+      const bg     = i % 2 === 0 ? 'transparent' : 'rgba(6,182,212,0.03)';
+      return `<tr style="border-top:1px solid var(--border);background:${bg}">
+        <td style="padding:8px 12px;color:var(--text3);font-size:11px">${t.time || '—'}</td>
+        <td style="padding:8px 12px;color:var(--cyan);font-weight:700">${t.symbol || '—'}</td>
+        <td style="padding:8px 12px;color:${sc};font-weight:700">${side || '—'}</td>
+        <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;font-size:12px">${t.entry != null ? t.entry : '—'}</td>
+        <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;font-size:12px">${t.exit != null ? t.exit : '—'}</td>
+        <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:13px;color:${pc}">${icon} ${pnl >= 0 ? '+' : ''}${pnl.toFixed(4)}</td>
+        <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;font-size:11px;color:${cpc}">${cumPnl >= 0 ? '+' : ''}${cumPnl.toFixed(4)}</td>
+      </tr>`;
+    }).join('');
   }
 }
 

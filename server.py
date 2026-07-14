@@ -5029,6 +5029,14 @@ def tg_demo_stats():
     }
 
 
+@app.get("/api/telegram/demo_trades")
+def tg_demo_trades():
+    """Return full closed trade list from demo state — newest first."""
+    st = _load_tg_demo_state()
+    trades = st.get("trades", [])
+    return list(reversed(trades))
+
+
 # ── INDIAN MARKET (Kotak Neo) ────────────────────────────────────────────────
 # Separate broker/asset class from the existing forex (MT5) and crypto (ccxt)
 # integrations — NSE/BSE equities, indices, and F&O via Kotak's official
