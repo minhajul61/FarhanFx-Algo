@@ -1065,6 +1065,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <button class="crypto-sub-tab" id="cst-trade"     onclick="showCryptoTab('trade',this)">TRADE</button>
           <button class="crypto-sub-tab" id="cst-algo"      onclick="showCryptoTab('algo',this)">ALGO BOTS</button>
           <button class="crypto-sub-tab" id="cst-brain"     onclick="showCryptoTab('brain',this)">🧠 AI BRAIN</button>
+          <button class="crypto-sub-tab" id="cst-report"    onclick="showCryptoTab('report',this)">📊 REPORT</button>
           <button class="crypto-sub-tab" id="cst-backtest"  onclick="showCryptoTab('backtest',this)">BACKTEST</button>
           <button class="crypto-sub-tab" id="cst-subscription" onclick="showCryptoTab('subscription',this)">SUBSCRIPTION</button>
           <button class="crypto-sub-tab" id="cst-payhistory"   onclick="showCryptoTab('payhistory',this)">PAYMENT HISTORY</button>
@@ -1566,7 +1567,38 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         </div>
 
         <!-- ═══ REPORTS SUB-TAB ══════════════════════════════════ -->
-        
+        <div class="crypto-sub-page" id="csp-report" style="display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+            <div>
+              <div style="font-size:18px;font-weight:800;color:var(--text)">📊 Performance Report</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px">সব algo bot-এর লাভ-লোকসান — closed trades থেকে হিসাব</div>
+            </div>
+            <button onclick="loadPerformanceReport()" style="padding:9px 14px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:8px;font-size:11px;cursor:pointer">↺ Refresh</button>
+          </div>
+
+          <!-- Summary cards -->
+          <div id="rpt-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px"></div>
+
+          <!-- Per-strategy table -->
+          <div style="overflow-x:auto;border-radius:10px;border:1px solid var(--border)">
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead>
+                <tr style="background:rgba(168,85,247,0.12);text-align:left">
+                  <th style="padding:10px 14px;color:var(--text3);font-weight:600;font-size:11px;letter-spacing:0.5px">STRATEGY</th>
+                  <th style="padding:10px 14px;color:var(--text3);font-weight:600;font-size:11px;letter-spacing:0.5px">SYMBOL</th>
+                  <th style="padding:10px 14px;color:var(--text3);font-weight:600;font-size:11px;letter-spacing:0.5px;text-align:right">TRADES</th>
+                  <th style="padding:10px 14px;color:var(--text3);font-weight:600;font-size:11px;letter-spacing:0.5px;text-align:right">WIN%</th>
+                  <th style="padding:10px 14px;color:var(--text3);font-weight:600;font-size:11px;letter-spacing:0.5px;text-align:right">NET PNL</th>
+                  <th style="padding:10px 14px;color:var(--text3);font-weight:600;font-size:11px;letter-spacing:0.5px">STATUS</th>
+                </tr>
+              </thead>
+              <tbody id="rpt-tbody">
+                <tr><td colspan="6" style="padding:32px;text-align:center;color:var(--text3)">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- ═══ AI BRAIN SUB-TAB ════════════════════════════════ -->
         <div class="crypto-sub-page" id="csp-brain" style="display:none">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
@@ -8494,6 +8526,9 @@ function showCryptoTab(tab, el) {
     // Refresh bot list every 12s to show live PnL updates
     _algoRefTimer = setInterval(algoLoadBots, 8000);
   }
+  if (tab === 'report') {
+    loadPerformanceReport();
+  }
   if (tab === 'subscription') {
     loadSubscriptionStatus();
   }
@@ -9097,6 +9132,71 @@ async function cryptoLoadReports() {
         <td style="color:var(--text3)">$${(t.fee||0).toFixed(4)}</td>
       </tr>`;
     }).join('');
+  }
+}
+
+// ── PERFORMANCE REPORT ────────────────────────────────────────────────────────
+async function loadPerformanceReport() {
+  const tbody = document.getElementById('rpt-tbody');
+  const summary = document.getElementById('rpt-summary');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" style="padding:32px;text-align:center;color:var(--text3)">লোড হচ্ছে...</td></tr>';
+
+  try {
+    const r = await fetch('/api/crypto/algo/list', {headers: {'Authorization': 'Bearer ' + _authToken}});
+    if (!r.ok) throw new Error(r.status);
+    const bots = await r.json();
+
+    const rows = bots.map(b => {
+      const trades = (b.trades || []).filter(t => t.status === 'closed');
+      const wins   = trades.filter(t => (t.pnl || 0) > 0);
+      const pnl    = trades.reduce((s, t) => s + (t.pnl || 0), 0);
+      const wr     = trades.length ? Math.round(wins.length / trades.length * 100) : 0;
+      return {strategy: b.strategy || '?', symbol: b.symbol || '', trades: trades.length, wr, pnl, status: b.status || 'running'};
+    });
+
+    rows.sort((a, b) => b.pnl - a.pnl);
+
+    const totalPnl    = rows.reduce((s, r) => s + r.pnl, 0);
+    const totalTrades = rows.reduce((s, r) => s + r.trades, 0);
+    const activeBots  = rows.filter(r => r.status === 'running').length;
+    const profitBots  = rows.filter(r => r.pnl > 0).length;
+
+    const pnlColor = totalPnl >= 0 ? '#22c55e' : '#ef4444';
+
+    summary.innerHTML = [
+      {label:'Total Net PnL', val: (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(2) + ' USDT', color: pnlColor},
+      {label:'Total Trades', val: totalTrades, color:'var(--text)'},
+      {label:'Active Bots', val: activeBots + ' / ' + rows.length, color:'var(--text)'},
+      {label:'Profitable Bots', val: profitBots, color:'#22c55e'},
+    ].map(c => `
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:4px">${c.label}</div>
+        <div style="font-size:20px;font-weight:800;color:${c.color};font-variant-numeric:tabular-nums">${c.val}</div>
+      </div>`).join('');
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="padding:32px;text-align:center;color:var(--text3)">কোনো bot পাওয়া যায়নি</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map((r, i) => {
+      const pc  = r.pnl > 0 ? '#22c55e' : r.pnl < 0 ? '#ef4444' : 'var(--text3)';
+      const pnlStr = (r.pnl >= 0 ? '+' : '') + r.pnl.toFixed(2);
+      const stColor = r.status === 'running' ? '#22c55e' : r.status === 'paused' ? '#f59e0b' : '#ef4444';
+      const bg = i % 2 === 0 ? 'transparent' : 'rgba(168,85,247,0.04)';
+      return `<tr style="border-top:1px solid var(--border);background:${bg}">
+        <td style="padding:10px 14px;color:var(--text);font-weight:600">${r.strategy}</td>
+        <td style="padding:10px 14px;color:var(--text3);font-size:12px">${r.symbol}</td>
+        <td style="padding:10px 14px;text-align:right;font-variant-numeric:tabular-nums">${r.trades}</td>
+        <td style="padding:10px 14px;text-align:right;font-variant-numeric:tabular-nums;color:${r.wr >= 55 ? '#22c55e' : r.wr >= 45 ? 'var(--text)' : '#f59e0b'}">${r.trades ? r.wr + '%' : '—'}</td>
+        <td style="padding:10px 14px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${pc}">${r.trades ? pnlStr : '—'}</td>
+        <td style="padding:10px 14px"><span style="font-size:10px;padding:3px 8px;border-radius:20px;background:${stColor}22;color:${stColor};font-weight:700;text-transform:uppercase">${r.status}</span></td>
+      </tr>`;
+    }).join('');
+
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:32px;text-align:center;color:#ef4444">Error: ${e.message}</td></tr>`;
   }
 }
 
