@@ -231,6 +231,96 @@ def _load_telegram_trades():
         return [], {}
 
 
+def _fetch_market_context():
+    """Pull live Binance futures data — 100% free, no API key needed.
+    Returns funding rate, long/short ratio, open interest for BTC/ETH/SOL."""
+    base    = "https://fapi.binance.com"
+    symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+    ctx     = {}
+    for sym in symbols:
+        short = sym.replace("USDT", "")
+        try:
+            # Funding rate + mark price in one call
+            pr = _requests.get(
+                f"{base}/fapi/v1/premiumIndex?symbol={sym}", timeout=8
+            ).json()
+            funding_pct = round(float(pr.get("lastFundingRate", 0)) * 100, 5)
+            price       = round(float(pr.get("markPrice", 0)), 2)
+
+            # Open Interest (current)
+            oi_r  = _requests.get(
+                f"{base}/fapi/v1/openInterest?symbol={sym}", timeout=8
+            ).json()
+            oi_now = round(float(oi_r.get("openInterest", 0)), 2)
+
+            # OI history — 5h trend (5 × 1h buckets)
+            oi_h = _requests.get(
+                f"{base}/futures/data/openInterestHist"
+                f"?symbol={sym}&period=1h&limit=6", timeout=8
+            ).json()
+            oi_change_pct = 0.0
+            if isinstance(oi_h, list) and len(oi_h) >= 2:
+                old = float(oi_h[0]["sumOpenInterest"])
+                new = float(oi_h[-1]["sumOpenInterest"])
+                oi_change_pct = round((new - old) / old * 100, 2) if old else 0
+
+            # Global long/short account ratio
+            ls = _requests.get(
+                f"{base}/futures/data/globalLongShortAccountRatio"
+                f"?symbol={sym}&period=1h&limit=1", timeout=8
+            ).json()
+            if isinstance(ls, list) and ls:
+                ls_ratio  = round(float(ls[0].get("longShortRatio", 1.0)), 3)
+                long_pct  = round(float(ls[0].get("longAccount",  0.5)) * 100, 1)
+            else:
+                ls_ratio, long_pct = 1.0, 50.0
+
+            # Derive a simple signal from funding + L/S
+            if funding_pct >  0.03:
+                signal = "⚠️ OVER-LONG  (short squeeze risk)"
+            elif funding_pct < -0.01:
+                signal = "⚠️ OVER-SHORT (long squeeze risk)"
+            elif ls_ratio > 1.5:
+                signal = "⚡ HEAVY LONG  bias"
+            elif ls_ratio < 0.75:
+                signal = "⚡ HEAVY SHORT bias"
+            else:
+                signal = "✅ BALANCED"
+
+            ctx[short] = {
+                "price":           price,
+                "funding_pct":     funding_pct,
+                "oi":              oi_now,
+                "oi_5h_chg":       oi_change_pct,
+                "ls_ratio":        ls_ratio,
+                "long_pct":        long_pct,
+                "signal":          signal,
+            }
+        except Exception as exc:
+            ctx[short] = {"error": str(exc)[:80]}
+
+    return ctx
+
+
+def _format_market_ctx(ctx: dict) -> str:
+    """Format market context dict into a readable prompt string."""
+    if not ctx:
+        return "[MARKET CTX] No data fetched."
+    lines = []
+    for sym, d in ctx.items():
+        if "error" in d:
+            lines.append(f"{sym}: ERROR — {d['error']}")
+            continue
+        lines.append(
+            f"{sym} @ ${d['price']:,.2f} | "
+            f"Funding={d['funding_pct']:+.4f}% | "
+            f"OI={d['oi']:,.0f} ({d['oi_5h_chg']:+.1f}% 5h) | "
+            f"L/S ratio={d['ls_ratio']} (long={d['long_pct']}%) | "
+            f"{d['signal']}"
+        )
+    return "\n".join(lines)
+
+
 def _web_research():
     """Live market intelligence from DuckDuckGo — no API key, completely free."""
     try:
@@ -361,7 +451,7 @@ def calculate_metrics(bots):
 
 # ── Prompt Builder ────────────────────────────────────────────────────────────
 
-def _build_prompt(metrics, state, tg_trades, tg_stats, web_research=""):
+def _build_prompt(metrics, state, tg_trades, tg_stats, web_research="", market_ctx=None):
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     # ── Strategy blocks ──
@@ -492,6 +582,7 @@ def _build_prompt(metrics, state, tg_trades, tg_stats, web_research=""):
     bounds_info = " | ".join(f"{p}:[{b[0]},{b[1]}]" for p, b in PARAM_BOUNDS.items())
 
     web_section = web_research if web_research else "[WEB] No research available this run."
+    mkt_section = _format_market_ctx(market_ctx) if market_ctx else "[MARKET] No data fetched."
 
     return f"""You are FarhanFX AI Trading Brain v4 — expert self-learning algorithmic trading analyst with internet research capability.
 Your mission: deeply analyze ALL trade data + live market intel, find patterns, learn, and auto-implement smart fixes.
@@ -502,6 +593,19 @@ DATE: {now_str}
 CRYPTO ALGO BOT PERFORMANCE (deep analysis)
 ════════════════════════════════════════════
 {chr(10).join(strat_lines)}
+
+════════════════════════════════════════════
+LIVE MARKET CONTEXT (Binance real-time data)
+════════════════════════════════════════════
+{mkt_section}
+
+Rules for market context:
+• Funding > +0.03%  → market over-leveraged LONG → caution adding longs; consider set_direction=sell_only for trend bots
+• Funding < -0.01%  → market over-leveraged SHORT → short squeeze risk; consider set_direction=buy_only
+• L/S ratio > 1.5   → retail longs crowded → mean-reversion opportunity, avoid pure trend-follow longs
+• L/S ratio < 0.75  → retail shorts crowded → short squeeze coming, avoid trend-follow shorts
+• OI 5h change >+5% → hot market, volatility spiking → tighten risk_pct or max_open_trades
+• OI 5h change <-5% → mass liquidation/exits → extra caution, may be false signal period
 
 ════════════════════════════════════════════
 LIVE MARKET INTELLIGENCE (internet research)
@@ -743,9 +847,12 @@ def run_analysis():
 
             metrics    = calculate_metrics(bots)
             tg_trades, tg_stats = _load_telegram_trades()
+            print("[Brain] Fetching Binance market context...")
+            market_ctx   = _fetch_market_context()
             print("[Brain] Running live web research...")
             web_research = _web_research()
-            prompt     = _build_prompt(metrics, state, tg_trades, tg_stats, web_research)
+            prompt       = _build_prompt(metrics, state, tg_trades, tg_stats, web_research, market_ctx)
+            state["last_market_ctx"] = market_ctx
 
             resp = _requests.post(
                 _GROQ_API_URL,
@@ -867,4 +974,5 @@ def get_status():
         "strategy_scores":   state.get("strategy_scores", {}),
         "all_journal":       state.get("journal", []),
         "research_insights": state.get("research_insights", [])[-20:],
+        "market_ctx":        state.get("last_market_ctx", {}),
     }

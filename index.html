@@ -2895,6 +2895,19 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           </div>
         </div>
 
+        <!-- Live Market Context panel -->
+        <div class="jarvis-panel" style="margin-bottom:14px">
+          <div class="jarvis-bracket tl"></div><div class="jarvis-bracket tr"></div>
+          <div class="jarvis-bracket bl"></div><div class="jarvis-bracket br"></div>
+          <div class="jarvis-panel-hdr" style="justify-content:space-between">
+            <span>⚡ LIVE MARKET CONTEXT — BINANCE REAL-TIME</span>
+            <span style="font-size:10px;color:#475569;letter-spacing:0;text-transform:none;font-weight:400">Funding · Long/Short · Open Interest</span>
+          </div>
+          <div id="jarvis-mkt-ctx" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:4px 0">
+            <div style="color:#475569;font-size:12px;text-align:center;grid-column:1/-1">Loading live market data...</div>
+          </div>
+        </div>
+
         <!-- Strategy intelligence grid -->
         <div class="jarvis-panel" style="margin-bottom:14px">
           <div class="jarvis-bracket tl"></div><div class="jarvis-bracket tr"></div>
@@ -9581,8 +9594,13 @@ async function jarvisInit() {
 
 async function jarvisRefresh() {
   try {
-    const r = await apiFetch('/api/brain/status');
+    const [r, mkt] = await Promise.all([
+      apiFetch('/api/brain/status'),
+      apiFetch('/api/brain/market').catch(() => null),
+    ]);
     if (!r || r.error) return;
+    // Merge live market context — prefer fresh /market call over cached in status
+    if (mkt && mkt.market_ctx) r.market_ctx = mkt.market_ctx;
     _jarvisRender(r);
   } catch(e) { console.error('Jarvis refresh error:', e); }
 }
@@ -9642,6 +9660,51 @@ function _jarvisRender(r) {
   if (foc && j && j.next_focus) {
     foc.innerHTML = `<div style="font-size:10px;color:#475569;letter-spacing:1px;margin-bottom:4px">NEXT FOCUS</div>
       <div style="font-size:11px;color:#06b6d4;line-height:1.5">${j.next_focus}</div>`;
+  }
+
+  // ── Market Context panel ──
+  const mktEl = document.getElementById('jarvis-mkt-ctx');
+  const mctx  = r.market_ctx || {};
+  if (mktEl) {
+    const syms = Object.keys(mctx);
+    if (!syms.length) {
+      mktEl.innerHTML = '<div style="color:#475569;font-size:12px;text-align:center;grid-column:1/-1">No market data yet — run analysis first</div>';
+    } else {
+      mktEl.innerHTML = syms.map(sym => {
+        const d = mctx[sym];
+        if (d.error) return `<div style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:10px">
+          <div style="font-weight:700;color:#94a3b8;font-size:13px">${sym}</div>
+          <div style="font-size:11px;color:#ef4444">Error: ${d.error}</div></div>`;
+
+        const frColor  = d.funding_pct > 0.03 ? '#ef4444' : d.funding_pct < -0.01 ? '#06b6d4' : '#22c55e';
+        const lsColor  = d.ls_ratio > 1.5 ? '#ef4444' : d.ls_ratio < 0.75 ? '#06b6d4' : '#22c55e';
+        const oiColor  = d.oi_5h_chg > 5 ? '#f59e0b' : d.oi_5h_chg < -5 ? '#ef4444' : '#94a3b8';
+        const sigColor = d.signal && d.signal.startsWith('⚠') ? '#ef4444' : d.signal && d.signal.startsWith('⚡') ? '#f59e0b' : '#22c55e';
+        const oiNum    = d.oi > 10000 ? (d.oi/1000).toFixed(1)+'K' : d.oi?.toFixed(0) || '—';
+        return `<div style="background:#0f172a;border:1px solid #1e3a5f;border-radius:8px;padding:12px;position:relative;overflow:hidden">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-weight:700;color:#e2e8f0;font-size:14px;letter-spacing:1px">${sym}</span>
+            <span style="font-size:11px;color:#64748b">$${(d.price||0).toLocaleString()}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px">
+            <div style="text-align:center;padding:5px 0;background:#1e293b;border-radius:5px">
+              <div style="font-size:10px;color:#475569;margin-bottom:2px">FUNDING RATE</div>
+              <div style="font-size:13px;font-weight:700;color:${frColor}">${d.funding_pct > 0 ? '+' : ''}${(d.funding_pct||0).toFixed(4)}%</div>
+            </div>
+            <div style="text-align:center;padding:5px 0;background:#1e293b;border-radius:5px">
+              <div style="font-size:10px;color:#475569;margin-bottom:2px">LONG/SHORT</div>
+              <div style="font-size:13px;font-weight:700;color:${lsColor}">${(d.ls_ratio||0).toFixed(2)}</div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-bottom:6px">
+            <span style="color:#475569">OI: ${oiNum}</span>
+            <span style="color:${oiColor}">${d.oi_5h_chg > 0 ? '+' : ''}${(d.oi_5h_chg||0).toFixed(1)}% (5h)</span>
+            <span style="color:#475569">Longs: ${d.long_pct||'—'}%</span>
+          </div>
+          <div style="font-size:10px;color:${sigColor};background:${sigColor}18;padding:4px 8px;border-radius:4px;text-align:center">${d.signal||'—'}</div>
+        </div>`;
+      }).join('');
+    }
   }
 
   // Research insights terminal

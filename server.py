@@ -5985,6 +5985,16 @@ def brain_status(current_user: dict = Depends(_get_current_user)):
     return _brain.get_status()
 
 
+@app.get("/api/brain/market")
+def brain_market_ctx(current_user: dict = Depends(_get_current_user)):
+    """Fetch live Binance market context (funding, L/S, OI) — no wait."""
+    try:
+        ctx = _brain._fetch_market_context()
+        return {"success": True, "market_ctx": ctx, "time": datetime.utcnow().strftime("%Y-%m-%d %H:%M")}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 @app.post("/api/brain/run")
 def brain_run_now(current_user: dict = Depends(_get_current_user)):
     """Trigger an immediate brain analysis (don't wait for the 6h timer)."""
