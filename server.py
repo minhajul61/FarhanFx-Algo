@@ -2952,6 +2952,16 @@ def _bot_tick_demo(bot_id):
                 bot["last_error"] = "⏸ Cooldown: waiting for fresh candle after close"
                 threading.Thread(target=_save_bots, daemon=True).start()
                 return
+            # Symbol lock: if ANY other bot already has a position open on this symbol, skip
+            _sym = bot["symbol"]
+            _any_open = any(
+                b.get("open_side") and b["symbol"] == _sym and b is not bot
+                for b in _crypto_bots.values()
+            )
+            if _any_open:
+                bot["last_error"] = f"⏸ Symbol lock: another bot already open on {_sym}"
+                threading.Thread(target=_save_bots, daemon=True).start()
+                return
             # ── Brain-enforced rules (set by AI Brain auto-implementation) ──
             _utc_hour = datetime.utcnow().hour
             if _utc_hour in bot.get("blocked_hours", []):
@@ -3129,6 +3139,16 @@ def _bot_tick(bot_id):
             # Cooldown: don't open on same bar a trade just closed
             if bot.get("last_close_bar") and ohlcv[-1][0] <= bot["last_close_bar"]:
                 bot["last_error"] = "⏸ Cooldown: waiting for fresh candle after close"
+                threading.Thread(target=_save_bots, daemon=True).start()
+                return
+            # Symbol lock: if ANY other bot already has a position open on this symbol, skip
+            _sym = bot["symbol"]
+            _any_open = any(
+                b.get("open_side") and b["symbol"] == _sym and b is not bot
+                for b in _crypto_bots.values()
+            )
+            if _any_open:
+                bot["last_error"] = f"⏸ Symbol lock: another bot already open on {_sym}"
                 threading.Thread(target=_save_bots, daemon=True).start()
                 return
 
