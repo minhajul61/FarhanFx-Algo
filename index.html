@@ -2690,21 +2690,17 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <!-- Summary cards -->
           <div id="tgr-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px"></div>
 
-          <!-- Two-column: Bot Status + Open Positions -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+          <!-- Bot Status (full width row) -->
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+            <div style="font-size:10px;color:var(--text3);letter-spacing:1px;font-weight:700;margin-bottom:10px">BOT STATUS</div>
+            <div id="tgr-status-list" style="font-size:12px;display:flex;flex-wrap:wrap;gap:10px 28px;line-height:1.8"></div>
+          </div>
 
-            <!-- Bot Status -->
-            <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px">
-              <div style="font-size:10px;color:var(--text3);letter-spacing:1px;font-weight:700;margin-bottom:10px">BOT STATUS</div>
-              <div id="tgr-status-list" style="font-size:12px;line-height:2"></div>
-            </div>
-
-            <!-- Open Positions -->
-            <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px">
-              <div style="font-size:10px;color:var(--text3);letter-spacing:1px;font-weight:700;margin-bottom:10px">OPEN POSITIONS</div>
-              <div id="tgr-open-pos" style="font-size:12px">
-                <div style="color:var(--text3);text-align:center;padding:20px 0">লোড হচ্ছে...</div>
-              </div>
+          <!-- Open Positions (full width — can be many rows) -->
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px">
+            <div style="font-size:10px;color:var(--text3);letter-spacing:1px;font-weight:700;margin-bottom:10px">OPEN POSITIONS ⚠️ — reverse signal না আসা পর্যন্ত এগুলো open থাকবে</div>
+            <div id="tgr-open-pos">
+              <div style="color:var(--text3);text-align:center;padding:20px 0;font-size:12px">লোড হচ্ছে...</div>
             </div>
           </div>
 
@@ -7258,11 +7254,12 @@ function showTgTab(tab, el) {
 }
 
 async function loadTgReport() {
-  const [status, signals, demo, demoTrades] = await Promise.all([
+  const [status, signals, demo, demoTrades, openPos] = await Promise.all([
     apiFetch('/api/telegram/status'),
     apiFetch('/api/telegram/signals'),
     apiFetch('/api/telegram/demo_stats'),
     apiFetch('/api/telegram/demo_trades'),
+    apiFetch('/api/telegram/open_positions'),
   ]);
 
   // ── Summary cards ──
@@ -7304,19 +7301,40 @@ async function loadTgReport() {
     <div>Profit Factor: <b>${demo.profit_factor != null ? demo.profit_factor : '—'}</b></div>
   `;
 
-  // ── Open positions ──
-  const openPos = demo.open_positions || [];
-  const opEl = document.getElementById('tgr-open-pos');
-  if (!openPos.length) {
+  // ── Open positions (live unrealized PnL) ──
+  const opArr  = Array.isArray(openPos) ? openPos : [];
+  const opEl   = document.getElementById('tgr-open-pos');
+  const totalUpnl = opArr.reduce((s, p) => s + (p.upnl || 0), 0);
+  if (!opArr.length) {
     opEl.innerHTML = '<div style="color:var(--text3);text-align:center;padding:20px 0;font-size:12px">✅ কোনো open position নেই</div>';
   } else {
-    opEl.innerHTML = openPos.map(p => {
-      const icon = p.side === 'BUY' ? '🟢' : '🔴';
-      return `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
-        ${icon} <b>${p.symbol}</b> — ${p.side}
-        <span style="color:var(--text3);font-size:11px;margin-left:8px">Entry: ${p.entry || '—'} | Qty: ${p.amount || '—'}</span>
-      </div>`;
-    }).join('');
+    opEl.innerHTML = `
+      <div style="margin-bottom:8px;padding:6px 10px;background:rgba(168,85,247,0.08);border-radius:6px;font-size:11px;display:flex;justify-content:space-between">
+        <span style="color:var(--text3)">${opArr.length}টা position open — reverse signal আসলে close হবে</span>
+        <span style="font-weight:700;color:${totalUpnl>=0?'#22c55e':'#ef4444'}">${totalUpnl>=0?'+':''}${totalUpnl.toFixed(4)} uPnL</span>
+      </div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
+        <tr style="background:rgba(6,182,212,0.06)">
+          <th style="padding:5px 8px;color:var(--text3);font-size:10px;text-align:left">SYMBOL</th>
+          <th style="padding:5px 8px;color:var(--text3);font-size:10px;text-align:left">SIDE</th>
+          <th style="padding:5px 8px;color:var(--text3);font-size:10px;text-align:right">ENTRY</th>
+          <th style="padding:5px 8px;color:var(--text3);font-size:10px;text-align:right">NOW</th>
+          <th style="padding:5px 8px;color:var(--text3);font-size:10px;text-align:right">uPnL</th>
+        </tr>
+        ${opArr.map((p, i) => {
+          const sc  = p.side === 'buy' ? '#22c55e' : '#ef4444';
+          const pc  = (p.upnl||0) > 0 ? '#22c55e' : (p.upnl||0) < 0 ? '#ef4444' : 'var(--text3)';
+          const ico = (p.upnl||0) >= 0 ? '📈' : '📉';
+          const bg  = i%2 ? 'rgba(6,182,212,0.02)' : 'transparent';
+          return `<tr style="border-top:1px solid var(--border);background:${bg}">
+            <td style="padding:5px 8px;color:var(--cyan);font-weight:700">${p.symbol.replace('/USDT:USDT','').replace('/USDT','')}</td>
+            <td style="padding:5px 8px;color:${sc};font-weight:700">${(p.side||'').toUpperCase()}</td>
+            <td style="padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums">${p.entry != null ? p.entry : '—'}</td>
+            <td style="padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums">${p.current_price != null ? p.current_price : '—'}</td>
+            <td style="padding:5px 8px;text-align:right;font-weight:700;color:${pc}">${p.upnl != null ? ico+' '+(p.upnl>=0?'+':'')+p.upnl : '—'}</td>
+          </tr>`;
+        }).join('')}
+      </table></div>`;
   }
 
   // ── Signal log table ──

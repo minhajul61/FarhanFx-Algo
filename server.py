@@ -5037,6 +5037,37 @@ def tg_demo_trades():
     return list(reversed(trades))
 
 
+@app.get("/api/telegram/open_positions")
+def tg_open_positions():
+    """Return open TG demo positions with live unrealized PnL."""
+    st   = _load_tg_demo_state()
+    pm   = _get_pub_mkt()
+    rows = []
+    for sym, pos in st.get("positions", {}).items():
+        current_price = None
+        upnl          = None
+        try:
+            if pm:
+                last  = pm.fetch_ohlcv(sym, "1m", limit=1)
+                current_price = float(last[-1][4])
+                if pos["side"] == "buy":
+                    upnl = round((current_price - pos["entry"]) * pos["amount"], 4)
+                else:
+                    upnl = round((pos["entry"] - current_price) * pos["amount"], 4)
+        except Exception:
+            pass
+        rows.append({
+            "symbol":        sym,
+            "side":          pos["side"],
+            "entry":         pos["entry"],
+            "amount":        pos["amount"],
+            "current_price": current_price,
+            "upnl":          upnl,
+        })
+    rows.sort(key=lambda x: (x["upnl"] or 0), reverse=True)
+    return rows
+
+
 # ── INDIAN MARKET (Kotak Neo) ────────────────────────────────────────────────
 # Separate broker/asset class from the existing forex (MT5) and crypto (ccxt)
 # integrations — NSE/BSE equities, indices, and F&O via Kotak's official
