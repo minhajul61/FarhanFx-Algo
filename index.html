@@ -1925,6 +1925,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                     <span id="algo-running-count" style="font-size:10px;color:var(--text3)">0 bots</span>
                     <button class="sbtn" onclick="algoToggleAllMode()" title="Flip every running bot between Demo and Live" style="font-size:9px;padding:2px 8px;color:var(--accent);border-color:var(--accent)">⇄ TOGGLE LIVE/PAPER</button>
                     <button class="sbtn" onclick="algoKillAll()" title="Stop every bot AND close all open positions immediately" style="font-size:9px;padding:2px 8px;color:var(--red);border-color:var(--red)">🛑 EMERGENCY KILL ALL</button>
+                    <button id="algo-redist-btn" class="sbtn" onclick="algoRedistributePairs()" title="Assign each strategy to its own unique trading pair" style="font-size:9px;padding:2px 8px;color:var(--cyan);border-color:var(--cyan)">🔀 SPREAD PAIRS</button>
                     <button class="sbtn" onclick="algoLoadBots()" style="font-size:9px;padding:2px 8px">↻</button>
                   </div>
                 </div>
@@ -10216,6 +10217,19 @@ async function algoKillAll() {
   if (r.error) { toastErr(r.error); return; }
   toast(`🛑 Killed ${r.stopped} bot(s), closed ${r.closed} position(s)${r.errors.length ? ' — ' + r.errors.length + ' error(s)' : ''}`, !r.errors.length);
   algoLoadBots();
+}
+
+async function algoRedistributePairs() {
+  if (!confirm('প্রতিটা strategy কে আলাদা trading pair এ সরিয়ে দেব?\n\nযেমন:\nbos_choch → BTC\nsilver_bullet → SOL\nob_fvg → BNB\nএবং আরো ১৮টা pair...\n\nসব open position reset হয়ে যাবে।')) return;
+  const btn = document.getElementById('algo-redist-btn');
+  if (btn) { btn.textContent = '⏳ Spreading...'; btn.disabled = true; }
+  const r = await apiFetch('/api/crypto/algo/redistribute_pairs', { method: 'POST' });
+  if (btn) { btn.textContent = '🔀 SPREAD PAIRS'; btn.disabled = false; }
+  if (r && r.error) { toastErr(r.error); return; }
+  if (r && r.success) {
+    toast(`✅ ${r.total} bot${r.total !== 1 ? 's' : ''} assigned to unique pairs`);
+    algoLoadBots();
+  }
 }
 
 async function algoToggleAllMode() {
