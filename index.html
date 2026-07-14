@@ -360,6 +360,81 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 .toggle::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left 0.2s}
 .toggle.on{background:var(--accent)}
 .toggle.on::after{left:19px}
+
+/* ══ AI BRAIN JARVIS PAGE ══════════════════════════════════════════════ */
+@keyframes jarvis-spin-cw  { from{transform:rotate(0deg)}   to{transform:rotate(360deg)} }
+@keyframes jarvis-spin-ccw { from{transform:rotate(0deg)}   to{transform:rotate(-360deg)} }
+@keyframes jarvis-pulse    { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.55;transform:scale(.96)} }
+@keyframes jarvis-glow     { 0%,100%{box-shadow:0 0 12px #06b6d4,0 0 24px rgba(6,182,212,.3)} 50%{box-shadow:0 0 28px #06b6d4,0 0 60px rgba(6,182,212,.5),0 0 90px rgba(6,182,212,.15)} }
+@keyframes jarvis-scan     { 0%{top:0;opacity:.9} 100%{top:100%;opacity:0} }
+@keyframes jarvis-blink    { 0%,100%{opacity:1} 49%{opacity:1} 50%{opacity:0} 99%{opacity:0} }
+@keyframes jarvis-fade-in  { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+@keyframes jarvis-counter  { from{opacity:0;transform:scale(.7)} to{opacity:1;transform:scale(1)} }
+@keyframes jarvis-stream   { 0%{transform:translateY(0)} 100%{transform:translateY(-100%)} }
+
+.jarvis-page { background:radial-gradient(ellipse at 50% 0%,rgba(6,182,212,.07) 0%,transparent 65%),radial-gradient(ellipse at 80% 80%,rgba(139,92,246,.06) 0%,transparent 60%),var(--bg); }
+.jarvis-hdr  { display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px }
+.jarvis-hdr-title { font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#06b6d4;font-weight:700 }
+.jarvis-hdr-sub   { font-size:22px;font-weight:800;color:var(--text);margin-top:2px }
+
+/* Core animation */
+.jarvis-core-wrap { display:flex;align-items:center;justify-content:center;height:210px;position:relative }
+.jarvis-ring { position:absolute;border-radius:50%;border:1px solid rgba(6,182,212,.25) }
+.jarvis-ring-1 { width:180px;height:180px;border-color:rgba(6,182,212,.35);border-top-color:#06b6d4;animation:jarvis-spin-cw 4s linear infinite }
+.jarvis-ring-2 { width:148px;height:148px;border-color:rgba(139,92,246,.3);border-right-color:#a855f7;animation:jarvis-spin-ccw 6s linear infinite }
+.jarvis-ring-3 { width:116px;height:116px;border-color:rgba(6,182,212,.2);border-bottom-color:rgba(6,182,212,.7);animation:jarvis-spin-cw 9s linear infinite }
+.jarvis-ring-4 { width:84px;height:84px;border-color:rgba(139,92,246,.15);border-top-color:rgba(139,92,246,.6);animation:jarvis-spin-ccw 12s linear infinite }
+.jarvis-core-inner { width:58px;height:58px;border-radius:50%;background:radial-gradient(circle,rgba(6,182,212,.35),rgba(6,182,212,.05));border:1px solid rgba(6,182,212,.6);display:flex;flex-direction:column;align-items:center;justify-content:center;animation:jarvis-glow 2.5s ease-in-out infinite }
+.jarvis-scan-line  { position:absolute;left:10%;right:10%;height:1px;background:linear-gradient(90deg,transparent,#06b6d4,transparent);animation:jarvis-scan 2.2s linear infinite;top:0 }
+
+/* Panels */
+.jarvis-panel { background:linear-gradient(135deg,rgba(6,182,212,.04),rgba(139,92,246,.03));border:1px solid rgba(6,182,212,.18);border-radius:12px;padding:16px;position:relative;overflow:hidden }
+.jarvis-panel::before { content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(6,182,212,.5),transparent) }
+.jarvis-panel-hdr { font-size:9px;letter-spacing:2px;color:#06b6d4;font-weight:700;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:8px }
+.jarvis-panel-hdr::before { content:'';width:4px;height:4px;border-radius:50%;background:#06b6d4;animation:jarvis-blink 1.4s infinite }
+
+/* Corner brackets */
+.jarvis-bracket { position:absolute;width:12px;height:12px;border-color:#06b6d4;border-style:solid;opacity:.6 }
+.jarvis-bracket.tl { top:6px;left:6px;border-width:1px 0 0 1px }
+.jarvis-bracket.tr { top:6px;right:6px;border-width:1px 1px 0 0 }
+.jarvis-bracket.bl { bottom:6px;left:6px;border-width:0 0 1px 1px }
+.jarvis-bracket.br { bottom:6px;right:6px;border-width:0 1px 1px 0 }
+
+/* Strategy grid cards */
+.jarvis-bot-card { background:rgba(6,182,212,.03);border:1px solid rgba(6,182,212,.1);border-radius:8px;padding:10px 12px;cursor:default;transition:border-color .2s }
+.jarvis-bot-card:hover { border-color:rgba(6,182,212,.35) }
+.jarvis-bot-card.good  { border-left:2px solid #22c55e }
+.jarvis-bot-card.watch { border-left:2px solid #f59e0b }
+.jarvis-bot-card.poor  { border-left:2px solid #ef4444 }
+.jarvis-bot-card.new   { border-left:2px solid #475569 }
+.jarvis-bot-card.paused{ border-left:2px solid #6366f1 }
+.jarvis-wr-bar-wrap { height:3px;background:rgba(255,255,255,.06);border-radius:2px;margin-top:6px;overflow:hidden }
+.jarvis-wr-bar { height:100%;border-radius:2px;transition:width .6s ease }
+
+/* Terminal feed */
+.jarvis-terminal { background:#050810;border:1px solid rgba(6,182,212,.12);border-radius:8px;padding:10px 12px;font-family:monospace;font-size:11px;overflow-y:auto;height:220px;scroll-behavior:smooth }
+.jarvis-terminal .t-line { animation:jarvis-fade-in .3s ease forwards;margin-bottom:4px;line-height:1.5 }
+.jarvis-terminal .t-ts   { color:#475569 }
+.jarvis-terminal .t-ok   { color:#22c55e }
+.jarvis-terminal .t-warn { color:#f59e0b }
+.jarvis-terminal .t-err  { color:#ef4444 }
+.jarvis-terminal .t-info { color:#06b6d4 }
+
+/* Status badge */
+.jarvis-badge { display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;letter-spacing:.5px }
+.jarvis-badge.on  { background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.3) }
+.jarvis-badge.off { background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.3) }
+.jarvis-badge .dot { width:6px;height:6px;border-radius:50%;background:currentColor;animation:jarvis-pulse 1.5s ease-in-out infinite }
+
+/* Stat tiles */
+.jarvis-stat { text-align:center;padding:12px 8px }
+.jarvis-stat-val { font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;animation:jarvis-counter .4s ease }
+.jarvis-stat-lbl { font-size:9px;letter-spacing:1.5px;color:#475569;text-transform:uppercase;margin-top:3px }
+
+/* Run button */
+.jarvis-run-btn { background:linear-gradient(135deg,#0e7490,#06b6d4);border:none;color:#000;font-weight:800;font-size:11px;letter-spacing:1px;padding:10px 22px;border-radius:8px;cursor:pointer;font-family:var(--font);transition:all .2s;box-shadow:0 0 20px rgba(6,182,212,.3) }
+.jarvis-run-btn:hover { box-shadow:0 0 35px rgba(6,182,212,.6);transform:translateY(-1px) }
+.jarvis-run-btn:disabled { opacity:.5;cursor:not-allowed;transform:none }
 </style>
 </head>
 <body>
@@ -502,6 +577,7 @@ tr:hover td{background:rgba(139,92,246,0.05)}
       <div class="nav-item" onclick="showPage('crypto',this)"><i class="ti ti-currency-bitcoin"></i> CRYPTO</div>
       <div class="nav-item" onclick="showPage('indian',this)"><i class="ti ti-building-bank"></i> INDIAN MARKET</div>
       <div class="nav-item" onclick="showPage('telegram',this)"><i class="ti ti-brand-telegram"></i> TELEGRAM BOT</div>
+      <div class="nav-item" id="nav-brain" onclick="showPage('brain',this)"><i class="ti ti-brain"></i> AI BRAIN</div>
       <div class="nav-item" onclick="showPage('journal',this)"><i class="ti ti-notebook"></i> JOURNAL</div>
       <div class="nav-item" onclick="showPage('risk',this)"><i class="ti ti-shield-check"></i> RISK CALC</div>
       <div class="nav-item" onclick="showPage('settings',this)"><i class="ti ti-settings"></i> SETTINGS</div>
@@ -2752,6 +2828,125 @@ tr:hover td{background:rgba(139,92,246,0.05)}
 
       </div>
 
+      <!-- ═══ AI BRAIN FULL PAGE ════════════════════════════════════════ -->
+      <div class="page jarvis-page" id="page-brain">
+
+        <!-- Header -->
+        <div class="jarvis-hdr">
+          <div>
+            <div class="jarvis-hdr-title">⬡ FARHANFX INTELLIGENCE SYSTEM</div>
+            <div class="jarvis-hdr-sub">🧠 J.A.R.V.I.S. — AI Trading Brain</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span id="jarvis-status-badge" class="jarvis-badge off"><span class="dot"></span>OFFLINE</span>
+            <span id="jarvis-auto-badge" style="font-size:10px;color:#475569">AUTO: —</span>
+            <button class="jarvis-run-btn" id="jarvis-run-btn" onclick="jarvisRunNow()">⚡ ANALYZE NOW</button>
+            <button onclick="jarvisRefresh()" style="padding:9px 14px;background:transparent;border:1px solid rgba(6,182,212,.3);color:#06b6d4;border-radius:8px;font-size:11px;cursor:pointer;font-weight:700">↺ REFRESH</button>
+          </div>
+        </div>
+
+        <!-- Top row: Core + Status stats + Research insights -->
+        <div style="display:grid;grid-template-columns:240px 1fr 1fr;gap:14px;margin-bottom:14px">
+
+          <!-- Arc Reactor core -->
+          <div class="jarvis-panel" style="padding:0;display:flex;align-items:center;justify-content:center;min-height:220px">
+            <div class="jarvis-bracket tl"></div><div class="jarvis-bracket tr"></div>
+            <div class="jarvis-bracket bl"></div><div class="jarvis-bracket br"></div>
+            <div class="jarvis-core-wrap" style="height:200px">
+              <div class="jarvis-scan-line"></div>
+              <div class="jarvis-ring jarvis-ring-1"></div>
+              <div class="jarvis-ring jarvis-ring-2"></div>
+              <div class="jarvis-ring jarvis-ring-3"></div>
+              <div class="jarvis-ring jarvis-ring-4"></div>
+              <div class="jarvis-core-inner">
+                <div style="font-size:8px;letter-spacing:1px;color:#06b6d4;font-weight:700" id="jarvis-core-label">ACTIVE</div>
+                <div style="font-size:18px;font-weight:800;color:#06b6d4" id="jarvis-core-num">—</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- System status -->
+          <div class="jarvis-panel">
+            <div class="jarvis-bracket tl"></div><div class="jarvis-bracket tr"></div>
+            <div class="jarvis-bracket bl"></div><div class="jarvis-bracket br"></div>
+            <div class="jarvis-panel-hdr">SYSTEM STATUS</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="jarvis-stat-grid">
+              <div class="jarvis-stat"><div class="jarvis-stat-val" id="js-analyses" style="color:#06b6d4">—</div><div class="jarvis-stat-lbl">Analyses Run</div></div>
+              <div class="jarvis-stat"><div class="jarvis-stat-val" id="js-decisions" style="color:#a855f7">—</div><div class="jarvis-stat-lbl">Decisions Made</div></div>
+              <div class="jarvis-stat"><div class="jarvis-stat-val" id="js-insights" style="color:#22c55e">—</div><div class="jarvis-stat-lbl">Research Insights</div></div>
+              <div class="jarvis-stat"><div class="jarvis-stat-val" id="js-strategies" style="color:#f59e0b">—</div><div class="jarvis-stat-lbl">Strategies Watched</div></div>
+            </div>
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(6,182,212,.1)">
+              <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:5px"><span style="color:#475569">Last Analysis</span><span id="js-last-run" style="color:#06b6d4;font-family:monospace">—</span></div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:5px"><span style="color:#475569">Next Analysis</span><span id="js-next-run" style="color:#f59e0b;font-family:monospace">—</span></div>
+              <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#475569">Model</span><span style="color:#a855f7;font-family:monospace">llama-3.3-70b</span></div>
+            </div>
+            <div style="margin-top:12px" id="js-next-focus"></div>
+          </div>
+
+          <!-- Research Insights feed -->
+          <div class="jarvis-panel">
+            <div class="jarvis-bracket tl"></div><div class="jarvis-bracket tr"></div>
+            <div class="jarvis-bracket bl"></div><div class="jarvis-bracket br"></div>
+            <div class="jarvis-panel-hdr">ACCUMULATED RESEARCH INSIGHTS</div>
+            <div class="jarvis-terminal" id="jarvis-insights-feed" style="height:170px">
+              <div class="t-line t-info">[ Waiting for brain data... ]</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Strategy intelligence grid -->
+        <div class="jarvis-panel" style="margin-bottom:14px">
+          <div class="jarvis-bracket tl"></div><div class="jarvis-bracket tr"></div>
+          <div class="jarvis-bracket bl"></div><div class="jarvis-bracket br"></div>
+          <div class="jarvis-panel-hdr" style="justify-content:space-between">
+            <span>STRATEGY INTELLIGENCE GRID — ALL BOTS</span>
+            <span id="js-grid-summary" style="font-size:10px;color:#475569;letter-spacing:0;text-transform:none;font-weight:400"></span>
+          </div>
+          <div id="jarvis-strategy-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px">
+            <div style="color:#475569;font-size:12px;padding:20px;text-align:center;grid-column:1/-1">Loading strategy data...</div>
+          </div>
+        </div>
+
+        <!-- Bottom row: Decision terminal + Journal + Telegram -->
+        <div style="display:grid;grid-template-columns:1fr 300px;gap:14px">
+
+          <!-- Decision terminal -->
+          <div class="jarvis-panel">
+            <div class="jarvis-bracket tl"></div><div class="jarvis-bracket tr"></div>
+            <div class="jarvis-bracket bl"></div><div class="jarvis-bracket br"></div>
+            <div class="jarvis-panel-hdr" style="justify-content:space-between">
+              <span>AUTONOMOUS DECISION LOG</span>
+              <span id="js-decision-count" style="font-size:10px;color:#475569;letter-spacing:0;text-transform:none;font-weight:400"></span>
+            </div>
+            <div class="jarvis-terminal" id="jarvis-decision-feed" style="height:240px">
+              <div class="t-line t-info">[ Awaiting decisions... ]</div>
+            </div>
+          </div>
+
+          <!-- Right column: Telegram + Latest journal -->
+          <div style="display:flex;flex-direction:column;gap:14px">
+
+            <!-- Telegram analysis -->
+            <div class="jarvis-panel" style="flex:1">
+              <div class="jarvis-bracket tl"></div><div class="jarvis-bracket tr"></div>
+              <div class="jarvis-bracket bl"></div><div class="jarvis-bracket br"></div>
+              <div class="jarvis-panel-hdr">TELEGRAM SIGNAL QUALITY</div>
+              <div id="jarvis-tg-analysis" style="font-size:12px;color:#475569">Loading...</div>
+            </div>
+
+            <!-- Latest AI journal entry -->
+            <div class="jarvis-panel" style="flex:1">
+              <div class="jarvis-bracket tl"></div><div class="jarvis-bracket tr"></div>
+              <div class="jarvis-bracket bl"></div><div class="jarvis-bracket br"></div>
+              <div class="jarvis-panel-hdr">LATEST BRAIN JOURNAL</div>
+              <div id="jarvis-journal-latest" style="font-size:11px;color:#64748b;line-height:1.6">Loading...</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /page-brain -->
+
       <!-- SETTINGS PAGE -->
       <div class="page" id="page-settings">
         <div class="page-title">Settings</div>
@@ -3092,6 +3287,7 @@ function showPage(id, el) {
   if (id === 'settings')    { applySettingsToUI(loadSettings()); applyStrategyParamsToUI(loadStrategyParams()); if (_getAuthRole() === 'admin') { document.getElementById('admin-clients-panel').style.display = 'block'; document.getElementById('admin-payments-panel').style.display = 'block'; loadAdminClients(); loadAdminPaymentRequests(); } }
   if (id === 'telegram')   { telegramInit(); } else { clearInterval(_tgRefTimer); }
   if (id === 'indian')     { indianInit(); }
+  if (id === 'brain')      { jarvisInit(); } else { _jarvisStopAuto(); }
 }
 
 function tvExitFullPage() {
@@ -9368,6 +9564,187 @@ async function cryptoLoadReports() {
       </tr>`;
     }).join('');
   }
+}
+
+// ── JARVIS AI BRAIN MAIN PAGE ────────────────────────────────────────────────
+let _jarvisTimer = null;
+
+function _jarvisStopAuto() { clearInterval(_jarvisTimer); _jarvisTimer = null; }
+
+async function jarvisInit() {
+  _jarvisStopAuto();
+  await jarvisRefresh();
+  _jarvisTimer = setInterval(jarvisRefresh, 20000);
+  const badge = document.getElementById('jarvis-auto-badge');
+  if (badge) badge.textContent = 'AUTO: 20s';
+}
+
+async function jarvisRefresh() {
+  try {
+    const r = await apiFetch('/api/brain/status');
+    if (!r || r.error) return;
+    _jarvisRender(r);
+  } catch(e) { console.error('Jarvis refresh error:', e); }
+}
+
+async function jarvisRunNow() {
+  const btn = document.getElementById('jarvis-run-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⚙ ANALYZING...'; }
+  try {
+    const r = await apiFetch('/api/brain/run', { method: 'POST' });
+    toast(r.error ? '⚠️ Brain error: ' + r.error : '🧠 Analysis complete — ' + (r.decisions||[]).length + ' decision(s)');
+    await jarvisRefresh();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ ANALYZE NOW'; }
+  }
+}
+
+function _jarvisRender(r) {
+  // Status badge
+  const badge = document.getElementById('jarvis-status-badge');
+  if (badge) {
+    const on = r.enabled && r.key_configured;
+    badge.className = 'jarvis-badge ' + (on ? 'on' : 'off');
+    badge.innerHTML = `<span class="dot"></span>${on ? 'ACTIVE' : 'OFFLINE'}`;
+  }
+
+  // Core label
+  const coreNum = document.getElementById('jarvis-core-num');
+  const coreLbl = document.getElementById('jarvis-core-label');
+  if (coreNum) coreNum.textContent = r.total_analyses || 0;
+  if (coreLbl) coreLbl.textContent = r.enabled ? 'ACTIVE' : 'OFFLINE';
+
+  // Stat tiles
+  const decisions = (r.recent_decisions || []).length;
+  const allDecisions = r.all_journal ? r.all_journal.reduce((s,j) => s + (j.decisions_count||0), 0) : 0;
+  const insights = (r.research_insights || []).length;
+  const strategies = Object.keys(r.strategy_scores || {}).length;
+  _jSet('js-analyses',   r.total_analyses || 0);
+  _jSet('js-decisions',  allDecisions);
+  _jSet('js-insights',   insights);
+  _jSet('js-strategies', strategies);
+
+  // Times
+  const lastEl = document.getElementById('js-last-run');
+  const nextEl = document.getElementById('js-next-run');
+  if (lastEl) lastEl.textContent = r.last_run || '—';
+  if (nextEl && r.last_run) {
+    try {
+      const last = new Date(r.last_run.replace(' ','T'));
+      const next = new Date(last.getTime() + 4*3600*1000);
+      nextEl.textContent = next.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + ' (4h interval)';
+    } catch { nextEl.textContent = '—'; }
+  }
+
+  // Next focus
+  const foc = document.getElementById('js-next-focus');
+  const j   = r.latest_journal;
+  if (foc && j && j.next_focus) {
+    foc.innerHTML = `<div style="font-size:10px;color:#475569;letter-spacing:1px;margin-bottom:4px">NEXT FOCUS</div>
+      <div style="font-size:11px;color:#06b6d4;line-height:1.5">${j.next_focus}</div>`;
+  }
+
+  // Research insights terminal
+  const ifeed = document.getElementById('jarvis-insights-feed');
+  if (ifeed) {
+    const ins = r.research_insights || [];
+    if (!ins.length) {
+      ifeed.innerHTML = '<div class="t-line t-info">[ No insights yet — first analysis will populate this ]</div>';
+    } else {
+      ifeed.innerHTML = ins.slice().reverse().map(i =>
+        `<div class="t-line"><span class="t-ts">[${(i.time||'').slice(11,16)}]</span> <span class="t-info">${i.strategy||''}</span> <span style="color:#94a3b8">${i.insight||''}</span></div>`
+      ).join('');
+      ifeed.scrollTop = ifeed.scrollHeight;
+    }
+  }
+
+  // Strategy grid
+  const grid = document.getElementById('jarvis-strategy-grid');
+  const scores = r.strategy_scores || {};
+  if (grid && Object.keys(scores).length) {
+    const sorted = Object.entries(scores).sort((a,b) => (b[1].total_pnl||0) - (a[1].total_pnl||0));
+    const goodC  = sorted.filter(([,v]) => v.win_rate >= 60 && v.total_closed > 0).length;
+    const poorC  = sorted.filter(([,v]) => v.win_rate < 40 && v.total_closed > 0).length;
+    const sumEl  = document.getElementById('js-grid-summary');
+    if (sumEl) sumEl.textContent = `${goodC} GOOD · ${poorC} POOR · ${sorted.length} total`;
+
+    grid.innerHTML = sorted.map(([strat, v]) => {
+      const wr    = v.win_rate || 0;
+      const pnl   = v.total_pnl || 0;
+      const tc    = v.total_closed || 0;
+      const cls   = tc === 0 ? 'new' : wr >= 60 ? 'good' : wr >= 45 ? 'watch' : 'poor';
+      const pc    = pnl > 0 ? '#22c55e' : pnl < 0 ? '#ef4444' : '#475569';
+      const wrc   = wr >= 60 ? '#22c55e' : wr >= 45 ? '#f59e0b' : '#ef4444';
+      const streak = v.loss_streak || 0;
+      const sflag  = streak >= 3 ? `<span style="color:#ef4444;font-size:9px">⚠${streak}L</span>` : '';
+      const barW  = Math.min(100, wr);
+      const barC  = wr >= 60 ? '#22c55e' : wr >= 45 ? '#f59e0b' : '#ef4444';
+      return `<div class="jarvis-bot-card ${cls}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="font-size:11px;font-weight:700;color:#f1f5f9">${strat}</div>
+          ${sflag}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#475569">
+          <span>${tc} trades</span>
+          <span style="color:${wrc};font-weight:700">${tc > 0 ? wr+'%' : 'NEW'}</span>
+        </div>
+        <div class="jarvis-wr-bar-wrap"><div class="jarvis-wr-bar" style="width:${barW}%;background:${barC}"></div></div>
+        <div style="font-size:11px;font-weight:700;color:${pc};margin-top:5px;font-variant-numeric:tabular-nums">${tc>0 ? (pnl>=0?'+':'')+pnl.toFixed(2)+' USDT' : '—'}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // Decision terminal
+  const dfeed = document.getElementById('jarvis-decision-feed');
+  const decs  = r.recent_decisions || [];
+  const dcEl  = document.getElementById('js-decision-count');
+  if (dcEl) dcEl.textContent = allDecisions + ' total decisions';
+  if (dfeed) {
+    if (!decs.length) {
+      dfeed.innerHTML = '<div class="t-line t-info">[ No decisions yet ]</div>';
+    } else {
+      dfeed.innerHTML = decs.slice().reverse().map(d => {
+        const cls = d.action.includes('paused') ? 't-err' :
+                    d.action.includes('resumed') ? 't-ok' :
+                    d.action.includes('adjust') ? 't-warn' :
+                    d.action.includes('research') ? 't-info' : 't-info';
+        const icon = d.action.includes('paused') ? '⏸' :
+                     d.action.includes('resumed') ? '▶' :
+                     d.action.includes('adjust') ? '⚙' :
+                     d.action.includes('research') ? '🔬' : '→';
+        return `<div class="t-line"><span class="t-ts">[${(d.time||'').slice(11,16)}]</span> <span class="${cls}">${icon} ${d.strategy}</span> <span style="color:#94a3b8">${d.reason||d.action}</span></div>`;
+      }).join('');
+      dfeed.scrollTop = dfeed.scrollHeight;
+    }
+  }
+
+  // Telegram analysis
+  const tgEl = document.getElementById('jarvis-tg-analysis');
+  if (tgEl && j && j.telegram_finding) {
+    tgEl.innerHTML = `<div style="font-size:11px;color:#06b6d4;margin-bottom:8px">${j.telegram_finding}</div>`;
+  } else if (tgEl) {
+    tgEl.innerHTML = '<div style="color:#475569;font-size:11px">Brain will analyze Telegram signals on next run</div>';
+  }
+
+  // Latest journal
+  const jEl = document.getElementById('jarvis-journal-latest');
+  if (jEl && j) {
+    const top = (j.top_performers || []).join(', ') || '—';
+    const bot = (j.underperformers || []).join(', ') || '—';
+    jEl.innerHTML = `
+      <div style="color:#94a3b8;margin-bottom:8px;line-height:1.6">${j.overall || j.insight_summary || '—'}</div>
+      <div style="display:flex;gap:12px;font-size:10px;margin-top:8px">
+        <div><span style="color:#22c55e">▲ BEST:</span> <span style="color:#94a3b8">${top}</span></div>
+        <div><span style="color:#ef4444">▼ POOR:</span> <span style="color:#94a3b8">${bot}</span></div>
+      </div>`;
+  } else if (jEl) {
+    jEl.innerHTML = '<div style="color:#475569">No journal entry yet</div>';
+  }
+}
+
+function _jSet(id, val) {
+  const el = document.getElementById(id);
+  if (el) { el.style.animation = 'none'; el.textContent = val; void el.offsetWidth; el.style.animation = ''; }
 }
 
 // ── PERFORMANCE REPORT ────────────────────────────────────────────────────────

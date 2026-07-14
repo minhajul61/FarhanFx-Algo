@@ -775,5 +775,5 @@ def get_status():
         "recent_decisions":  state.get("decisions", [])[-10:],
         "strategy_scores":   state.get("strategy_scores", {}),
         "all_journal":       state.get("journal", []),
-        "research_insights": state.get("research_insights", [])[-5:],
+        "research_insights": state.get("research_insights", [])[-20:],
     }
