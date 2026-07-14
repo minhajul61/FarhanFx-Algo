@@ -302,6 +302,49 @@ def _fetch_market_context():
     return ctx
 
 
+def _fetch_pair_volumes():
+    """Fetch 24h volume + volatility for major Binance USDT perp pairs."""
+    CANDIDATES = [
+        "BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT",
+        "DOGEUSDT","ADAUSDT","AVAXUSDT","LINKUSDT","DOTUSDT",
+        "LTCUSDT","MATICUSDT","ATOMUSDT","UNIUSDT","APTUSDT",
+        "OPUSDT","ARBUSDT","SUIUSDT","NEARUSDT","FILUSDT",
+        "TIAUSDT","INJUSDT","STXUSDT","LDOUSDT","JUPUSDT",
+    ]
+    try:
+        tickers = _requests.get(
+            "https://fapi.binance.com/fapi/v1/ticker/24hr", timeout=10
+        ).json()
+        result = {}
+        for t in tickers:
+            sym = t.get("symbol", "")
+            if sym not in CANDIDATES:
+                continue
+            price  = float(t.get("lastPrice", 0))
+            high   = float(t.get("highPrice", 0))
+            low    = float(t.get("lowPrice",  0))
+            vol_m  = round(float(t.get("quoteVolume", 0)) / 1_000_000, 1)
+            chg    = round(float(t.get("priceChangePercent", 0)), 2)
+            volat  = round((high - low) / price * 100, 2) if price > 0 else 0
+            pair   = sym.replace("USDT", "/USDT:USDT")
+            result[pair] = {"vol_m": vol_m, "volatility_pct": volat, "chg_24h": chg}
+        return dict(sorted(result.items(), key=lambda x: x[1]["vol_m"], reverse=True))
+    except Exception as exc:
+        return {"error": str(exc)[:80]}
+
+
+def _format_pair_volumes(pairs: dict) -> str:
+    if not pairs or "error" in pairs:
+        return "[PAIRS] No data."
+    lines = ["Pair                   | Vol(M$) | Volatility | 24h Chg"]
+    lines.append("-" * 58)
+    for pair, d in list(pairs.items())[:20]:
+        lines.append(
+            f"{pair:<22} | ${d['vol_m']:>6,.0f}M | {d['volatility_pct']:>5.1f}%     | {d['chg_24h']:+.2f}%"
+        )
+    return "\n".join(lines)
+
+
 def _format_market_ctx(ctx: dict) -> str:
     """Format market context dict into a readable prompt string."""
     if not ctx:
@@ -451,7 +494,7 @@ def calculate_metrics(bots):
 
 # ── Prompt Builder ────────────────────────────────────────────────────────────
 
-def _build_prompt(metrics, state, tg_trades, tg_stats, web_research="", market_ctx=None):
+def _build_prompt(metrics, state, tg_trades, tg_stats, web_research="", market_ctx=None, pair_volumes=None):
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     # ── Strategy blocks ──
@@ -581,8 +624,9 @@ def _build_prompt(metrics, state, tg_trades, tg_stats, web_research="", market_c
     # ── Parameter bounds info ──
     bounds_info = " | ".join(f"{p}:[{b[0]},{b[1]}]" for p, b in PARAM_BOUNDS.items())
 
-    web_section = web_research if web_research else "[WEB] No research available this run."
-    mkt_section = _format_market_ctx(market_ctx) if market_ctx else "[MARKET] No data fetched."
+    web_section  = web_research if web_research else "[WEB] No research available this run."
+    mkt_section  = _format_market_ctx(market_ctx) if market_ctx else "[MARKET] No data fetched."
+    pair_section = _format_pair_volumes(pair_volumes) if pair_volumes else "[PAIRS] No data fetched."
 
     return f"""You are FarhanFX AI Trading Brain v4 — expert self-learning algorithmic trading analyst with internet research capability.
 Your mission: deeply analyze ALL trade data + live market intel, find patterns, learn, and auto-implement smart fixes.
@@ -593,6 +637,18 @@ DATE: {now_str}
 CRYPTO ALGO BOT PERFORMANCE (deep analysis)
 ════════════════════════════════════════════
 {chr(10).join(strat_lines)}
+
+════════════════════════════════════════════
+BINANCE PERP PAIRS — 24H VOLUME + VOLATILITY
+════════════════════════════════════════════
+{pair_section}
+
+PAIR SELECTION GUIDE (for assign_pair action):
+• ICT/Smart Money (bos_choch, ob_fvg, liquidity_sweep, silver_bullet, fvg, ifvg, bpr): HIGH volatility + HIGH volume (BTC, ETH, SOL, BNB)
+• Oscillators (rsi, rsi_divergence, macd_cross, vwap_rsi, bb_rsi_strict, vwap_bands): MEDIUM-HIGH volume, steady price action
+• Breakout (super_breakout, false_breakout, orb, trend_breakout): HIGH volatility + momentum (AVAX, LINK, APT, etc.)
+• funding_rate: needs active futures market with meaningful funding (ETH, BNB, SOL all valid)
+• RULE: Each strategy MUST get a UNIQUE pair. No two strategies on same pair. Pick from the list above.
 
 ════════════════════════════════════════════
 LIVE MARKET CONTEXT (Binance real-time data)
@@ -657,6 +713,16 @@ YOUR ANALYSIS RULES
 11. SET DIRECTION (v4 new!): if direction_analysis shows one side dominates (gap >30% WR), action="set_direction" with action_detail="direction=buy_only reason=..." — valid values: buy_only, sell_only, both
 12. NEVER re-implement rules already shown as ✅ BRAIN RULE above. Only add new rules or expand existing ones.
 13. USE INTERNET DATA: Cross-reference live market intelligence (above) with trade patterns. If web shows BTC is ranging → adjust strategies accordingly. Note web-derived insights in research_insights.
+14. ASSIGN_PAIR (MANDATORY every run): For EVERY strategy, pick the optimal unique pair from the BINANCE PAIRS table above.
+    Use action="assign_pair" with action_detail="pair=SOL/USDT:USDT reason=high volatility suits ICT kill zone"
+    RULES for assign_pair:
+    - Each strategy gets a DIFFERENT pair — no duplicates across all strategies
+    - Pick pairs with highest daily volume ($500M+) for ICT strategies
+    - ICT (bos_choch, ob_fvg, liquidity_sweep, silver_bullet) → BTC/ETH/SOL/BNB only
+    - Breakout/trend (super_breakout, orb, trend_breakout) → AVAX/LINK/APT/OP/ARB
+    - Oscillators (rsi, macd_cross, vwap*) → mid-cap coins LINK/DOT/LTC/ATOM/UNI
+    - If strategy already has a good pair with no issues, still include it with current pair (no unnecessary change)
+    - TLM and DRAM bots: leave them as-is (they have fixed pairs)
 
 Respond ONLY with valid JSON:
 {{
@@ -667,8 +733,8 @@ Respond ONLY with valid JSON:
       "strategy": "name",
       "verdict": "good|watch|poor|new",
       "deep_insight": "Specific findings from time/direction/exit analysis — be analytical and precise",
-      "action": "none|pause|adjust_param|resume|reward|research|block_hours|unblock_hours|set_direction",
-      "action_detail": "e.g. adx_min=35 | hours=[11,12] | direction=buy_only | reason for pause",
+      "action": "none|pause|adjust_param|resume|reward|research|block_hours|unblock_hours|set_direction|assign_pair",
+      "action_detail": "e.g. adx_min=35 | hours=[11,12] | direction=buy_only | pair=SOL/USDT:USDT reason=...",
       "learning": "One specific learnable pattern from this strategy's data"
     }}
   ],
@@ -814,6 +880,46 @@ def _execute(analysis, bots, state, now):
                                  "reason": f"Direction bias → {direction}",
                                  "ai_detail": detail[:200]})
 
+        elif action == "assign_pair":
+            m = re.search(r"pair[=:\s]*([A-Z0-9]+/USDT:USDT)", detail, re.IGNORECASE)
+            if m:
+                new_pair = m.group(1).upper()
+                # Skip TLM/DRAM fixed bots
+                if any(b.get("strategy") == strat and b.get("symbol") in ("TLM/USDT:USDT", "DRAM/USDT:USDT")
+                       for b in bots.values()):
+                    continue
+                # Enforce uniqueness: if another strategy already claimed this pair this run, skip
+                already_claimed = any(
+                    d.get("action", "").startswith("assign_pair") and new_pair in d.get("reason", "")
+                    for d in made
+                )
+                if already_claimed:
+                    print(f"[Brain] Skip assign_pair {strat}: {new_pair} already claimed this run")
+                    continue
+                changed = False
+                old_pair = "?"
+                for bot in bots.values():
+                    if bot.get("strategy") == strat and bot.get("symbol") not in ("TLM/USDT:USDT", "DRAM/USDT:USDT"):
+                        old_pair = bot.get("symbol", "?")
+                        if old_pair == new_pair:
+                            break
+                        bot["symbol"]           = new_pair
+                        bot["open_side"]        = None
+                        bot["open_entry_price"] = None
+                        bot["open_trade_count"] = 0
+                        bot["open_amount"]      = 0
+                        bot["open_peak"]        = None
+                        bot["open_trough"]      = None
+                        bot["last_close_bar"]   = None
+                        bot["last_error"]       = None
+                        changed = True
+                if changed:
+                    made.append({"time": now, "strategy": strat,
+                                 "action": f"assign_pair:{new_pair}",
+                                 "reason": f"Pair: {old_pair} → {new_pair}",
+                                 "ai_detail": detail[:200]})
+                    print(f"[Brain] assign_pair: {strat} → {new_pair}")
+
     # Store global research insights from the AI response
     for insight in analysis.get("research_insights", []):
         if insight and len(insight) > 10:
@@ -849,9 +955,11 @@ def run_analysis():
             tg_trades, tg_stats = _load_telegram_trades()
             print("[Brain] Fetching Binance market context...")
             market_ctx   = _fetch_market_context()
+            print("[Brain] Fetching pair volumes...")
+            pair_volumes = _fetch_pair_volumes()
             print("[Brain] Running live web research...")
             web_research = _web_research()
-            prompt       = _build_prompt(metrics, state, tg_trades, tg_stats, web_research, market_ctx)
+            prompt       = _build_prompt(metrics, state, tg_trades, tg_stats, web_research, market_ctx, pair_volumes)
             state["last_market_ctx"] = market_ctx
 
             resp = _requests.post(
