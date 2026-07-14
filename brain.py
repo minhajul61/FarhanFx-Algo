@@ -1,13 +1,11 @@
 """
-FarhanFX AI Trading Brain  v3 — Deep Self-Learning
-----------------------------------------------------
-100% self-learning from ALL trade data:
-  • Every closed trade: time, direction, PnL, exit reason, duration
-  • Time-of-day pattern analysis (which hours win/lose)
-  • Exit reason breakdown (TP hit vs SL hit vs signal flip)
-  • Telegram Signal Bot closed trades + signal quality
-  • Cumulative research insights across runs (builds knowledge over time)
-  • Anti-oscillation, parameter bounds, winner rewards (from v2)
+FarhanFX AI Trading Brain  v4 — Internet Research + Auto-Implementation
+------------------------------------------------------------------------
+v4 upgrades over v3:
+  • Live internet research via DuckDuckGo (no API key, free) — BTC/ETH/Gold news
+  • Auto-implement learned rules: block_hours (bad UTC hours) + set_direction (BUY/SELL bias)
+  • Server trading loop enforces blocked_hours + direction_bias — real rule enforcement
+  • All prior v3 features: deep trade analysis, anti-oscillation, param bounds, Telegram learning
 
 Runs every 4h. Groq llama-3.3-70b, 4000 tokens output.
 """
@@ -233,6 +231,38 @@ def _load_telegram_trades():
         return [], {}
 
 
+def _web_research():
+    """Live market intelligence from DuckDuckGo — no API key, completely free."""
+    try:
+        from duckduckgo_search import DDGS
+    except ImportError:
+        return "[WEB] duckduckgo_search not installed — run: pip install duckduckgo-search"
+
+    month_year = datetime.now().strftime("%B %Y")
+    queries = [
+        f"BTC ETH crypto market trend analysis {month_year}",
+        f"gold XAU USD technical analysis forecast {month_year}",
+        "crypto trading trending ranging market regime scalping strategy",
+    ]
+    snippets = []
+    try:
+        with DDGS() as ddgs:
+            for q in queries:
+                try:
+                    results = list(ddgs.text(q, max_results=2))
+                    for r in results:
+                        body  = (r.get("body")  or "")[:200]
+                        title = (r.get("title") or "")[:70]
+                        if body:
+                            snippets.append(f"• [{title}] {body}")
+                except Exception:
+                    continue
+    except Exception as e:
+        return f"[WEB] Search failed: {e}"
+
+    return "\n".join(snippets[:6]) if snippets else "[WEB] No results returned."
+
+
 # ── Full Metrics Calculator ───────────────────────────────────────────────────
 
 def calculate_metrics(bots):
@@ -285,6 +315,8 @@ def calculate_metrics(bots):
                 "time_analysis": {},
                 "exit_analysis": {},
                 "direction_analysis": {},
+                "blocked_hours":  bot.get("blocked_hours", []),
+                "direction_bias": bot.get("direction_bias", "both"),
             }
 
         m = metrics[strat]
@@ -329,7 +361,7 @@ def calculate_metrics(bots):
 
 # ── Prompt Builder ────────────────────────────────────────────────────────────
 
-def _build_prompt(metrics, state, tg_trades, tg_stats):
+def _build_prompt(metrics, state, tg_trades, tg_stats, web_research=""):
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     # ── Strategy blocks ──
@@ -356,6 +388,12 @@ def _build_prompt(metrics, state, tg_trades, tg_stats):
         pstr  = " | ".join(f"{k}={v}" for k, v in m["current_params"].items() if k in pkeys)
         if pstr:
             block.append(f"  params: {pstr}")
+
+        # Brain-enforced rules (already implemented — do NOT re-implement)
+        if m.get("blocked_hours"):
+            block.append(f"  ✅ BRAIN RULE: blocked_hours={m['blocked_hours']} UTC (already set)")
+        if m.get("direction_bias", "both") != "both":
+            block.append(f"  ✅ BRAIN RULE: direction_bias={m['direction_bias']} (already set)")
 
         # Recent trades (W/L sequence)
         if m["recent_trades"]:
@@ -453,8 +491,10 @@ def _build_prompt(metrics, state, tg_trades, tg_stats):
     # ── Parameter bounds info ──
     bounds_info = " | ".join(f"{p}:[{b[0]},{b[1]}]" for p, b in PARAM_BOUNDS.items())
 
-    return f"""You are FarhanFX AI Trading Brain v3 — expert self-learning algorithmic trading analyst.
-Your mission: deeply analyze ALL trade data, find patterns, learn, and implement smart fixes.
+    web_section = web_research if web_research else "[WEB] No research available this run."
+
+    return f"""You are FarhanFX AI Trading Brain v4 — expert self-learning algorithmic trading analyst with internet research capability.
+Your mission: deeply analyze ALL trade data + live market intel, find patterns, learn, and auto-implement smart fixes.
 
 DATE: {now_str}
 
@@ -462,6 +502,11 @@ DATE: {now_str}
 CRYPTO ALGO BOT PERFORMANCE (deep analysis)
 ════════════════════════════════════════════
 {chr(10).join(strat_lines)}
+
+════════════════════════════════════════════
+LIVE MARKET INTELLIGENCE (internet research)
+════════════════════════════════════════════
+{web_section}
 
 ════════════════════════════════════════════
 TELEGRAM SIGNAL BOT PERFORMANCE
@@ -504,6 +549,10 @@ YOUR ANALYSIS RULES
 7. LOSS_STREAK>=4: must act immediately
 8. Telegram: if channel has pattern (BUY bias, specific hours work), note as research insight
 9. Anti-oscillation: if you adjusted a param 2 runs ago to X, do NOT set it back to the old value
+10. BLOCK HOURS (v4 new!): if time_analysis shows WR<35% in a UTC bucket, action="block_hours" with action_detail="hours=[11,12] reason=..." — bot will skip signals in those hours
+11. SET DIRECTION (v4 new!): if direction_analysis shows one side dominates (gap >30% WR), action="set_direction" with action_detail="direction=buy_only reason=..." — valid values: buy_only, sell_only, both
+12. NEVER re-implement rules already shown as ✅ BRAIN RULE above. Only add new rules or expand existing ones.
+13. USE INTERNET DATA: Cross-reference live market intelligence (above) with trade patterns. If web shows BTC is ranging → adjust strategies accordingly. Note web-derived insights in research_insights.
 
 Respond ONLY with valid JSON:
 {{
@@ -514,8 +563,8 @@ Respond ONLY with valid JSON:
       "strategy": "name",
       "verdict": "good|watch|poor|new",
       "deep_insight": "Specific findings from time/direction/exit analysis — be analytical and precise",
-      "action": "none|pause|adjust_param|resume|reward|research",
-      "action_detail": "e.g. adx_min=35 risk_pct=1.5 OR reason for pause/reward",
+      "action": "none|pause|adjust_param|resume|reward|research|block_hours|unblock_hours|set_direction",
+      "action_detail": "e.g. adx_min=35 | hours=[11,12] | direction=buy_only | reason for pause",
       "learning": "One specific learnable pattern from this strategy's data"
     }}
   ],
@@ -608,7 +657,6 @@ def _execute(analysis, bots, state, now):
                                  "ai_detail": detail[:200]})
 
         elif action == "research":
-            # Store insight for future runs — no bot changes
             insight_text = sa.get("learning", detail)
             if insight_text:
                 research_list.append({
@@ -620,6 +668,47 @@ def _execute(analysis, bots, state, now):
                              "action": "research_noted",
                              "reason": insight_text[:120],
                              "ai_detail": insight_text[:200]})
+
+        elif action == "block_hours":
+            # Parse hours list from action_detail, e.g. "hours=[11,12]" or "hours=11,12"
+            m = re.search(r"hours[=:\s]*\[?([\d,\s]+)\]?", detail, re.IGNORECASE)
+            if m:
+                try:
+                    hours = [int(h.strip()) for h in m.group(1).split(",") if h.strip().isdigit()]
+                    if hours:
+                        for bot in bots.values():
+                            if bot.get("strategy") == strat:
+                                existing  = bot.get("blocked_hours", [])
+                                new_hours = sorted(set(existing + hours))
+                                bot["blocked_hours"] = new_hours
+                        made.append({"time": now, "strategy": strat,
+                                     "action": f"block_hours:{hours}",
+                                     "reason": f"UTC hours {hours} blocked — low WR detected",
+                                     "ai_detail": detail[:200]})
+                except Exception:
+                    pass
+
+        elif action == "unblock_hours":
+            for bot in bots.values():
+                if bot.get("strategy") == strat:
+                    bot["blocked_hours"] = []
+            made.append({"time": now, "strategy": strat,
+                         "action": "unblock_hours",
+                         "reason": "All hour blocks cleared",
+                         "ai_detail": detail[:200]})
+
+        elif action == "set_direction":
+            m = re.search(r"direction[=:\s]*(\w+)", detail, re.IGNORECASE)
+            if m:
+                direction = m.group(1).lower()
+                if direction in ("buy_only", "sell_only", "both"):
+                    for bot in bots.values():
+                        if bot.get("strategy") == strat:
+                            bot["direction_bias"] = direction
+                    made.append({"time": now, "strategy": strat,
+                                 "action": f"set_direction:{direction}",
+                                 "reason": f"Direction bias → {direction}",
+                                 "ai_detail": detail[:200]})
 
     # Store global research insights from the AI response
     for insight in analysis.get("research_insights", []):
@@ -654,7 +743,9 @@ def run_analysis():
 
             metrics    = calculate_metrics(bots)
             tg_trades, tg_stats = _load_telegram_trades()
-            prompt     = _build_prompt(metrics, state, tg_trades, tg_stats)
+            print("[Brain] Running live web research...")
+            web_research = _web_research()
+            prompt     = _build_prompt(metrics, state, tg_trades, tg_stats, web_research)
 
             resp = _requests.post(
                 _GROQ_API_URL,
@@ -759,7 +850,7 @@ def start():
         return
     _brain_thread = threading.Thread(target=_loop, daemon=True)
     _brain_thread.start()
-    print(f"[Brain] Started v3 — deep self-learning | {BRAIN_INTERVAL_HOURS}h interval | Groq/{BRAIN_MODEL}")
+    print(f"[Brain] Started v4 — internet research + auto-implement | {BRAIN_INTERVAL_HOURS}h interval | Groq/{BRAIN_MODEL}")
 
 
 def get_status():

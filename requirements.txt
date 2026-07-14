@@ -11,4 +11,5 @@ pandas
 python-dateutil
 yfinance
 requests
+duckduckgo-search
 git+https://github.com/Kotak-Neo/Kotak-neo-api-v2.git#egg=neo_api_client

@@ -2945,6 +2945,22 @@ def _bot_tick_demo(bot_id):
                 threading.Thread(target=_save_bots, daemon=True).start()
 
         if signal:
+            # ── Brain-enforced rules (set by AI Brain auto-implementation) ──
+            _utc_hour = datetime.utcnow().hour
+            if _utc_hour in bot.get("blocked_hours", []):
+                bot["last_error"] = f"🧠 Brain rule: hour {_utc_hour} UTC blocked (low WR)"
+                threading.Thread(target=_save_bots, daemon=True).start()
+                return
+            _dir_bias = bot.get("direction_bias", "both")
+            if _dir_bias == "buy_only" and signal == "SELL":
+                bot["last_error"] = "🧠 Brain rule: SELL filtered (buy_only bias set)"
+                threading.Thread(target=_save_bots, daemon=True).start()
+                return
+            if _dir_bias == "sell_only" and signal == "BUY":
+                bot["last_error"] = "🧠 Brain rule: BUY filtered (sell_only bias set)"
+                threading.Thread(target=_save_bots, daemon=True).start()
+                return
+
             # Signal flip: close the open simulated position first
             if bot.get("open_side") and bot["open_side"] != signal:
                 _close_demo_position(price, "signal_flip")
