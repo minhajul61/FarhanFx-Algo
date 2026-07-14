@@ -9143,16 +9143,16 @@ async function loadPerformanceReport() {
   tbody.innerHTML = '<tr><td colspan="6" style="padding:32px;text-align:center;color:var(--text3)">লোড হচ্ছে...</td></tr>';
 
   try {
-    const r = await fetch('/api/crypto/algo/list', {headers: {'Authorization': 'Bearer ' + _authToken}});
+    const r = await fetch('/api/crypto/algo/list', {headers: {'Authorization': 'Bearer ' + _getAuthToken()}});
     if (!r.ok) throw new Error(r.status);
     const bots = await r.json();
 
     const rows = bots.map(b => {
-      const trades = (b.trades || []).filter(t => t.status === 'closed');
-      const wins   = trades.filter(t => (t.pnl || 0) > 0);
-      const pnl    = trades.reduce((s, t) => s + (t.pnl || 0), 0);
-      const wr     = trades.length ? Math.round(wins.length / trades.length * 100) : 0;
-      return {strategy: b.strategy || '?', symbol: b.symbol || '', trades: trades.length, wr, pnl, status: b.status || 'running'};
+      const st  = b.stats || {};
+      const cnt = st.closed_trades || 0;
+      const pnl = st.net_pnl || 0;
+      const wr  = st.win_rate != null ? Math.round(st.win_rate) : 0;
+      return {strategy: b.strategy || '?', symbol: b.symbol || '', trades: cnt, wr, pnl, status: b.status || 'running'};
     });
 
     rows.sort((a, b) => b.pnl - a.pnl);
