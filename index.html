@@ -1587,11 +1587,11 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <!-- ── Gemini API Key Configure Panel (shown when key not set) ── -->
           <div id="brain-config-panel" style="display:none;margin-bottom:16px">
             <div style="background:linear-gradient(135deg,rgba(168,85,247,0.12),rgba(56,189,248,0.06));border:1px solid rgba(168,85,247,0.35);border-radius:12px;padding:20px">
-              <div style="font-size:13px;font-weight:800;color:#a855f7;margin-bottom:6px">🔑 Gemini API Key সেট / পরিবর্তন করো</div>
+              <div style="font-size:13px;font-weight:800;color:#a855f7;margin-bottom:6px">🔑 Groq API Key সেট করো (সম্পূর্ণ FREE)</div>
               <div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.6">
-                ⚠️ <strong style="color:#fbbf24">Quota error আসলে নতুন key লাগবে।</strong> নিচের link এ যাও:<br>
-                <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#38bdf8;text-decoration:none;font-weight:700">👉 aistudio.google.com/app/apikey</a> → "Create API Key" → Copy → এখানে paste করো<br>
-                <span style="color:#a855f7">Key সাধারণত <strong>AQ.Ab8...</strong> দিয়ে শুরু হয় — AI Studio থেকে নিলেই free tier কাজ করবে</span>
+                Groq = billing ছাড়া ১৪,৪০০ request/day free। Gemini বাদ দিয়ে Groq ব্যবহার করছি।<br>
+                <a href="https://console.groq.com" target="_blank" style="color:#38bdf8;text-decoration:none;font-weight:700">👉 console.groq.com</a> → Sign up (free) → API Keys → Create API Key → Copy → এখানে paste করো<br>
+                <span style="color:#22c55e">Key <strong>gsk_...</strong> দিয়ে শুরু হবে। কোনো billing লাগবে না।</span>
               </div>
               <div style="display:flex;gap:10px;align-items:center">
                 <input type="password" id="brain-key-input" placeholder="AIza... (paste your free Gemini API key here)"
@@ -9134,9 +9134,9 @@ function _brainCleanError(err) {
   if (!err) return 'Unknown error';
   const s = typeof err === 'string' ? err : JSON.stringify(err);
   if (s.includes('RESOURCE_EXHAUSTED') || s.includes('Quota exceeded') || s.includes('quota'))
-    return 'API Key Quota শেষ! aistudio.google.com থেকে নতুন FREE key নাও → Change Key click করো';
-  if (s.includes('API_KEY_INVALID') || s.includes('InvalidArgument'))
-    return 'API Key ভুল format! aistudio.google.com থেকে AIza... দিয়ে শুরু key নাও';
+    return 'Quota শেষ! → Change Key click করো → console.groq.com থেকে নতুন key নাও (gsk_...)';
+  if (s.includes('401') || s.includes('Invalid API Key') || s.includes('invalid_api_key'))
+    return 'API Key ভুল! → Change Key click করো → console.groq.com থেকে নতুন gsk_ key নাও';
   if (s.includes('not installed'))
     return 'google-genai library install হয়নি VPS এ';
   return s.length > 150 ? s.slice(0, 150) + '…' : s;

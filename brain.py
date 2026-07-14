@@ -5,9 +5,8 @@ Self-learning AI that monitors all bots, analyzes trade performance,
 learns from patterns, and autonomously fixes underperforming strategies.
 
 Runs every BRAIN_INTERVAL_HOURS (default 6h).
-Uses Google Gemini API (gemini-2.0-flash) — 100% FREE, 1500 req/day.
-Get free API key: https://aistudio.google.com/app/apikey
-Set env var: GEMINI_API_KEY=your_key_here
+Uses Groq API (llama-3.3-70b) — 100% FREE, no billing needed, 14,400 req/day.
+Get free API key: https://console.groq.com  → API Keys → Create
 """
 
 import json
@@ -19,18 +18,17 @@ from datetime import datetime
 from pathlib import Path
 
 try:
-    from google import genai as genai
-    from google.genai import types as _genai_types
-    _GEMINI_OK = True
+    import requests as _requests
+    _GROQ_OK = True
 except ImportError:
-    _GEMINI_OK = False
+    _GROQ_OK = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
 BRAIN_FILE            = "brain_state.json"
 BRAIN_CONFIG_FILE     = "brain_config.json"
 BOTS_FILE             = "bots.json"
 BRAIN_INTERVAL_HOURS  = 6
-BRAIN_MODEL           = "gemini-1.5-flash"
+BRAIN_MODEL           = "llama-3.3-70b-versatile"  # Groq free model
 
 # Thresholds for autonomous decisions
 MIN_TRADES_TO_JUDGE   = 10   # need at least this many trades before pausing
@@ -40,6 +38,7 @@ RESUME_WR_THRESHOLD   = 55   # resume a paused strategy if recent WR recovers
 _brain_lock    = threading.Lock()
 _brain_thread  = None
 _api_key_cache = ""   # updated at runtime via set_api_key()
+_GROQ_API_URL  = "https://api.groq.com/openai/v1/chat/completions"
 
 
 def _get_api_key() -> str:
@@ -304,11 +303,11 @@ def run_analysis():
     Run one full brain analysis cycle.
     Returns a result dict. Called by the background loop and the manual API endpoint.
     """
-    if not _GEMINI_OK:
-        return {"error": "google-generativeai not installed — run: pip install google-generativeai"}
+    if not _GROQ_OK:
+        return {"error": "requests library not installed — run: pip install requests"}
     api_key = _get_api_key()
     if not api_key:
-        return {"error": "Gemini API key not set — enter it in the AI BRAIN tab of the dashboard"}
+        return {"error": "Groq API key not set — enter it in the AI BRAIN tab (get free key at console.groq.com)"}
 
     with _brain_lock:
         try:
@@ -320,15 +319,22 @@ def run_analysis():
             metrics = calculate_metrics(bots)
             prompt  = _build_prompt(metrics, state)
 
-            client   = genai.Client(
-                api_key=api_key,
-                http_options={"api_version": "v1"},
+            resp = _requests.post(
+                _GROQ_API_URL,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type":  "application/json",
+                },
+                json={
+                    "model":      BRAIN_MODEL,
+                    "messages":   [{"role": "user", "content": prompt}],
+                    "max_tokens": 2000,
+                    "temperature": 0.3,
+                },
+                timeout=60,
             )
-            response = client.models.generate_content(
-                model=BRAIN_MODEL,
-                contents=prompt,
-            )
-            raw = response.text.strip()
+            resp.raise_for_status()
+            raw = resp.json()["choices"][0]["message"]["content"].strip()
 
             # Extract JSON from response
             json_match = re.search(r"\{.*\}", raw, re.DOTALL)
@@ -404,17 +410,17 @@ def _loop():
 def start():
     """Start the brain background thread. Safe to call multiple times."""
     global _brain_thread
-    if not _GEMINI_OK:
-        print("[Brain] google-generativeai not installed — run: pip install google-generativeai")
+    if not _GROQ_OK:
+        print("[Brain] requests library not installed")
         return
     if not _get_api_key():
-        print("[Brain] API key not set — enter it in the AI BRAIN dashboard tab")
+        print("[Brain] Groq API key not set — enter it in the AI BRAIN dashboard tab")
         return
     if _brain_thread and _brain_thread.is_alive():
         return  # already running
     _brain_thread = threading.Thread(target=_loop, daemon=True)
     _brain_thread.start()
-    print(f"[Brain] Started — first analysis in 2 min, then every {BRAIN_INTERVAL_HOURS}h")
+    print(f"[Brain] Started (Groq/{BRAIN_MODEL}) — first analysis in 2 min, then every {BRAIN_INTERVAL_HOURS}h")
 
 
 def get_status():
@@ -422,9 +428,9 @@ def get_status():
     state = _load_state()
     key   = _get_api_key()
     return {
-        "enabled":          bool(key and _GEMINI_OK),
+        "enabled":          bool(key and _GROQ_OK),
         "key_configured":   bool(key),
-        "gemini_ok":        _GEMINI_OK,
+        "groq_ok":          _GROQ_OK,
         "last_run":         state.get("last_run"),
         "total_analyses":   state.get("total_analyses", 0),
         "latest_journal":   state["journal"][-1] if state.get("journal") else None,

@@ -10,5 +10,5 @@ pyjsparser
 pandas
 python-dateutil
 yfinance
-google-genai
+requests
 git+https://github.com/Kotak-Neo/Kotak-neo-api-v2.git#egg=neo_api_client
