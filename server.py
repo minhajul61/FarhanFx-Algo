@@ -3535,6 +3535,59 @@ def crypto_algo_toggle_all_mode(current_user: dict = Depends(_get_current_user))
     return {"success": True, "promoted": promoted, "demoted": demoted, "skipped": skipped}
 
 
+@app.post("/api/crypto/algo/redistribute_pairs")
+def crypto_redistribute_pairs(current_user: dict = Depends(_get_current_user)):
+    """Admin-only: assign each strategy to its own unique liquid pair so all bots can trade simultaneously."""
+    if current_user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"error": "Admin only"})
+    STRATEGY_PAIRS = {
+        "bos_choch":             "BTC/USDT:USDT",
+        "silver_bullet":         "SOL/USDT:USDT",
+        "ob_fvg":                "BNB/USDT:USDT",
+        "liquidity_sweep":       "XRP/USDT:USDT",
+        "fvg":                   "DOGE/USDT:USDT",
+        "ifvg":                  "ADA/USDT:USDT",
+        "bpr":                   "AVAX/USDT:USDT",
+        "rsi":                   "LINK/USDT:USDT",
+        "rsi_divergence":        "DOT/USDT:USDT",
+        "macd_cross":            "LTC/USDT:USDT",
+        "vwap_rsi":              "MATIC/USDT:USDT",
+        "bb_rsi_strict":         "ATOM/USDT:USDT",
+        "vwap_bands":            "UNI/USDT:USDT",
+        "super_breakout":        "APT/USDT:USDT",
+        "false_breakout":        "OP/USDT:USDT",
+        "orb":                   "ARB/USDT:USDT",
+        "trend_breakout":        "SUI/USDT:USDT",
+        "volume_profile":        "NEAR/USDT:USDT",
+        "fibonacci_retracement": "FIL/USDT:USDT",
+        "bb_squeeze":            "TIA/USDT:USDT",
+        "funding_rate":          "INJ/USDT:USDT",
+        "inducement_continuation": "ETH/USDT:USDT",
+    }
+    changes = []
+    for bot in _crypto_bots.values():
+        if bot.get("username") != current_user["username"]:
+            continue
+        strategy = bot.get("strategy", "")
+        new_sym = STRATEGY_PAIRS.get(strategy)
+        if not new_sym or bot.get("symbol") == new_sym:
+            continue
+        old_sym = bot["symbol"]
+        bot["symbol"]            = new_sym
+        bot["open_side"]         = None
+        bot["open_entry_price"]  = None
+        bot["open_trade_count"]  = 0
+        bot["open_amount"]       = 0
+        bot["open_peak"]         = None
+        bot["open_trough"]       = None
+        bot["last_close_bar"]    = None
+        bot["last_error"]        = None
+        changes.append({"strategy": strategy, "from": old_sym, "to": new_sym})
+    if changes:
+        _save_bots()
+    return {"success": True, "changes": changes, "total": len(changes)}
+
+
 @app.delete("/api/crypto/algo/{bot_id}")
 def crypto_algo_delete(bot_id: str, current_user: dict = Depends(_get_current_user)):
     bot = _crypto_bots.get(bot_id)
