@@ -4625,6 +4625,11 @@ def _tg_poll_loop():
             if not text:
                 continue
 
+            # Handle bot commands (/report, /pnl, /running, /help)
+            if text.strip().startswith("/"):
+                _tg_handle_command(token, chat_id, text)
+                continue
+
             sig = _parse_tg_signal(text)
             if not sig:
                 continue
@@ -4669,6 +4674,143 @@ def _tg_poll_loop():
             print(f"Telegram signal: {sig['side'].upper()} {sig['symbol']} → {rec['status']}")
 
     print("Telegram bot: polling stopped")
+
+
+def _tg_build_report(mode="all") -> str:
+    """Build A-to-Z trading report for Telegram."""
+    now = datetime.now().strftime("%d %b %Y %H:%M")
+    lines = [f"<b>📊 FarhanFX Algo Report</b>\n🕐 {now}\n"]
+
+    total_closed = 0
+    total_wins   = 0
+    total_pnl    = 0.0
+    open_bots    = []
+    strategy_rows = []
+
+    for b in _crypto_bots.values():
+        trades  = b.get("trades", [])
+        closed  = [t for t in trades if t.get("status") == "closed"]
+        wins    = [t for t in closed if t.get("pnl", 0) > 0]
+        pnl     = sum(t.get("pnl", 0) for t in closed)
+        total_closed += len(closed)
+        total_wins   += len(wins)
+        total_pnl    += pnl
+
+        if b.get("open_side"):
+            ep   = b.get("open_entry_price", 0)
+            amt  = b.get("open_amount", 0)
+            mark = b.get("last_price", 0)
+            upnl = (mark - ep) * amt if b["open_side"] == "BUY" else (ep - mark) * amt
+            open_bots.append({
+                "strategy": b.get("strategy", "?"),
+                "symbol":   b.get("symbol", ""),
+                "side":     b["open_side"],
+                "upnl":     round(upnl, 4),
+            })
+
+        if closed:
+            wr = round(len(wins) / len(closed) * 100, 1)
+            strategy_rows.append((b.get("strategy", "?"), b.get("symbol", ""), len(closed), wr, round(pnl, 2), b.get("mode","demo")))
+
+    # ── Summary ──
+    overall_wr = round(total_wins / total_closed * 100, 1) if total_closed else 0
+    pnl_sign   = "🟢" if total_pnl >= 0 else "🔴"
+    lines.append(f"<b>── Overall ──</b>")
+    lines.append(f"Mode: {'Live 💰' if any(b.get('mode')=='live' for b in _crypto_bots.values()) else 'Demo 🧪'}")
+    lines.append(f"Total Bots: {len(_crypto_bots)}")
+    lines.append(f"Closed Trades: {total_closed}")
+    lines.append(f"Win Rate: {overall_wr}%")
+    lines.append(f"Net PnL: {pnl_sign} <b>{total_pnl:+.2f} USDT</b>\n")
+
+    # ── Open trades ──
+    if open_bots:
+        lines.append(f"<b>── Open Trades ({len(open_bots)}) ──</b>")
+        for o in open_bots:
+            icon = "🟢" if o["side"] == "BUY" else "🔴"
+            upnl_icon = "📈" if o["upnl"] >= 0 else "📉"
+            lines.append(f"{icon} {o['strategy']} | {o['symbol']} | uPnL: {upnl_icon} {o['upnl']:+.4f}")
+        lines.append("")
+    else:
+        lines.append("✅ কোনো open trade নেই\n")
+
+    # ── Strategy breakdown (sorted by PnL) ──
+    if strategy_rows:
+        strategy_rows.sort(key=lambda x: x[4], reverse=True)
+        lines.append("<b>── Strategy Breakdown ──</b>")
+        for s in strategy_rows:
+            icon = "🟢" if s[4] >= 0 else "🔴"
+            lines.append(f"{icon} <b>{s[0]}</b> ({s[1]})")
+            lines.append(f"   Trades: {s[2]} | WR: {s[3]}% | PnL: {s[4]:+.2f}")
+        lines.append("")
+
+    # ── Signals received ──
+    sig_count = len(_TG_SIGNALS)
+    executed  = sum(1 for s in _TG_SIGNALS if s.get("status") in ("executed","demo_executed"))
+    if sig_count:
+        lines.append(f"<b>── Telegram Signals ──</b>")
+        lines.append(f"Received: {sig_count} | Executed: {executed}")
+        lines.append("")
+
+    lines.append("━━━━━━━━━━━━━━━━━━━")
+    lines.append("🤖 FarhanFX Algo Bot")
+    return "\n".join(lines)
+
+
+def _tg_handle_command(token: str, chat_id: str, text: str):
+    """Handle /commands sent to the bot."""
+    cmd = text.strip().lower().split()[0].split("@")[0]
+
+    if cmd == "/help":
+        reply = (
+            "<b>FarhanFX Algo Bot — Commands</b>\n\n"
+            "/report — Full A-to-Z performance report\n"
+            "/pnl — শুধু PnL summary\n"
+            "/running — এখন open trades\n"
+            "/help — এই list\n"
+        )
+
+    elif cmd == "/pnl":
+        total_pnl   = 0.0
+        total_closed = 0
+        total_wins  = 0
+        for b in _crypto_bots.values():
+            closed = [t for t in b.get("trades", []) if t.get("status") == "closed"]
+            wins   = [t for t in closed if t.get("pnl", 0) > 0]
+            total_pnl   += sum(t.get("pnl", 0) for t in closed)
+            total_closed += len(closed)
+            total_wins   += len(wins)
+        wr   = round(total_wins / total_closed * 100, 1) if total_closed else 0
+        icon = "🟢" if total_pnl >= 0 else "🔴"
+        reply = (
+            f"<b>📈 PnL Summary</b>\n\n"
+            f"Net PnL: {icon} <b>{total_pnl:+.2f} USDT</b>\n"
+            f"Closed Trades: {total_closed}\n"
+            f"Win Rate: {wr}%\n"
+            f"Bots: {len(_crypto_bots)}"
+        )
+
+    elif cmd == "/running":
+        open_list = []
+        for b in _crypto_bots.values():
+            if b.get("open_side"):
+                ep   = b.get("open_entry_price", 0)
+                amt  = b.get("open_amount", 0)
+                mark = b.get("last_price", 0)
+                upnl = (mark - ep) * amt if b["open_side"] == "BUY" else (ep - mark) * amt
+                icon = "🟢" if b["open_side"] == "BUY" else "🔴"
+                open_list.append(f"{icon} {b.get('strategy','?')} | {b.get('symbol','')} | {b['open_side']} | uPnL: {upnl:+.4f}")
+        if open_list:
+            reply = f"<b>⚡ Open Trades ({len(open_list)})</b>\n\n" + "\n".join(open_list)
+        else:
+            reply = "✅ এখন কোনো open trade নেই"
+
+    elif cmd == "/report":
+        reply = _tg_build_report()
+
+    else:
+        return  # unknown command, ignore
+
+    _tg_api(token, "sendMessage", {"chat_id": chat_id, "text": reply, "parse_mode": "HTML"})
 
 
 def _start_tg_bot():
