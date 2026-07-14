@@ -1770,8 +1770,12 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                 </select>
               </div>
               <div class="field" style="margin-bottom:8px">
-                <label>Symbol <span style="color:var(--text3);font-size:9px">(comma-separate for multiple coins)</span></label>
-                <input type="text" id="bot-symbol" value="BTC/USDT:USDT" list="cx-symbol-list" placeholder="BTC/USDT:USDT, ETH/USDT:USDT" style="font-size:12px;font-weight:700;color:var(--cyan)"/>
+                <label>Trading Pair <span style="color:var(--accent);font-size:9px">⚡ AI Brain auto-assigns</span></label>
+                <div style="display:flex;align-items:center;gap:8px;background:var(--bg2);border:1px solid var(--accent);border-radius:8px;padding:8px 12px">
+                  <span id="bot-pair-display" style="font-size:13px;font-weight:800;color:var(--cyan);flex:1">BTC/USDT:USDT</span>
+                  <span style="font-size:9px;color:var(--accent);letter-spacing:1px">BRAIN ASSIGNED</span>
+                </div>
+                <input type="hidden" id="bot-symbol" value="auto"/>
               </div>
               <div class="field" style="margin-bottom:8px">
                 <label>Bot Name <span style="color:var(--text3);font-size:9px">(optional — shown on multi-coin groups)</span></label>
@@ -1925,7 +1929,6 @@ tr:hover td{background:rgba(139,92,246,0.05)}
                     <span id="algo-running-count" style="font-size:10px;color:var(--text3)">0 bots</span>
                     <button class="sbtn" onclick="algoToggleAllMode()" title="Flip every running bot between Demo and Live" style="font-size:9px;padding:2px 8px;color:var(--accent);border-color:var(--accent)">⇄ TOGGLE LIVE/PAPER</button>
                     <button class="sbtn" onclick="algoKillAll()" title="Stop every bot AND close all open positions immediately" style="font-size:9px;padding:2px 8px;color:var(--red);border-color:var(--red)">🛑 EMERGENCY KILL ALL</button>
-                    <button id="algo-redist-btn" class="sbtn" onclick="algoRedistributePairs()" title="Assign each strategy to its own unique trading pair" style="font-size:9px;padding:2px 8px;color:var(--cyan);border-color:var(--cyan)">🔀 SPREAD PAIRS</button>
                     <button class="sbtn" onclick="algoLoadBots()" style="font-size:9px;padding:2px 8px">↻</button>
                   </div>
                 </div>
@@ -9903,10 +9906,24 @@ function botModeChange() {
   }
 }
 
+const _STRATEGY_DEFAULT_PAIRS = {
+  bos_choch:'BTC/USDT:USDT', silver_bullet:'SOL/USDT:USDT', ob_fvg:'BNB/USDT:USDT',
+  liquidity_sweep:'XRP/USDT:USDT', fvg:'DOGE/USDT:USDT', ifvg:'ADA/USDT:USDT',
+  bpr:'AVAX/USDT:USDT', rsi:'LINK/USDT:USDT', rsi_divergence:'DOT/USDT:USDT',
+  macd_cross:'LTC/USDT:USDT', vwap_rsi:'MATIC/USDT:USDT', bb_rsi_strict:'ATOM/USDT:USDT',
+  vwap_bands:'UNI/USDT:USDT', super_breakout:'APT/USDT:USDT', false_breakout:'OP/USDT:USDT',
+  orb:'ARB/USDT:USDT', trend_breakout:'SUI/USDT:USDT', volume_profile:'NEAR/USDT:USDT',
+  fibonacci_retracement:'FIL/USDT:USDT', bb_squeeze:'TIA/USDT:USDT',
+  funding_rate:'INJ/USDT:USDT', inducement_continuation:'ETH/USDT:USDT',
+};
+
 function botStrategyChange() {
   const st   = document.getElementById('bot-strategy')?.value;
   const hint = document.getElementById('bot-strategy-hint');
   if (hint) hint.textContent = _strategyHints[st] || '';
+  // Auto-update pair display
+  const pairDisplay = document.getElementById('bot-pair-display');
+  if (pairDisplay) pairDisplay.textContent = _STRATEGY_DEFAULT_PAIRS[st] || 'BTC/USDT:USDT';
 
   // trend_breakout / vwap_bands both exit via ATR-based TP/trailing stop,
   // not signal-flip — prefill the validated settings so a new bot doesn't
@@ -10219,18 +10236,6 @@ async function algoKillAll() {
   algoLoadBots();
 }
 
-async function algoRedistributePairs() {
-  if (!confirm('প্রতিটা strategy কে আলাদা trading pair এ সরিয়ে দেব?\n\nযেমন:\nbos_choch → BTC\nsilver_bullet → SOL\nob_fvg → BNB\nএবং আরো ১৮টা pair...\n\nসব open position reset হয়ে যাবে।')) return;
-  const btn = document.getElementById('algo-redist-btn');
-  if (btn) { btn.textContent = '⏳ Spreading...'; btn.disabled = true; }
-  const r = await apiFetch('/api/crypto/algo/redistribute_pairs', { method: 'POST' });
-  if (btn) { btn.textContent = '🔀 SPREAD PAIRS'; btn.disabled = false; }
-  if (r && r.error) { toastErr(r.error); return; }
-  if (r && r.success) {
-    toast(`✅ ${r.total} bot${r.total !== 1 ? 's' : ''} assigned to unique pairs`);
-    algoLoadBots();
-  }
-}
 
 async function algoToggleAllMode() {
   if (!confirm('Flip every running bot between Demo and Live? Live bots will have their open positions closed before switching to Demo; Demo bots need their exchange connected to switch to Live.')) return;

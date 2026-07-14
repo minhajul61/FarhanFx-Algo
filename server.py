@@ -1300,6 +1300,32 @@ _TF_SECONDS = {
     "1h": 3600, "2h": 7200, "4h": 14400, "6h": 21600, "1d": 86400,
 }
 
+# Default pair per strategy — Brain optimizes every 4h, this is the initial assignment
+_STRATEGY_DEFAULT_PAIRS = {
+    "bos_choch":             "BTC/USDT:USDT",
+    "silver_bullet":         "SOL/USDT:USDT",
+    "ob_fvg":                "BNB/USDT:USDT",
+    "liquidity_sweep":       "XRP/USDT:USDT",
+    "fvg":                   "DOGE/USDT:USDT",
+    "ifvg":                  "ADA/USDT:USDT",
+    "bpr":                   "AVAX/USDT:USDT",
+    "rsi":                   "LINK/USDT:USDT",
+    "rsi_divergence":        "DOT/USDT:USDT",
+    "macd_cross":            "LTC/USDT:USDT",
+    "vwap_rsi":              "MATIC/USDT:USDT",
+    "bb_rsi_strict":         "ATOM/USDT:USDT",
+    "vwap_bands":            "UNI/USDT:USDT",
+    "super_breakout":        "APT/USDT:USDT",
+    "false_breakout":        "OP/USDT:USDT",
+    "orb":                   "ARB/USDT:USDT",
+    "trend_breakout":        "SUI/USDT:USDT",
+    "volume_profile":        "NEAR/USDT:USDT",
+    "fibonacci_retracement": "FIL/USDT:USDT",
+    "bb_squeeze":            "TIA/USDT:USDT",
+    "funding_rate":          "INJ/USDT:USDT",
+    "inducement_continuation": "ETH/USDT:USDT",
+}
+
 
 class CryptoBotReq(BaseModel):
     exchange:       str
@@ -3301,7 +3327,11 @@ def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_curre
     # grouped under one group_id so the UI can show them as a single
     # "Multiple Coins" card (mirroring how a multi-symbol bot is presented
     # elsewhere) instead of juggling several positions inside one bot.
-    symbols = [s.strip() for s in req.symbol.split(",") if s.strip()]
+    # Auto-assign pair from Brain's default map if no symbol provided
+    raw_sym = req.symbol.strip() if req.symbol else ""
+    if not raw_sym or raw_sym == "auto":
+        raw_sym = _STRATEGY_DEFAULT_PAIRS.get(req.strategy, "BTC/USDT:USDT")
+    symbols = [s.strip() for s in raw_sym.split(",") if s.strip()]
     if not symbols:
         return JSONResponse(status_code=400, content={"error": "At least one symbol is required"})
     # Duplicate guard: same strategy + symbol + timeframe already running for this user
@@ -3537,51 +3567,27 @@ def crypto_algo_toggle_all_mode(current_user: dict = Depends(_get_current_user))
 
 @app.post("/api/crypto/algo/redistribute_pairs")
 def crypto_redistribute_pairs(current_user: dict = Depends(_get_current_user)):
-    """Admin-only: assign each strategy to its own unique liquid pair so all bots can trade simultaneously."""
+    """Admin-only: reset all bots to Brain default pairs (Brain will optimize further every 4h)."""
     if current_user.get("role") != "admin":
         return JSONResponse(status_code=403, content={"error": "Admin only"})
-    STRATEGY_PAIRS = {
-        "bos_choch":             "BTC/USDT:USDT",
-        "silver_bullet":         "SOL/USDT:USDT",
-        "ob_fvg":                "BNB/USDT:USDT",
-        "liquidity_sweep":       "XRP/USDT:USDT",
-        "fvg":                   "DOGE/USDT:USDT",
-        "ifvg":                  "ADA/USDT:USDT",
-        "bpr":                   "AVAX/USDT:USDT",
-        "rsi":                   "LINK/USDT:USDT",
-        "rsi_divergence":        "DOT/USDT:USDT",
-        "macd_cross":            "LTC/USDT:USDT",
-        "vwap_rsi":              "MATIC/USDT:USDT",
-        "bb_rsi_strict":         "ATOM/USDT:USDT",
-        "vwap_bands":            "UNI/USDT:USDT",
-        "super_breakout":        "APT/USDT:USDT",
-        "false_breakout":        "OP/USDT:USDT",
-        "orb":                   "ARB/USDT:USDT",
-        "trend_breakout":        "SUI/USDT:USDT",
-        "volume_profile":        "NEAR/USDT:USDT",
-        "fibonacci_retracement": "FIL/USDT:USDT",
-        "bb_squeeze":            "TIA/USDT:USDT",
-        "funding_rate":          "INJ/USDT:USDT",
-        "inducement_continuation": "ETH/USDT:USDT",
-    }
     changes = []
     for bot in _crypto_bots.values():
         if bot.get("username") != current_user["username"]:
             continue
         strategy = bot.get("strategy", "")
-        new_sym = STRATEGY_PAIRS.get(strategy)
+        new_sym  = _STRATEGY_DEFAULT_PAIRS.get(strategy)
         if not new_sym or bot.get("symbol") == new_sym:
             continue
         old_sym = bot["symbol"]
-        bot["symbol"]            = new_sym
-        bot["open_side"]         = None
-        bot["open_entry_price"]  = None
-        bot["open_trade_count"]  = 0
-        bot["open_amount"]       = 0
-        bot["open_peak"]         = None
-        bot["open_trough"]       = None
-        bot["last_close_bar"]    = None
-        bot["last_error"]        = None
+        bot["symbol"]           = new_sym
+        bot["open_side"]        = None
+        bot["open_entry_price"] = None
+        bot["open_trade_count"] = 0
+        bot["open_amount"]      = 0
+        bot["open_peak"]        = None
+        bot["open_trough"]      = None
+        bot["last_close_bar"]   = None
+        bot["last_error"]       = None
         changes.append({"strategy": strategy, "from": old_sym, "to": new_sym})
     if changes:
         _save_bots()
