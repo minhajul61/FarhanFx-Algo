@@ -2914,6 +2914,7 @@ def _bot_tick_demo(bot_id):
             bot["open_entry_price"] = None
             bot["open_amount"]      = 0
             bot["open_trade_count"] = 0
+            bot["last_close_bar"]   = ohlcv[-1][0]  # record bar timestamp of close
             _tg_notify(
                 f"<b>FarhanFX Crypto — Position Closed (Demo)</b>\n"
                 f"📊 <b>{bot['strategy']}</b> | {bot['symbol']}\n"
@@ -2942,9 +2943,16 @@ def _bot_tick_demo(bot_id):
                     should_exit, exit_reason = True, "take_profit"
             if should_exit:
                 _close_demo_position(price, exit_reason)
+                bot["last_close_bar"] = ohlcv[-1][0]  # bar timestamp at close
                 threading.Thread(target=_save_bots, daemon=True).start()
+                return  # wait for next candle before re-evaluating signal
 
         if signal:
+            # Cooldown: don't open a new trade on the same bar that a trade closed
+            if bot.get("last_close_bar") and ohlcv[-1][0] <= bot["last_close_bar"]:
+                bot["last_error"] = "⏸ Cooldown: waiting for fresh candle after close"
+                threading.Thread(target=_save_bots, daemon=True).start()
+                return
             # ── Brain-enforced rules (set by AI Brain auto-implementation) ──
             _utc_hour = datetime.utcnow().hour
             if _utc_hour in bot.get("blocked_hours", []):
