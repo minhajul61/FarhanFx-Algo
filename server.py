@@ -2923,7 +2923,7 @@ def _bot_tick_demo(bot_id):
             )
 
         # Trailing stop / TP check (close simulated position if hit)
-        if bot.get("open_side") and (bot.get("trailing_atr", 0) > 0 or bot.get("tp_atr", 0) > 0):
+        if bot.get("open_side") and (bot.get("trailing_atr", 0) > 0 or bot.get("tp_atr", 0) > 0) and atr:
             ep    = bot.get("open_entry_price", price)
             oside = bot["open_side"]
             trail = bot.get("trailing_atr", 0) * atr
@@ -2943,7 +2943,6 @@ def _bot_tick_demo(bot_id):
                     should_exit, exit_reason = True, "take_profit"
             if should_exit:
                 _close_demo_position(price, exit_reason)
-                bot["last_close_bar"] = ohlcv[-1][0]  # bar timestamp at close
                 threading.Thread(target=_save_bots, daemon=True).start()
                 return  # wait for next candle before re-evaluating signal
 
@@ -2969,9 +2968,11 @@ def _bot_tick_demo(bot_id):
                 threading.Thread(target=_save_bots, daemon=True).start()
                 return
 
-            # Signal flip: close the open simulated position first
+            # Signal flip: close the open simulated position, wait for next bar
             if bot.get("open_side") and bot["open_side"] != signal:
                 _close_demo_position(price, "signal_flip")
+                threading.Thread(target=_save_bots, daemon=True).start()
+                return  # don't open opposite trade same tick — wait for fresh candle
 
             max_t = bot.get("max_open_trades", 2)
             cur_t = bot.get("open_trade_count", 0)
@@ -3075,7 +3076,7 @@ def _bot_tick(bot_id):
 
         # Trailing stop / TP check (exit open position if hit)
         atr = _atr_calc([c[2] for c in ohlcv], [c[3] for c in ohlcv], [c[4] for c in ohlcv], 14)
-        if bot.get("open_side") and (bot.get("trailing_atr", 0) > 0 or bot.get("tp_atr", 0) > 0):
+        if bot.get("open_side") and (bot.get("trailing_atr", 0) > 0 or bot.get("tp_atr", 0) > 0) and atr:
             ep    = bot.get("open_entry_price", price)
             oside = bot["open_side"]
             trail = bot.get("trailing_atr", 0) * atr
@@ -3108,6 +3109,7 @@ def _bot_tick(bot_id):
                         bot["open_side"]        = None
                         bot["open_entry_price"] = None
                         bot["open_trade_count"] = 0
+                        bot["last_close_bar"]   = ohlcv[-1][0]
                         if bot.get("trades"):
                             bot["trades"][-1]["exit_reason"] = exit_reason
                             bot["trades"][-1]["exit_price"]  = round(price, 4)
@@ -3119,15 +3121,22 @@ def _bot_tick(bot_id):
                             f"{'✅' if closed_pnl >= 0 else '❌'} PnL: <code>${closed_pnl:.2f}</code> ({exit_reason})"
                         )
                         threading.Thread(target=_save_bots, daemon=True).start()
+                        return  # wait for next candle before re-evaluating signal
                     except Exception:
                         pass
 
         if signal:
+            # Cooldown: don't open on same bar a trade just closed
+            if bot.get("last_close_bar") and ohlcv[-1][0] <= bot["last_close_bar"]:
+                bot["last_error"] = "⏸ Cooldown: waiting for fresh candle after close"
+                threading.Thread(target=_save_bots, daemon=True).start()
+                return
+
             ex = _active_ex.get(bot.get("username", "admin"), {}).get(bot["exchange"])
             if not ex:
                 return
 
-            # Step 1: Close any opposite-side positions (signal flip)
+            # Step 1: Close any opposite-side positions (signal flip) — then wait next bar
             opp_closed = False
             opp_pnl    = 0.0
             try:
@@ -3145,7 +3154,6 @@ def _bot_tick(bot_id):
                 pass
 
             if opp_closed:
-                # Signal flip: mark last trade exited and reset counter
                 if bot.get("trades"):
                     bot["trades"][-1]["exit_reason"] = "signal_flip"
                     bot["trades"][-1]["exit_price"]  = round(price, 4)
@@ -3153,11 +3161,14 @@ def _bot_tick(bot_id):
                     bot["trades"][-1]["status"]      = "closed"
                 bot["open_trade_count"] = 0
                 bot["open_side"]        = None
+                bot["last_close_bar"]   = ohlcv[-1][0]
                 _tg_notify(
                     f"<b>FarhanFX Crypto — Position Closed (LIVE)</b>\n"
                     f"📊 <b>{bot['strategy']}</b> | {bot['symbol']}\n"
                     f"{'✅' if opp_pnl >= 0 else '❌'} PnL: <code>${opp_pnl:.2f}</code> (signal_flip)"
                 )
+                threading.Thread(target=_save_bots, daemon=True).start()
+                return  # wait for fresh candle before opening opposite direction
 
             # Step 2: Gate — if already at max open trades, skip opening new one
             max_t = bot.get("max_open_trades", 2)
