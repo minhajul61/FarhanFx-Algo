@@ -1,21 +1,15 @@
 """
-FarhanFX AI Trading Brain  v2
-------------------------------
-Self-learning AI that monitors all bots, analyzes trade performance,
-learns from patterns, and autonomously fixes underperforming strategies.
+FarhanFX AI Trading Brain  v3 — Deep Self-Learning
+----------------------------------------------------
+100% self-learning from ALL trade data:
+  • Every closed trade: time, direction, PnL, exit reason, duration
+  • Time-of-day pattern analysis (which hours win/lose)
+  • Exit reason breakdown (TP hit vs SL hit vs signal flip)
+  • Telegram Signal Bot closed trades + signal quality
+  • Cumulative research insights across runs (builds knowledge over time)
+  • Anti-oscillation, parameter bounds, winner rewards (from v2)
 
-Runs every BRAIN_INTERVAL_HOURS (default 4h).
-Uses Groq API (llama-3.3-70b) — 100% FREE, no billing needed, 14,400 req/day.
-Get free API key: https://console.groq.com  → API Keys → Create
-
-v2 improvements:
-- More tunable parameters: risk_pct, tp_atr, trailing_atr, bb_std, slow_ema, fast_ema
-- Anti-oscillation: blocks flip-flopping on same param within 3 runs
-- Parameter bounds: prevents extreme values
-- Winner rewards: good bots get risk_pct or max_open_trades increase
-- Consecutive loss detection: flags 4+ loss streaks for immediate action
-- Better prompt: shows current param values + streak data to AI
-- Interval 4h (was 6h), max_tokens 3500 (was 2000)
+Runs every 4h. Groq llama-3.3-70b, 4000 tokens output.
 """
 
 import json
@@ -33,30 +27,31 @@ except ImportError:
     _GROQ_OK = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-BRAIN_FILE            = "brain_state.json"
-BRAIN_CONFIG_FILE     = "brain_config.json"
-BOTS_FILE             = "bots.json"
-BRAIN_INTERVAL_HOURS  = 4      # was 6
-BRAIN_MODEL           = "llama-3.3-70b-versatile"
+BRAIN_FILE           = "brain_state.json"
+BRAIN_CONFIG_FILE    = "brain_config.json"
+BOTS_FILE            = "bots.json"
+TG_DEMO_FILE         = "telegram_demo_state.json"
+TG_SIGNALS_FILE      = "telegram_signals.json"
+BRAIN_INTERVAL_HOURS = 4
+BRAIN_MODEL          = "llama-3.3-70b-versatile"
 
-MIN_TRADES_TO_JUDGE   = 10
-PAUSE_WR_THRESHOLD    = 35     # was 40 — more aggressive
-RESUME_WR_THRESHOLD   = 52
-REWARD_WR_THRESHOLD   = 65     # WR above this → reward with more risk
-REWARD_PF_THRESHOLD   = 1.8    # PF above this → reward
+MIN_TRADES_TO_JUDGE  = 8
+PAUSE_WR_THRESHOLD   = 35
+RESUME_WR_THRESHOLD  = 52
+REWARD_WR_THRESHOLD  = 65
+REWARD_PF_THRESHOLD  = 1.8
 
-# Parameter bounds — AI cannot push beyond these
 PARAM_BOUNDS = {
-    "adx_min":        (0,   80),
-    "rsi_ob":         (60,  95),
-    "rsi_os":         (5,   40),
-    "max_open_trades":(1,    5),
-    "risk_pct":       (0.5,  5.0),
-    "tp_atr":         (0.5,  6.0),
-    "trailing_atr":   (0.5,  5.0),
-    "bb_std":         (1.5,  3.5),
-    "slow_ema":       (10,   50),
-    "fast_ema":       (3,    20),
+    "adx_min":         (0,   80),
+    "rsi_ob":          (60,  95),
+    "rsi_os":          (5,   40),
+    "max_open_trades": (1,    5),
+    "risk_pct":        (0.5,  5.0),
+    "tp_atr":          (0.5,  6.0),
+    "trailing_atr":    (0.5,  5.0),
+    "bb_std":          (1.5,  3.5),
+    "slow_ema":        (10,   50),
+    "fast_ema":        (3,    20),
 }
 
 _brain_lock    = threading.Lock()
@@ -64,6 +59,8 @@ _brain_thread  = None
 _api_key_cache = ""
 _GROQ_API_URL  = "https://api.groq.com/openai/v1/chat/completions"
 
+
+# ── API Key ───────────────────────────────────────────────────────────────────
 
 def _get_api_key() -> str:
     if _api_key_cache:
@@ -112,7 +109,8 @@ def _load_state():
         "strategy_scores": {},
         "decisions": [],
         "journal": [],
-        "param_history": {},   # {strategy: {param: [last3 values]}}
+        "param_history": {},
+        "research_insights": [],   # cumulative cross-run learnings
     }
 
 
@@ -136,7 +134,6 @@ def _save_bots(bots):
 # ── Anti-oscillation ──────────────────────────────────────────────────────────
 
 def _is_oscillating(param_history, strat, param, new_val):
-    """Return True if new_val is same as 2 runs ago (flip-flopping)."""
     hist = param_history.get(strat, {}).get(param, [])
     if len(hist) >= 2 and hist[-2] == new_val:
         return True
@@ -148,31 +145,116 @@ def _record_param_change(param_history, strat, param, new_val):
         param_history[strat] = {}
     hist = param_history[strat].get(param, [])
     hist.append(new_val)
-    param_history[strat][param] = hist[-4:]  # keep last 4
+    param_history[strat][param] = hist[-4:]
 
 
-# ── Metrics Calculator ────────────────────────────────────────────────────────
+# ── Deep Trade Analysis Helpers ───────────────────────────────────────────────
+
+def _time_of_day_analysis(closed_trades):
+    """Win rate by 6-hour time buckets."""
+    buckets = {"00-06 UTC": [], "06-12 UTC": [], "12-18 UTC": [], "18-24 UTC": []}
+    for t in closed_trades:
+        ts = t.get("time", "")
+        try:
+            hour = int(str(ts).split(" ")[1].split(":")[0])
+        except Exception:
+            continue
+        if hour < 6:    buckets["00-06 UTC"].append(t.get("pnl", 0))
+        elif hour < 12: buckets["06-12 UTC"].append(t.get("pnl", 0))
+        elif hour < 18: buckets["12-18 UTC"].append(t.get("pnl", 0))
+        else:           buckets["18-24 UTC"].append(t.get("pnl", 0))
+    result = {}
+    for k, pnls in buckets.items():
+        if pnls:
+            wins = sum(1 for p in pnls if p > 0)
+            result[k] = {
+                "trades": len(pnls),
+                "wr":     round(wins / len(pnls) * 100, 1),
+                "pnl":    round(sum(pnls), 2),
+            }
+    return result
+
+
+def _exit_reason_analysis(closed_trades):
+    """Break down performance by exit reason (tp/sl/signal/etc.)."""
+    reasons = {}
+    for t in closed_trades:
+        r = (t.get("exit_reason") or "unknown").lower()
+        if r not in reasons:
+            reasons[r] = {"count": 0, "wins": 0, "pnl": 0.0}
+        reasons[r]["count"] += 1
+        if t.get("pnl", 0) > 0:
+            reasons[r]["wins"] += 1
+        reasons[r]["pnl"] += t.get("pnl", 0)
+    return {
+        k: {
+            "count": v["count"],
+            "wr":    round(v["wins"] / v["count"] * 100, 1) if v["count"] else 0,
+            "pnl":   round(v["pnl"], 2),
+        }
+        for k, v in reasons.items()
+    }
+
+
+def _direction_analysis(closed_trades):
+    """Win rate split by BUY vs SELL signals."""
+    dirs = {"BUY": {"count": 0, "wins": 0, "pnl": 0.0},
+            "SELL": {"count": 0, "wins": 0, "pnl": 0.0}}
+    for t in closed_trades:
+        d = (t.get("signal") or t.get("side") or "").upper()
+        if d not in dirs:
+            continue
+        dirs[d]["count"] += 1
+        if t.get("pnl", 0) > 0:
+            dirs[d]["wins"] += 1
+        dirs[d]["pnl"] += t.get("pnl", 0)
+    return {
+        k: {
+            "count": v["count"],
+            "wr":    round(v["wins"] / v["count"] * 100, 1) if v["count"] else 0,
+            "pnl":   round(v["pnl"], 2),
+        }
+        for k, v in dirs.items() if v["count"] > 0
+    }
+
+
+def _load_telegram_trades():
+    """Load closed trades from Telegram Signal Bot demo state."""
+    path = Path(TG_DEMO_FILE)
+    if not path.exists():
+        return [], {}
+    try:
+        st     = json.loads(path.read_text(encoding="utf-8"))
+        trades = st.get("trades", [])
+        equity = st.get("equity", 1000)
+        open_p = len(st.get("positions", {}))
+        return trades, {"equity": equity, "open_positions": open_p}
+    except Exception:
+        return [], {}
+
+
+# ── Full Metrics Calculator ───────────────────────────────────────────────────
 
 def calculate_metrics(bots):
+    """Deep per-strategy metrics including time/direction/exit analysis."""
     metrics = {}
     for bot in bots.values():
         strat = bot.get("strategy")
         if not strat:
             continue
-        trades  = bot.get("trades", [])
-        closed  = [t for t in trades if t.get("status") == "closed"]
-        open_t  = [t for t in trades if t.get("status") == "open"]
-        wins    = [t for t in closed if t.get("pnl", 0) > 0]
-        losses  = [t for t in closed if t.get("pnl", 0) < 0]
+        trades = bot.get("trades", [])
+        closed = [t for t in trades if t.get("status") == "closed"]
+        open_t = [t for t in trades if t.get("status") == "open"]
+        wins   = [t for t in closed if t.get("pnl", 0) > 0]
+        losses = [t for t in closed if t.get("pnl", 0) < 0]
         pnl_sum = sum(t.get("pnl", 0) for t in closed)
         win_sum = sum(t.get("pnl", 0) for t in wins)
         los_sum = abs(sum(t.get("pnl", 0) for t in losses))
         pf      = round(win_sum / los_sum, 2) if los_sum > 0 else (9.99 if win_sum > 0 else 0)
         wr      = round(len(wins) / len(closed) * 100, 1) if closed else 0
         equity  = bot.get("demo_equity", bot.get("demo_balance", 5000))
-        balance = bot.get("demo_balance", 5000)
 
-        # Consecutive loss streak (last 8 trades)
+        # Consecutive loss streak
         recent8 = sorted(closed, key=lambda x: x.get("time", ""), reverse=True)[:8]
         streak  = 0
         for t in recent8:
@@ -181,52 +263,77 @@ def calculate_metrics(bots):
             else:
                 break
 
+        # Best and worst single trades
+        best  = max(closed, key=lambda x: x.get("pnl", 0), default=None)
+        worst = min(closed, key=lambda x: x.get("pnl", 0), default=None)
+
         if strat not in metrics:
             metrics[strat] = {
-                "strategy": strat,
-                "symbol":   bot.get("symbol", ""),
+                "strategy": strat, "symbol": bot.get("symbol", ""),
                 "timeframe": bot.get("timeframe", ""),
                 "total_closed": 0, "total_open": 0,
                 "wins": 0, "losses": 0,
                 "win_rate": 0, "profit_factor": 0,
-                "total_pnl": 0, "equity": equity, "balance": balance,
+                "total_pnl": 0, "equity": equity,
                 "recent_trades": [],
+                "all_closed_trades": [],
                 "bot_status": bot.get("status", "active"),
                 "loss_streak": streak,
                 "current_params": {},
+                "best_trade": None,
+                "worst_trade": None,
+                "time_analysis": {},
+                "exit_analysis": {},
+                "direction_analysis": {},
             }
 
         m = metrics[strat]
-        m["total_closed"] += len(closed)
-        m["total_open"]   += len(open_t)
-        m["wins"]         += len(wins)
-        m["losses"]       += len(losses)
-        m["total_pnl"]     = round(m["total_pnl"] + pnl_sum, 2)
-        m["equity"]        = round(equity, 2)
-        m["profit_factor"] = pf
-        m["loss_streak"]   = max(m["loss_streak"], streak)
+        m["total_closed"]     += len(closed)
+        m["total_open"]       += len(open_t)
+        m["wins"]             += len(wins)
+        m["losses"]           += len(losses)
+        m["total_pnl"]         = round(m["total_pnl"] + pnl_sum, 2)
+        m["equity"]            = round(equity, 2)
+        m["profit_factor"]     = pf
+        m["loss_streak"]       = max(m["loss_streak"], streak)
+        m["all_closed_trades"] += closed
         if m["total_closed"] > 0:
             m["win_rate"] = round(m["wins"] / m["total_closed"] * 100, 1)
+        if best  and (m["best_trade"]  is None or best["pnl"]  > m["best_trade"]["pnl"]):
+            m["best_trade"]  = best
+        if worst and (m["worst_trade"] is None or worst["pnl"] < m["worst_trade"]["pnl"]):
+            m["worst_trade"] = worst
 
-        # Capture current tunable params
         for p in PARAM_BOUNDS:
             if p in bot:
                 m["current_params"][p] = bot[p]
 
-        recent = sorted(closed, key=lambda x: x.get("time", ""), reverse=True)[:6]
+        recent = sorted(closed, key=lambda x: x.get("time", ""), reverse=True)[:8]
         m["recent_trades"] = [
-            {"time": t.get("time"), "side": t.get("signal"),
-             "pnl": round(t.get("pnl", 0), 2), "exit": t.get("exit_reason", "")}
+            {"time": t.get("time"), "side": t.get("signal") or t.get("side"),
+             "pnl": round(t.get("pnl", 0), 4),
+             "exit": t.get("exit_reason", "?")}
             for t in recent
         ]
+
+    # Post-process deep analyses
+    for strat, m in metrics.items():
+        all_c = m.pop("all_closed_trades", [])
+        if all_c:
+            m["time_analysis"]      = _time_of_day_analysis(all_c)
+            m["exit_analysis"]      = _exit_reason_analysis(all_c)
+            m["direction_analysis"] = _direction_analysis(all_c)
 
     return metrics
 
 
 # ── Prompt Builder ────────────────────────────────────────────────────────────
 
-def _build_prompt(metrics, state):
-    lines = []
+def _build_prompt(metrics, state, tg_trades, tg_stats):
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # ── Strategy blocks ──
+    strat_lines = []
     for strat, m in sorted(metrics.items(), key=lambda x: x[1]["total_pnl"], reverse=True):
         if m["total_closed"] == 0:
             tag = "NEW"
@@ -237,132 +344,221 @@ def _build_prompt(metrics, state):
         else:
             tag = "POOR"
 
-        streak_note = f" ⚠️ LOSS_STREAK={m['loss_streak']}" if m["loss_streak"] >= 3 else ""
-        lines.append(
-            f"• {strat} [{tag}]{streak_note} | {m['timeframe']} | status={m['bot_status']}"
-            f" | closed={m['total_closed']} | WR={m['win_rate']}% | PF={m['profit_factor']}"
+        streak_flag = f" ⚠️STREAK={m['loss_streak']}" if m["loss_streak"] >= 3 else ""
+        block = [
+            f"▶ {strat} [{tag}]{streak_flag} | {m['timeframe']} | status={m['bot_status']}"
+            f" | trades={m['total_closed']} | WR={m['win_rate']}% | PF={m['profit_factor']}"
             f" | PnL=${m['total_pnl']:+.2f}"
-        )
-        # Show current tunable params
-        if m["current_params"]:
-            param_str = " | ".join(f"{k}={v}" for k, v in m["current_params"].items()
-                                   if k in ["adx_min","rsi_ob","rsi_os","max_open_trades","risk_pct","tp_atr","trailing_atr"])
-            if param_str:
-                lines.append(f"  params: {param_str}")
+        ]
+
+        # Current params
+        pkeys = ["adx_min","rsi_ob","rsi_os","max_open_trades","risk_pct","tp_atr","trailing_atr"]
+        pstr  = " | ".join(f"{k}={v}" for k, v in m["current_params"].items() if k in pkeys)
+        if pstr:
+            block.append(f"  params: {pstr}")
+
+        # Recent trades (W/L sequence)
         if m["recent_trades"]:
-            rec = ", ".join(
-                f"{'W' if t['pnl']>0 else 'L'}${t['pnl']:+.2f}"
+            seq = " ".join(
+                f"{'W' if t['pnl'] > 0 else 'L'}${t['pnl']:+.2f}[{t['exit'] or '?'}]"
                 for t in m["recent_trades"]
             )
-            lines.append(f"  last trades: {rec}")
+            block.append(f"  recent: {seq}")
 
+        # Time analysis
+        if m["time_analysis"]:
+            t_str = " | ".join(
+                f"{k}: {v['trades']}trades WR={v['wr']}% PnL=${v['pnl']:+.2f}"
+                for k, v in m["time_analysis"].items()
+            )
+            block.append(f"  time:   {t_str}")
+
+        # Direction analysis
+        if m["direction_analysis"]:
+            d_str = " | ".join(
+                f"{k}: {v['count']}t WR={v['wr']}% PnL=${v['pnl']:+.2f}"
+                for k, v in m["direction_analysis"].items()
+            )
+            block.append(f"  dir:    {d_str}")
+
+        # Exit analysis
+        if m["exit_analysis"]:
+            e_str = " | ".join(
+                f"{k}: {v['count']}t WR={v['wr']}%"
+                for k, v in m["exit_analysis"].items()
+            )
+            block.append(f"  exits:  {e_str}")
+
+        # Best/worst trade
+        if m["best_trade"]:
+            block.append(f"  best trade:  +${m['best_trade'].get('pnl',0):.2f} @ {m['best_trade'].get('time','?')}")
+        if m["worst_trade"]:
+            block.append(f"  worst trade: ${m['worst_trade'].get('pnl',0):+.2f} @ {m['worst_trade'].get('time','?')}")
+
+        strat_lines.append("\n".join(block))
+
+    # ── Telegram section ──
+    tg_section = "No Telegram trades yet."
+    if tg_trades:
+        tg_closed = [t for t in tg_trades if t.get("status") == "closed" or "exit" in t]
+        if tg_closed:
+            tg_wins = [t for t in tg_closed if t.get("pnl", 0) > 0]
+            tg_pnl  = round(sum(t.get("pnl", 0) for t in tg_closed), 2)
+            tg_wr   = round(len(tg_wins) / len(tg_closed) * 100, 1) if tg_closed else 0
+            tg_time = _time_of_day_analysis(tg_closed)
+            tg_dir  = _direction_analysis(tg_closed)
+            tg_seq  = " ".join(
+                f"{'W' if t.get('pnl',0)>0 else 'L'}${t.get('pnl',0):+.2f}[{t.get('symbol','?').split('/')[0]}]"
+                for t in sorted(tg_closed, key=lambda x: x.get("time",""), reverse=True)[:10]
+            )
+            t_str = " | ".join(
+                f"{k}: {v['trades']}t WR={v['wr']}%"
+                for k, v in tg_time.items()
+            ) if tg_time else "insufficient data"
+            d_str = " | ".join(
+                f"{k}: WR={v['wr']}% PnL=${v['pnl']:+.2f}"
+                for k, v in tg_dir.items()
+            ) if tg_dir else "n/a"
+            tg_section = (
+                f"Closed: {len(tg_closed)} | WR: {tg_wr}% | Net PnL: ${tg_pnl:+.2f}"
+                f" | Open positions: {tg_stats.get('open_positions', 0)}"
+                f"\nRecent: {tg_seq}"
+                f"\nTime:   {t_str}"
+                f"\nDir:    {d_str}"
+            )
+        else:
+            tg_section = f"Open positions: {tg_stats.get('open_positions', 0)} | No closed trades yet."
+
+    # ── Previous decisions ──
     prev_decisions = "None yet."
     if state.get("decisions"):
         prev_decisions = "\n".join(
             f"- {d['time']}: {d['action']} on {d['strategy']} — {d['reason'][:100]}"
-            for d in state["decisions"][-8:]
+            for d in state["decisions"][-10:]
         )
 
+    # ── Research insights ──
+    insights = state.get("research_insights", [])
+    insights_text = "None yet." if not insights else "\n".join(
+        f"[{i.get('time','')}] {i.get('insight','')}"
+        for i in insights[-8:]
+    )
+
+    # ── Previous journal ──
     prev_learning = "None yet."
     if state.get("journal"):
         last = state["journal"][-1]
-        prev_learning = (
-            f"[{last.get('time','')}] {last.get('overall','')[:200]}\n"
-            f"Learnings: {'; '.join(last.get('key_learnings',[]))}"
-        )
+        prev_learning = f"[{last.get('time','')}] {last.get('overall','')[:200]}"
 
-    bounds_info = "\n".join(
-        f"  {p}: min={b[0]}, max={b[1]}"
-        for p, b in PARAM_BOUNDS.items()
-    )
+    # ── Parameter bounds info ──
+    bounds_info = " | ".join(f"{p}:[{b[0]},{b[1]}]" for p, b in PARAM_BOUNDS.items())
 
-    return f"""You are FarhanFX AI Trading Brain v2 — an expert algorithmic trading analyst.
-Your job: analyze ALL bot performance deeply, identify WHY trades win or lose, and make SMART autonomous parameter adjustments.
+    return f"""You are FarhanFX AI Trading Brain v3 — expert self-learning algorithmic trading analyst.
+Your mission: deeply analyze ALL trade data, find patterns, learn, and implement smart fixes.
 
-DATE: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+DATE: {now_str}
 
-=== STRATEGY PERFORMANCE (sorted by PnL, best first) ===
-{chr(10).join(lines)}
+════════════════════════════════════════════
+CRYPTO ALGO BOT PERFORMANCE (deep analysis)
+════════════════════════════════════════════
+{chr(10).join(strat_lines)}
 
-=== PREVIOUS DECISIONS (last 8) ===
+════════════════════════════════════════════
+TELEGRAM SIGNAL BOT PERFORMANCE
+════════════════════════════════════════════
+{tg_section}
+
+════════════════════════════════════════════
+PREVIOUS DECISIONS (last 10)
+════════════════════════════════════════════
 {prev_decisions}
 
-=== PREVIOUS LEARNINGS ===
+════════════════════════════════════════════
+ACCUMULATED RESEARCH INSIGHTS (cross-run learning)
+════════════════════════════════════════════
+{insights_text}
+
+════════════════════════════════════════════
+PREVIOUS RUN SUMMARY
+════════════════════════════════════════════
 {prev_learning}
 
-=== TUNABLE PARAMETERS & BOUNDS ===
+════════════════════════════════════════════
+TUNABLE PARAMETER BOUNDS
+════════════════════════════════════════════
 {bounds_info}
-Parameter meanings:
-- adx_min: minimum ADX trend strength required to take trade (higher = fewer but stronger signals)
-- rsi_ob/rsi_os: RSI overbought/oversold thresholds (tighter = fewer trades)
-- max_open_trades: max concurrent positions per strategy
-- risk_pct: % of balance risked per trade (lower = smaller positions)
-- tp_atr: take-profit in ATR multiples (higher = bigger TP targets)
-- trailing_atr: trailing stop in ATR multiples
-- bb_std: Bollinger Band standard deviation width
-- slow_ema / fast_ema: EMA crossover periods
+Key parameters:
+adx_min=trend strength filter | rsi_ob/os=RSI threshold | max_open_trades=concurrent positions
+risk_pct=% balance per trade | tp_atr=TP in ATR units | trailing_atr=trailing stop ATR
+bb_std=BB width | slow_ema/fast_ema=EMA crossover periods
 
-=== YOUR DECISION RULES ===
-1. PAUSE: closed >= {MIN_TRADES_TO_JUDGE} AND WR < {PAUSE_WR_THRESHOLD}% AND PnL < -$20 AND loss_streak >= 3
-2. RESUME: status=paused AND recent data shows improvement
-3. REWARD: WR >= {REWARD_WR_THRESHOLD}% AND PF >= {REWARD_PF_THRESHOLD} → increase risk_pct by 0.5 or max_open_trades by 1
-4. ADJUST: make 1-2 specific param changes per strategy max — do NOT oscillate values
-5. NEW bots (0 trades): verdict="new", action="none" — never touch them
-6. < 8 trades: verdict="watch", action="none" — too early
-7. LOSS_STREAK >= 4: must take action (pause or tighten params significantly)
-8. Avoid reversing a param change you made 1-2 runs ago — check previous decisions
+════════════════════════════════════════════
+YOUR ANALYSIS RULES
+════════════════════════════════════════════
+1. DEEP PATTERN ANALYSIS: Look at time analysis (best/worst hours), direction (BUY vs SELL bias), exit reasons (TP vs SL hit rate), trade sequences (W/L streaks)
+2. PAUSE: trades>={MIN_TRADES_TO_JUDGE} AND WR<{PAUSE_WR_THRESHOLD}% AND PnL<-$20 AND streak>=3 → pause
+3. REWARD: WR>={REWARD_WR_THRESHOLD}% AND PF>={REWARD_PF_THRESHOLD} → increase risk_pct +0.5 OR max_open_trades +1
+4. RESEARCH: Note key patterns/insights for future runs (e.g. "rsi wins in 06-12 UTC but loses in 18-24 UTC")
+5. ADJUST: 1-2 params max per strategy. Never reverse a decision from last 2 runs (check previous decisions)
+6. NEW bots (0 trades): action="none" always
+7. LOSS_STREAK>=4: must act immediately
+8. Telegram: if channel has pattern (BUY bias, specific hours work), note as research insight
+9. Anti-oscillation: if you adjusted a param 2 runs ago to X, do NOT set it back to the old value
 
-Respond ONLY with valid JSON, no extra text:
+Respond ONLY with valid JSON:
 {{
-  "overall_assessment": "3-4 sentence deep portfolio health analysis",
-  "market_insight": "What the win/loss patterns reveal about current market regime",
+  "overall_assessment": "4-5 sentence deep portfolio analysis with specific pattern findings",
+  "market_insight": "What the collective win/loss patterns reveal about current market regime",
   "strategy_analysis": [
     {{
       "strategy": "name",
       "verdict": "good|watch|poor|new",
-      "insight": "Specific analytical reason — WHY is it winning or losing?",
-      "action": "none|pause|adjust_param|resume|reward",
-      "action_detail": "e.g. risk_pct=2.0 adx_min=30 OR reason for pause/reward",
-      "learning": "One key insight from this strategy's data"
+      "deep_insight": "Specific findings from time/direction/exit analysis — be analytical and precise",
+      "action": "none|pause|adjust_param|resume|reward|research",
+      "action_detail": "e.g. adx_min=35 risk_pct=1.5 OR reason for pause/reward",
+      "learning": "One specific learnable pattern from this strategy's data"
     }}
   ],
-  "top_performers": ["strategy1", "strategy2"],
+  "telegram_analysis": {{
+    "signal_quality": "good|poor|insufficient_data",
+    "key_finding": "What the Telegram signal data reveals",
+    "recommendation": "What to do with TG signal bot settings"
+  }},
+  "research_insights": [
+    "Specific insight to remember for future runs — e.g. hour patterns, direction bias, market regime observations"
+  ],
+  "top_performers": ["strategy1"],
   "underperformers": ["strategy2"],
   "key_learnings": ["learning1", "learning2", "learning3"],
-  "next_check_focus": "Specific thing to monitor in next 4-hour check"
+  "next_check_focus": "Specific thing to monitor in next 4h check"
 }}"""
 
 
 # ── Decision Executor ─────────────────────────────────────────────────────────
 
 def _execute(analysis, bots, state, now):
-    """Apply brain decisions to bots. Returns list of decision records."""
-    made         = []
+    made          = []
     param_history = state.setdefault("param_history", {})
+    research_list = state.setdefault("research_insights", [])
 
     adjustable = {
-        "max_open_trades": int,
-        "adx_min":         int,
-        "rsi_ob":          int,
-        "rsi_os":          int,
-        "risk_pct":        float,
-        "tp_atr":          float,
-        "trailing_atr":    float,
-        "bb_std":          float,
-        "slow_ema":        int,
-        "fast_ema":        int,
+        "max_open_trades": int,   "adx_min": int,
+        "rsi_ob":          int,   "rsi_os":  int,
+        "risk_pct":        float, "tp_atr":  float,
+        "trailing_atr":    float, "bb_std":  float,
+        "slow_ema":        int,   "fast_ema": int,
     }
 
     for sa in analysis.get("strategy_analysis", []):
         strat  = sa.get("strategy")
         action = sa.get("action", "none")
         detail = sa.get("action_detail", "")
-        reason = sa.get("insight", "")[:200]
+        reason = sa.get("deep_insight", sa.get("insight", ""))[:200]
 
         if action == "pause":
             for bot in bots.values():
                 if bot.get("strategy") == strat and bot.get("status") == "active":
-                    bot["status"] = "paused"
+                    bot["status"]     = "paused"
                     bot["last_error"] = f"🧠 Brain paused: {detail[:120]}"
                     made.append({"time": now, "strategy": strat,
                                  "action": "paused", "reason": reason,
@@ -371,7 +567,7 @@ def _execute(analysis, bots, state, now):
         elif action == "resume":
             for bot in bots.values():
                 if bot.get("strategy") == strat and bot.get("status") == "paused":
-                    bot["status"] = "active"
+                    bot["status"]     = "active"
                     bot["last_error"] = None
                     made.append({"time": now, "strategy": strat,
                                  "action": "resumed", "reason": reason,
@@ -379,8 +575,7 @@ def _execute(analysis, bots, state, now):
 
         elif action in ("adjust_param", "reward"):
             for param, cast in adjustable.items():
-                pattern = rf"{param}[^\d\.\-]*([0-9]+\.?[0-9]*)"
-                m = re.search(pattern, detail, re.IGNORECASE)
+                m = re.search(rf"{param}[^\d\.\-]*([0-9]+\.?[0-9]*)", detail, re.IGNORECASE)
                 if not m:
                     continue
                 try:
@@ -388,23 +583,22 @@ def _execute(analysis, bots, state, now):
                 except Exception:
                     continue
 
-                # Enforce bounds
                 if param in PARAM_BOUNDS:
-                    lo, hi = PARAM_BOUNDS[param]
+                    lo, hi  = PARAM_BOUNDS[param]
                     new_val = cast(max(lo, min(hi, new_val)))
 
-                # Anti-oscillation check
                 if _is_oscillating(param_history, strat, param, new_val):
-                    print(f"[Brain] Skipping oscillating change: {strat}.{param} → {new_val} (flip-flop detected)")
+                    print(f"[Brain] Skip oscillate: {strat}.{param} → {new_val}")
                     continue
 
-                changed = False
+                changed  = False
+                old_val  = "?"
                 for bot in bots.values():
                     if bot.get("strategy") == strat:
                         old_val = bot.get(param, "?")
                         if old_val != new_val:
                             bot[param] = new_val
-                            changed = True
+                            changed    = True
 
                 if changed:
                     _record_param_change(param_history, strat, param, new_val)
@@ -412,6 +606,32 @@ def _execute(analysis, bots, state, now):
                                  "action": f"adjust_{param}",
                                  "reason": f"{param}: {old_val} → {new_val}",
                                  "ai_detail": detail[:200]})
+
+        elif action == "research":
+            # Store insight for future runs — no bot changes
+            insight_text = sa.get("learning", detail)
+            if insight_text:
+                research_list.append({
+                    "time":     now,
+                    "strategy": strat,
+                    "insight":  insight_text[:300],
+                })
+                made.append({"time": now, "strategy": strat,
+                             "action": "research_noted",
+                             "reason": insight_text[:120],
+                             "ai_detail": insight_text[:200]})
+
+    # Store global research insights from the AI response
+    for insight in analysis.get("research_insights", []):
+        if insight and len(insight) > 10:
+            research_list.append({
+                "time":     now,
+                "strategy": "global",
+                "insight":  str(insight)[:300],
+            })
+
+    # Keep only last 30 insights
+    state["research_insights"] = research_list[-30:]
 
     return made
 
@@ -427,13 +647,14 @@ def run_analysis():
 
     with _brain_lock:
         try:
-            state   = _load_state()
-            bots    = _load_bots()
+            state      = _load_state()
+            bots       = _load_bots()
             if not bots:
                 return {"error": "No bots found in bots.json"}
 
-            metrics = calculate_metrics(bots)
-            prompt  = _build_prompt(metrics, state)
+            metrics    = calculate_metrics(bots)
+            tg_trades, tg_stats = _load_telegram_trades()
+            prompt     = _build_prompt(metrics, state, tg_trades, tg_stats)
 
             resp = _requests.post(
                 _GROQ_API_URL,
@@ -444,10 +665,10 @@ def run_analysis():
                 json={
                     "model":       BRAIN_MODEL,
                     "messages":    [{"role": "user", "content": prompt}],
-                    "max_tokens":  3500,
-                    "temperature": 0.25,
+                    "max_tokens":  4000,
+                    "temperature": 0.2,
                 },
-                timeout=90,
+                timeout=120,
             )
             resp.raise_for_status()
             raw = resp.json()["choices"][0]["message"]["content"].strip()
@@ -461,19 +682,20 @@ def run_analysis():
             decisions = _execute(analysis, bots, state, now)
             _save_bots(bots)
 
-            state["last_run"]        = now
-            state["total_analyses"]  = state.get("total_analyses", 0) + 1
-            state["decisions"]       = (state.get("decisions", []) + decisions)[-150:]
-            state["journal"]         = (state.get("journal", []) + [{
-                "time":            now,
-                "overall":         analysis.get("overall_assessment", ""),
-                "market_insight":  analysis.get("market_insight", ""),
-                "key_learnings":   analysis.get("key_learnings", []),
-                "top_performers":  analysis.get("top_performers", []),
-                "underperformers": analysis.get("underperformers", []),
-                "decisions_count": len(decisions),
-                "next_focus":      analysis.get("next_check_focus", ""),
-                "insight_summary": analysis.get("overall_assessment", ""),
+            state["last_run"]       = now
+            state["total_analyses"] = state.get("total_analyses", 0) + 1
+            state["decisions"]      = (state.get("decisions", []) + decisions)[-150:]
+            state["journal"]        = (state.get("journal", []) + [{
+                "time":             now,
+                "overall":          analysis.get("overall_assessment", ""),
+                "market_insight":   analysis.get("market_insight", ""),
+                "key_learnings":    analysis.get("key_learnings", []),
+                "top_performers":   analysis.get("top_performers", []),
+                "underperformers":  analysis.get("underperformers", []),
+                "telegram_finding": analysis.get("telegram_analysis", {}).get("key_finding", ""),
+                "decisions_count":  len(decisions),
+                "next_focus":       analysis.get("next_check_focus", ""),
+                "insight_summary":  analysis.get("overall_assessment", ""),
             }])[-60:]
 
             for strat, m in metrics.items():
@@ -493,9 +715,11 @@ def run_analysis():
                 "overall":           analysis.get("overall_assessment"),
                 "market_insight":    analysis.get("market_insight"),
                 "strategy_analysis": analysis.get("strategy_analysis", []),
+                "telegram_analysis": analysis.get("telegram_analysis", {}),
                 "top_performers":    analysis.get("top_performers", []),
                 "underperformers":   analysis.get("underperformers", []),
                 "key_learnings":     analysis.get("key_learnings", []),
+                "research_insights": analysis.get("research_insights", []),
                 "decisions":         decisions,
                 "next_focus":        analysis.get("next_check_focus", ""),
             }
@@ -516,7 +740,8 @@ def _loop():
                 print(f"[Brain] Error: {result['error']}")
             else:
                 n = len(result.get("decisions", []))
-                print(f"[Brain] Analysis done — {n} decision(s) made")
+                r = len(result.get("research_insights", []))
+                print(f"[Brain] v3 analysis done — {n} decision(s), {r} new insight(s)")
         except Exception as e:
             print(f"[Brain] Loop exception: {e}")
         time.sleep(BRAIN_INTERVAL_HOURS * 3600)
@@ -534,20 +759,21 @@ def start():
         return
     _brain_thread = threading.Thread(target=_loop, daemon=True)
     _brain_thread.start()
-    print(f"[Brain] Started v2 (Groq/{BRAIN_MODEL}) — first analysis in 2 min, then every {BRAIN_INTERVAL_HOURS}h")
+    print(f"[Brain] Started v3 — deep self-learning | {BRAIN_INTERVAL_HOURS}h interval | Groq/{BRAIN_MODEL}")
 
 
 def get_status():
     state = _load_state()
     key   = _get_api_key()
     return {
-        "enabled":          bool(key and _GROQ_OK),
-        "key_configured":   bool(key),
-        "groq_ok":          _GROQ_OK,
-        "last_run":         state.get("last_run"),
-        "total_analyses":   state.get("total_analyses", 0),
-        "latest_journal":   state["journal"][-1] if state.get("journal") else None,
-        "recent_decisions": state.get("decisions", [])[-10:],
-        "strategy_scores":  state.get("strategy_scores", {}),
-        "all_journal":      state.get("journal", []),
+        "enabled":           bool(key and _GROQ_OK),
+        "key_configured":    bool(key),
+        "groq_ok":           _GROQ_OK,
+        "last_run":          state.get("last_run"),
+        "total_analyses":    state.get("total_analyses", 0),
+        "latest_journal":    state["journal"][-1] if state.get("journal") else None,
+        "recent_decisions":  state.get("decisions", [])[-10:],
+        "strategy_scores":   state.get("strategy_scores", {}),
+        "all_journal":       state.get("journal", []),
+        "research_insights": state.get("research_insights", [])[-5:],
     }
