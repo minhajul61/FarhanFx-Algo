@@ -1,12 +1,21 @@
 """
-FarhanFX AI Trading Brain
---------------------------
+FarhanFX AI Trading Brain  v2
+------------------------------
 Self-learning AI that monitors all bots, analyzes trade performance,
 learns from patterns, and autonomously fixes underperforming strategies.
 
-Runs every BRAIN_INTERVAL_HOURS (default 6h).
+Runs every BRAIN_INTERVAL_HOURS (default 4h).
 Uses Groq API (llama-3.3-70b) — 100% FREE, no billing needed, 14,400 req/day.
 Get free API key: https://console.groq.com  → API Keys → Create
+
+v2 improvements:
+- More tunable parameters: risk_pct, tp_atr, trailing_atr, bb_std, slow_ema, fast_ema
+- Anti-oscillation: blocks flip-flopping on same param within 3 runs
+- Parameter bounds: prevents extreme values
+- Winner rewards: good bots get risk_pct or max_open_trades increase
+- Consecutive loss detection: flags 4+ loss streaks for immediate action
+- Better prompt: shows current param values + streak data to AI
+- Interval 4h (was 6h), max_tokens 3500 (was 2000)
 """
 
 import json
@@ -27,22 +36,36 @@ except ImportError:
 BRAIN_FILE            = "brain_state.json"
 BRAIN_CONFIG_FILE     = "brain_config.json"
 BOTS_FILE             = "bots.json"
-BRAIN_INTERVAL_HOURS  = 6
-BRAIN_MODEL           = "llama-3.3-70b-versatile"  # Groq free model
+BRAIN_INTERVAL_HOURS  = 4      # was 6
+BRAIN_MODEL           = "llama-3.3-70b-versatile"
 
-# Thresholds for autonomous decisions
-MIN_TRADES_TO_JUDGE   = 10   # need at least this many trades before pausing
-PAUSE_WR_THRESHOLD    = 40   # pause if win rate below this %
-RESUME_WR_THRESHOLD   = 55   # resume a paused strategy if recent WR recovers
+MIN_TRADES_TO_JUDGE   = 10
+PAUSE_WR_THRESHOLD    = 35     # was 40 — more aggressive
+RESUME_WR_THRESHOLD   = 52
+REWARD_WR_THRESHOLD   = 65     # WR above this → reward with more risk
+REWARD_PF_THRESHOLD   = 1.8    # PF above this → reward
+
+# Parameter bounds — AI cannot push beyond these
+PARAM_BOUNDS = {
+    "adx_min":        (0,   80),
+    "rsi_ob":         (60,  95),
+    "rsi_os":         (5,   40),
+    "max_open_trades":(1,    5),
+    "risk_pct":       (0.5,  5.0),
+    "tp_atr":         (0.5,  6.0),
+    "trailing_atr":   (0.5,  5.0),
+    "bb_std":         (1.5,  3.5),
+    "slow_ema":       (10,   50),
+    "fast_ema":       (3,    20),
+}
 
 _brain_lock    = threading.Lock()
 _brain_thread  = None
-_api_key_cache = ""   # updated at runtime via set_api_key()
+_api_key_cache = ""
 _GROQ_API_URL  = "https://api.groq.com/openai/v1/chat/completions"
 
 
 def _get_api_key() -> str:
-    """Read key: in-memory cache → env var → brain_config.json."""
     if _api_key_cache:
         return _api_key_cache
     key = os.environ.get("GEMINI_API_KEY", "")
@@ -59,7 +82,6 @@ def _get_api_key() -> str:
 
 
 def set_api_key(key: str):
-    """Save key to brain_config.json and (re)start the brain thread."""
     global _api_key_cache
     _api_key_cache = key.strip()
     cfg = {}
@@ -72,7 +94,7 @@ def set_api_key(key: str):
     cfg["gemini_api_key"] = _api_key_cache
     with open(BRAIN_CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
-    start()  # safe to call multiple times — guards with _brain_thread check
+    start()
 
 
 # ── State I/O ─────────────────────────────────────────────────────────────────
@@ -90,6 +112,7 @@ def _load_state():
         "strategy_scores": {},
         "decisions": [],
         "journal": [],
+        "param_history": {},   # {strategy: {param: [last3 values]}}
     }
 
 
@@ -110,10 +133,27 @@ def _save_bots(bots):
         json.dump(bots, f, indent=2, default=str)
 
 
+# ── Anti-oscillation ──────────────────────────────────────────────────────────
+
+def _is_oscillating(param_history, strat, param, new_val):
+    """Return True if new_val is same as 2 runs ago (flip-flopping)."""
+    hist = param_history.get(strat, {}).get(param, [])
+    if len(hist) >= 2 and hist[-2] == new_val:
+        return True
+    return False
+
+
+def _record_param_change(param_history, strat, param, new_val):
+    if strat not in param_history:
+        param_history[strat] = {}
+    hist = param_history[strat].get(param, [])
+    hist.append(new_val)
+    param_history[strat][param] = hist[-4:]  # keep last 4
+
+
 # ── Metrics Calculator ────────────────────────────────────────────────────────
 
 def calculate_metrics(bots):
-    """Aggregate per-strategy performance from all bot trade histories."""
     metrics = {}
     for bot in bots.values():
         strat = bot.get("strategy")
@@ -132,6 +172,15 @@ def calculate_metrics(bots):
         equity  = bot.get("demo_equity", bot.get("demo_balance", 5000))
         balance = bot.get("demo_balance", 5000)
 
+        # Consecutive loss streak (last 8 trades)
+        recent8 = sorted(closed, key=lambda x: x.get("time", ""), reverse=True)[:8]
+        streak  = 0
+        for t in recent8:
+            if t.get("pnl", 0) < 0:
+                streak += 1
+            else:
+                break
+
         if strat not in metrics:
             metrics[strat] = {
                 "strategy": strat,
@@ -143,6 +192,8 @@ def calculate_metrics(bots):
                 "total_pnl": 0, "equity": equity, "balance": balance,
                 "recent_trades": [],
                 "bot_status": bot.get("status", "active"),
+                "loss_streak": streak,
+                "current_params": {},
             }
 
         m = metrics[strat]
@@ -153,10 +204,16 @@ def calculate_metrics(bots):
         m["total_pnl"]     = round(m["total_pnl"] + pnl_sum, 2)
         m["equity"]        = round(equity, 2)
         m["profit_factor"] = pf
+        m["loss_streak"]   = max(m["loss_streak"], streak)
         if m["total_closed"] > 0:
             m["win_rate"] = round(m["wins"] / m["total_closed"] * 100, 1)
 
-        recent = sorted(closed, key=lambda x: x.get("time", ""), reverse=True)[:5]
+        # Capture current tunable params
+        for p in PARAM_BOUNDS:
+            if p in bot:
+                m["current_params"][p] = bot[p]
+
+        recent = sorted(closed, key=lambda x: x.get("time", ""), reverse=True)[:6]
         m["recent_trades"] = [
             {"time": t.get("time"), "side": t.get("signal"),
              "pnl": round(t.get("pnl", 0), 2), "exit": t.get("exit_reason", "")}
@@ -172,21 +229,29 @@ def _build_prompt(metrics, state):
     lines = []
     for strat, m in sorted(metrics.items(), key=lambda x: x[1]["total_pnl"], reverse=True):
         if m["total_closed"] == 0:
-            tag = "NEW-no trades yet"
+            tag = "NEW"
         elif m["win_rate"] >= 60:
             tag = "GOOD"
         elif m["win_rate"] >= 45:
             tag = "WATCH"
         else:
             tag = "POOR"
+
+        streak_note = f" ⚠️ LOSS_STREAK={m['loss_streak']}" if m["loss_streak"] >= 3 else ""
         lines.append(
-            f"• {strat} | {m['timeframe']} | closed={m['total_closed']} "
-            f"| WR={m['win_rate']}% | PF={m['profit_factor']} "
-            f"| PnL=${m['total_pnl']:+.2f} | equity=${m['equity']} | [{tag}]"
+            f"• {strat} [{tag}]{streak_note} | {m['timeframe']} | status={m['bot_status']}"
+            f" | closed={m['total_closed']} | WR={m['win_rate']}% | PF={m['profit_factor']}"
+            f" | PnL=${m['total_pnl']:+.2f}"
         )
+        # Show current tunable params
+        if m["current_params"]:
+            param_str = " | ".join(f"{k}={v}" for k, v in m["current_params"].items()
+                                   if k in ["adx_min","rsi_ob","rsi_os","max_open_trades","risk_pct","tp_atr","trailing_atr"])
+            if param_str:
+                lines.append(f"  params: {param_str}")
         if m["recent_trades"]:
             rec = ", ".join(
-                f"{t['side']}({'W' if t['pnl']>0 else 'L'} ${t['pnl']:+.2f})"
+                f"{'W' if t['pnl']>0 else 'L'}${t['pnl']:+.2f}"
                 for t in m["recent_trades"]
             )
             lines.append(f"  last trades: {rec}")
@@ -194,66 +259,100 @@ def _build_prompt(metrics, state):
     prev_decisions = "None yet."
     if state.get("decisions"):
         prev_decisions = "\n".join(
-            f"- {d['time']}: {d['action']} on {d['strategy']} — {d['reason'][:120]}"
-            for d in state["decisions"][-6:]
+            f"- {d['time']}: {d['action']} on {d['strategy']} — {d['reason'][:100]}"
+            for d in state["decisions"][-8:]
         )
 
     prev_learning = "None yet."
     if state.get("journal"):
         last = state["journal"][-1]
         prev_learning = (
-            f"[{last.get('time','')}] {last.get('overall','')}\n"
+            f"[{last.get('time','')}] {last.get('overall','')[:200]}\n"
             f"Learnings: {'; '.join(last.get('key_learnings',[]))}"
         )
 
-    return f"""You are the AI Brain of an algorithmic crypto trading system called FarhanFX Algo.
-Your job: analyze bot performance, find WHY trades win or lose, and make smart autonomous decisions.
+    bounds_info = "\n".join(
+        f"  {p}: min={b[0]}, max={b[1]}"
+        for p, b in PARAM_BOUNDS.items()
+    )
+
+    return f"""You are FarhanFX AI Trading Brain v2 — an expert algorithmic trading analyst.
+Your job: analyze ALL bot performance deeply, identify WHY trades win or lose, and make SMART autonomous parameter adjustments.
 
 DATE: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
-=== STRATEGY PERFORMANCE ===
+=== STRATEGY PERFORMANCE (sorted by PnL, best first) ===
 {chr(10).join(lines)}
 
-=== PREVIOUS DECISIONS ===
+=== PREVIOUS DECISIONS (last 8) ===
 {prev_decisions}
 
 === PREVIOUS LEARNINGS ===
 {prev_learning}
 
-=== YOUR RULES ===
-- PAUSE only if: closed trades >= {MIN_TRADES_TO_JUDGE} AND win_rate < {PAUSE_WR_THRESHOLD}% AND total_pnl < 0
-- NEW bots (0 trades, especially 4h): verdict="new", action="none" — they need time
-- < 5 trades: verdict="watch", action="none" — too early to judge
-- Be SPECIFIC about WHY a strategy is failing (market regime? noise? wrong timeframe?)
-- Suggest concrete parameter fixes (e.g. "reduce max_open_trades to 1", "raise rsi_ob to 80")
-- Parameters you CAN adjust: max_open_trades, adx_min, rsi_ob, rsi_os
+=== TUNABLE PARAMETERS & BOUNDS ===
+{bounds_info}
+Parameter meanings:
+- adx_min: minimum ADX trend strength required to take trade (higher = fewer but stronger signals)
+- rsi_ob/rsi_os: RSI overbought/oversold thresholds (tighter = fewer trades)
+- max_open_trades: max concurrent positions per strategy
+- risk_pct: % of balance risked per trade (lower = smaller positions)
+- tp_atr: take-profit in ATR multiples (higher = bigger TP targets)
+- trailing_atr: trailing stop in ATR multiples
+- bb_std: Bollinger Band standard deviation width
+- slow_ema / fast_ema: EMA crossover periods
+
+=== YOUR DECISION RULES ===
+1. PAUSE: closed >= {MIN_TRADES_TO_JUDGE} AND WR < {PAUSE_WR_THRESHOLD}% AND PnL < -$20 AND loss_streak >= 3
+2. RESUME: status=paused AND recent data shows improvement
+3. REWARD: WR >= {REWARD_WR_THRESHOLD}% AND PF >= {REWARD_PF_THRESHOLD} → increase risk_pct by 0.5 or max_open_trades by 1
+4. ADJUST: make 1-2 specific param changes per strategy max — do NOT oscillate values
+5. NEW bots (0 trades): verdict="new", action="none" — never touch them
+6. < 8 trades: verdict="watch", action="none" — too early
+7. LOSS_STREAK >= 4: must take action (pause or tighten params significantly)
+8. Avoid reversing a param change you made 1-2 runs ago — check previous decisions
 
 Respond ONLY with valid JSON, no extra text:
 {{
-  "overall_assessment": "2-3 sentence portfolio health summary",
-  "market_insight": "What trade patterns reveal about current market regime",
+  "overall_assessment": "3-4 sentence deep portfolio health analysis",
+  "market_insight": "What the win/loss patterns reveal about current market regime",
   "strategy_analysis": [
     {{
       "strategy": "name",
       "verdict": "good|watch|poor|new",
-      "insight": "Specific reason for performance — be analytical",
-      "action": "none|pause|adjust_param|resume",
-      "action_detail": "e.g. max_open_trades=1 or reason for pause",
-      "learning": "One key takeaway from this strategy data"
+      "insight": "Specific analytical reason — WHY is it winning or losing?",
+      "action": "none|pause|adjust_param|resume|reward",
+      "action_detail": "e.g. risk_pct=2.0 adx_min=30 OR reason for pause/reward",
+      "learning": "One key insight from this strategy's data"
     }}
   ],
-  "top_performers": ["strategy1"],
+  "top_performers": ["strategy1", "strategy2"],
   "underperformers": ["strategy2"],
   "key_learnings": ["learning1", "learning2", "learning3"],
-  "next_check_focus": "What to watch in next analysis"
+  "next_check_focus": "Specific thing to monitor in next 4-hour check"
 }}"""
 
 
 # ── Decision Executor ─────────────────────────────────────────────────────────
 
-def _execute(analysis, bots, now):
-    """Apply the brain's decisions to bots dict. Returns list of decision records."""
-    made = []
+def _execute(analysis, bots, state, now):
+    """Apply brain decisions to bots. Returns list of decision records."""
+    made         = []
+    param_history = state.setdefault("param_history", {})
+
+    adjustable = {
+        "max_open_trades": int,
+        "adx_min":         int,
+        "rsi_ob":          int,
+        "rsi_os":          int,
+        "risk_pct":        float,
+        "tp_atr":          float,
+        "trailing_atr":    float,
+        "bb_std":          float,
+        "slow_ema":        int,
+        "fast_ema":        int,
+    }
+
     for sa in analysis.get("strategy_analysis", []):
         strat  = sa.get("strategy")
         action = sa.get("action", "none")
@@ -278,36 +377,53 @@ def _execute(analysis, bots, now):
                                  "action": "resumed", "reason": reason,
                                  "ai_detail": detail[:200]})
 
-        elif action == "adjust_param":
-            adjustable = {"max_open_trades": int, "adx_min": int,
-                          "rsi_ob": int, "rsi_os": int}
+        elif action in ("adjust_param", "reward"):
             for param, cast in adjustable.items():
-                m = re.search(rf"{param}[^\d]*(\d+)", detail, re.IGNORECASE)
-                if m:
+                pattern = rf"{param}[^\d\.\-]*([0-9]+\.?[0-9]*)"
+                m = re.search(pattern, detail, re.IGNORECASE)
+                if not m:
+                    continue
+                try:
                     new_val = cast(m.group(1))
-                    for bot in bots.values():
-                        if bot.get("strategy") == strat:
-                            old_val = bot.get(param, "?")
+                except Exception:
+                    continue
+
+                # Enforce bounds
+                if param in PARAM_BOUNDS:
+                    lo, hi = PARAM_BOUNDS[param]
+                    new_val = cast(max(lo, min(hi, new_val)))
+
+                # Anti-oscillation check
+                if _is_oscillating(param_history, strat, param, new_val):
+                    print(f"[Brain] Skipping oscillating change: {strat}.{param} → {new_val} (flip-flop detected)")
+                    continue
+
+                changed = False
+                for bot in bots.values():
+                    if bot.get("strategy") == strat:
+                        old_val = bot.get(param, "?")
+                        if old_val != new_val:
                             bot[param] = new_val
+                            changed = True
+
+                if changed:
+                    _record_param_change(param_history, strat, param, new_val)
                     made.append({"time": now, "strategy": strat,
                                  "action": f"adjust_{param}",
                                  "reason": f"{param}: {old_val} → {new_val}",
                                  "ai_detail": detail[:200]})
+
     return made
 
 
 # ── Main Analysis Function ────────────────────────────────────────────────────
 
 def run_analysis():
-    """
-    Run one full brain analysis cycle.
-    Returns a result dict. Called by the background loop and the manual API endpoint.
-    """
     if not _GROQ_OK:
         return {"error": "requests library not installed — run: pip install requests"}
     api_key = _get_api_key()
     if not api_key:
-        return {"error": "Groq API key not set — enter it in the AI BRAIN tab (get free key at console.groq.com)"}
+        return {"error": "Groq API key not set — enter it in the AI BRAIN tab"}
 
     with _brain_lock:
         try:
@@ -326,30 +442,28 @@ def run_analysis():
                     "Content-Type":  "application/json",
                 },
                 json={
-                    "model":      BRAIN_MODEL,
-                    "messages":   [{"role": "user", "content": prompt}],
-                    "max_tokens": 2000,
-                    "temperature": 0.3,
+                    "model":       BRAIN_MODEL,
+                    "messages":    [{"role": "user", "content": prompt}],
+                    "max_tokens":  3500,
+                    "temperature": 0.25,
                 },
-                timeout=60,
+                timeout=90,
             )
             resp.raise_for_status()
             raw = resp.json()["choices"][0]["message"]["content"].strip()
 
-            # Extract JSON from response
             json_match = re.search(r"\{.*\}", raw, re.DOTALL)
             if not json_match:
                 return {"error": f"Could not parse AI response: {raw[:200]}"}
             analysis = json.loads(json_match.group())
 
             now       = datetime.now().strftime("%Y-%m-%d %H:%M")
-            decisions = _execute(analysis, bots, now)
+            decisions = _execute(analysis, bots, state, now)
             _save_bots(bots)
 
-            # Update state
             state["last_run"]        = now
             state["total_analyses"]  = state.get("total_analyses", 0) + 1
-            state["decisions"]       = (state.get("decisions", []) + decisions)[-100:]
+            state["decisions"]       = (state.get("decisions", []) + decisions)[-150:]
             state["journal"]         = (state.get("journal", []) + [{
                 "time":            now,
                 "overall":         analysis.get("overall_assessment", ""),
@@ -359,8 +473,8 @@ def run_analysis():
                 "underperformers": analysis.get("underperformers", []),
                 "decisions_count": len(decisions),
                 "next_focus":      analysis.get("next_check_focus", ""),
-                "insight_summary": analysis.get("overall_assessment", "") + " | " + analysis.get("market_insight", ""),
-            }])[-50:]
+                "insight_summary": analysis.get("overall_assessment", ""),
+            }])[-60:]
 
             for strat, m in metrics.items():
                 state["strategy_scores"][strat] = {
@@ -369,6 +483,7 @@ def run_analysis():
                     "win_rate":      m["win_rate"],
                     "profit_factor": m["profit_factor"],
                     "total_pnl":     m["total_pnl"],
+                    "loss_streak":   m["loss_streak"],
                 }
             _save_state(state)
 
@@ -393,7 +508,7 @@ def run_analysis():
 # ── Background Loop ───────────────────────────────────────────────────────────
 
 def _loop():
-    time.sleep(120)  # wait 2 min after server start before first run
+    time.sleep(120)
     while True:
         try:
             result = run_analysis()
@@ -408,7 +523,6 @@ def _loop():
 
 
 def start():
-    """Start the brain background thread. Safe to call multiple times."""
     global _brain_thread
     if not _GROQ_OK:
         print("[Brain] requests library not installed")
@@ -417,14 +531,13 @@ def start():
         print("[Brain] Groq API key not set — enter it in the AI BRAIN dashboard tab")
         return
     if _brain_thread and _brain_thread.is_alive():
-        return  # already running
+        return
     _brain_thread = threading.Thread(target=_loop, daemon=True)
     _brain_thread.start()
-    print(f"[Brain] Started (Groq/{BRAIN_MODEL}) — first analysis in 2 min, then every {BRAIN_INTERVAL_HOURS}h")
+    print(f"[Brain] Started v2 (Groq/{BRAIN_MODEL}) — first analysis in 2 min, then every {BRAIN_INTERVAL_HOURS}h")
 
 
 def get_status():
-    """Return current brain state for the /api/brain/status endpoint."""
     state = _load_state()
     key   = _get_api_key()
     return {
