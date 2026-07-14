@@ -683,22 +683,10 @@ tr:hover td{background:rgba(139,92,246,0.05)}
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
           <div>
             <div class="page-title" style="margin-bottom:4px">Trading Journal</div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <div id="j-sync-dot" style="width:7px;height:7px;border-radius:50%;background:var(--text3)"></div>
-              <span id="j-sync-status" style="font-size:10px;color:var(--text3);letter-spacing:1px">Not synced</span>
-              <!-- Auto-sync toggle -->
-              <div style="display:flex;align-items:center;gap:6px;margin-left:8px;padding:3px 10px;background:var(--card2);border:1px solid var(--border);border-radius:20px;cursor:pointer" onclick="jToggleAutoSync()">
-                <div id="j-autosync-dot" style="width:6px;height:6px;border-radius:50%;background:var(--text3);transition:background 0.3s"></div>
-                <span id="j-autosync-label" style="font-size:9px;color:var(--text3);letter-spacing:1px;transition:color 0.3s">AUTO-SYNC OFF</span>
-              </div>
-            </div>
           </div>
           <div style="display:flex;gap:8px">
-            <button id="j-sync-btn" onclick="jSyncMT5()" style="display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:8px;color:#fff;font-family:var(--font);font-size:11px;font-weight:700;padding:8px 16px;cursor:pointer;letter-spacing:1px;box-shadow:0 0 16px var(--accent-glow);transition:all 0.2s">
-              <i id="j-sync-icon" class="ti ti-refresh" style="font-size:14px"></i>
-              <span id="j-sync-text">SYNC MT5</span>
-            </button>
             <button class="sbtn" onclick="jExportCSV()" style="font-size:11px;padding:8px 14px;border-color:var(--cyan);color:var(--cyan)"><i class="ti ti-file-export"></i> Export CSV</button>
+            <button onclick="jClearAll()" style="background:var(--card2);border:1px solid var(--red);border-radius:8px;color:var(--red);font-family:var(--font);font-size:11px;font-weight:700;padding:8px 16px;cursor:pointer;letter-spacing:1px;transition:all 0.2s"><i class="ti ti-trash"></i> CLEAR ALL</button>
             <button onclick="jOpenAddModal()" style="background:var(--card2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font);font-size:11px;font-weight:700;padding:8px 16px;cursor:pointer;letter-spacing:1px;transition:all 0.2s">+ ADD TRADE</button>
           </div>
         </div>
@@ -3959,46 +3947,14 @@ function jDeleteTrade(idx) {
   toast('Trade deleted');
 }
 
-// ── MT5 SYNC ──────────────────────────────────────────────────────────────────
-let jAutoSyncOn  = false;
-let jAutoSyncTid = null;
-let jSyncing     = false;
-
-function jSyncSetState(state) {
-  // state: 'syncing' | 'ok' | 'error' | 'idle'
-  const dot  = document.getElementById('j-sync-dot');
-  const stat = document.getElementById('j-sync-status');
-  const icon = document.getElementById('j-sync-icon');
-  const btn  = document.getElementById('j-sync-btn');
-  if (!dot) return;
-  if (state === 'syncing') {
-    dot.style.background  = 'var(--amber)';
-    icon.className        = 'ti ti-refresh j-spin';
-    btn.style.opacity     = '0.7';
-    btn.disabled          = true;
-    stat.textContent      = 'Syncing...';
-    stat.style.color      = 'var(--amber)';
-  } else if (state === 'ok') {
-    const now = new Date().toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-    dot.style.background  = 'var(--green)';
-    icon.className        = 'ti ti-refresh';
-    btn.style.opacity     = '1';
-    btn.disabled          = false;
-    stat.textContent      = 'Last sync: ' + now;
-    stat.style.color      = 'var(--green)';
-  } else if (state === 'error') {
-    dot.style.background  = 'var(--red)';
-    icon.className        = 'ti ti-refresh';
-    btn.style.opacity     = '1';
-    btn.disabled          = false;
-    stat.textContent      = 'Sync failed';
-    stat.style.color      = 'var(--red)';
-  } else {
-    dot.style.background  = 'var(--text3)';
-    icon.className        = 'ti ti-refresh';
-    btn.style.opacity     = '1';
-    btn.disabled          = false;
-  }
+// ── CLEAR ALL ─────────────────────────────────────────────────────────────────
+function jClearAll() {
+  if (!journalTrades.length) { toast('Journal is already empty', true); return; }
+  if (!confirm(`সব ${journalTrades.length}টা trade মুছে ফেলবো? এটা undo করা যাবে না।`)) return;
+  journalTrades = [];
+  jSave();
+  jInit();
+  toast('✓ Journal cleared');
 }
 
 function jPipSize(symbol) {
@@ -4019,114 +3975,6 @@ function jSession(dateStr) {
   return 'Other';
 }
 
-async function jSyncMT5() {
-  if (jSyncing) return;
-  jSyncing = true;
-  jSyncSetState('syncing');
-
-  // Fetch both closed deals and open positions in parallel
-  const [dealsRaw, posRaw] = await Promise.all([
-    apiFetch('/api/deals?days=90&limit=500'),
-    apiFetch('/api/positions')
-  ]);
-
-  if (dealsRaw && dealsRaw.error) {
-    jSyncSetState('error');
-    toastErr('Sync failed: ' + dealsRaw.error);
-    jSyncing = false; return;
-  }
-
-  const deals = Array.isArray(dealsRaw) ? dealsRaw : [];
-  const positions = Array.isArray(posRaw) ? posRaw : [];
-
-  let added = 0;
-
-  // ── 1. CLOSED TRADES ─────────────────────────────────────────────────────────
-  // /api/deals returns already-matched trade pairs with entry_price/exit_price/net_profit
-  deals.forEach(d => {
-    if (!d.symbol) return;
-    const uid = 'mt5_' + d.position_id;
-    if (journalTrades.find(t => t.id === uid)) return;  // skip existing
-
-    const dir      = d.type || 'BUY';
-    const entry    = d.entry_price || 0;
-    const exit     = d.exit_price  || 0;
-    const pnl      = parseFloat(d.net_profit) || 0;
-    const dateStr  = d.entry_time ? d.entry_time.replace(' ', 'T') : new Date().toISOString().slice(0, 16);
-
-    journalTrades.unshift({
-      id: uid, date: dateStr,
-      symbol: d.symbol, direction: dir,
-      lots: d.volume || 0,
-      entry, exit,
-      pips: d.pips || 0,
-      pnl,
-      rr: null, sl: 0, tp: 0,
-      strategy: 'MT5 Live',
-      session: jSession(dateStr),
-      duration: d.duration || '',
-      notes: 'MT5 sync' + (d.comment ? ' | ' + d.comment : ''),
-      emotion: '😊', rating: 3,
-      result: pnl > 0.5 ? 'WIN' : pnl < -0.5 ? 'LOSS' : 'BE',
-      commission: d.commission || 0,
-      swap: d.swap || 0
-    });
-    added++;
-  });
-
-  // ── 2. OPEN POSITIONS ────────────────────────────────────────────────────────
-  positions.forEach(p => {
-    const uid = 'open_' + p.ticket;
-    if (journalTrades.find(t => t.id === uid)) return;
-    const dateStr = p.open_time ? p.open_time.replace(' ', 'T') : '';
-    journalTrades.unshift({
-      id: uid, date: dateStr,
-      symbol: p.symbol, direction: p.type,
-      lots: p.volume || 0,
-      entry: p.open_price, exit: 0, pips: 0,
-      pnl: p.profit || 0,
-      rr: null, sl: p.sl || 0, tp: p.tp || 0,
-      strategy: 'MT5 Live',
-      session: jSession(dateStr),
-      duration: 'OPEN',
-      notes: 'Live position | SL:' + (p.sl||'—') + ' TP:' + (p.tp||'—'),
-      emotion: '😊', rating: 3,
-      result: 'OPEN'
-    });
-    added++;
-  });
-
-  jSave();
-  jInit();
-  jSyncSetState('ok');
-  jSyncing = false;
-
-  if (added > 0) toast(`✓ Synced ${added} trade${added>1?'s':''} from MT5`);
-  else           toast('Journal up to date — no new trades', true);
-}
-
-function jToggleAutoSync() {
-  jAutoSyncOn = !jAutoSyncOn;
-  const dot   = document.getElementById('j-autosync-dot');
-  const label = document.getElementById('j-autosync-label');
-  if (jAutoSyncOn) {
-    dot.style.background   = 'var(--green)';
-    dot.style.animation    = 'pulse 2s infinite';
-    label.style.color      = 'var(--green)';
-    label.textContent      = 'AUTO-SYNC ON';
-    toast('Auto-sync ON — every 30s', true);
-    jSyncMT5();                        // sync immediately
-    jAutoSyncTid = setInterval(jSyncMT5, 30000);
-  } else {
-    dot.style.background   = 'var(--text3)';
-    dot.style.animation    = 'none';
-    label.style.color      = 'var(--text3)';
-    label.textContent      = 'AUTO-SYNC OFF';
-    clearInterval(jAutoSyncTid);
-    jAutoSyncTid = null;
-    toast('Auto-sync OFF', true);
-  }
-}
 
 // ── EXPORT CSV ──
 function jExportCSV() {
