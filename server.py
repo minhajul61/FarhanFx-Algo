@@ -3624,7 +3624,8 @@ def crypto_algo_history(current_user: dict = Depends(_get_current_user)):
                 **t,
             }
             # Inject live unrealized PnL for open trades
-            if t.get("status") == "open" and b.get("last_price") and b.get("open_entry_price"):
+            if (t.get("status") == "open" and b.get("last_price")
+                    and b.get("open_entry_price") and b.get("open_side")):
                 ep   = b.get("open_entry_price", 0)
                 amt  = b.get("open_amount", 0)
                 mark = b["last_price"]
@@ -4252,6 +4253,7 @@ _TG_CFG_DEF = {
 # ── Telegram demo (paper-trade) state — separate file since it's runtime
 # state, not configuration, and grows over time as signals come in.
 _TG_DEMO_FILE = "telegram_demo_state.json"
+_TG_DEMO_LOCK = threading.Lock()   # guards all load-mutate-save on demo state
 
 
 def _load_tg_demo_state() -> dict:
@@ -4631,6 +4633,12 @@ def _parse_tg_signal(text: str) -> dict | None:
         if _m:
             _nums = _re.findall(r'[\d]+(?:[,.][\d]+)?', _m.group(1))
             tps = [float(n) for n in _nums]
+    if not tps:
+        # Format 4: bare TP64000 or TP 64000 (no separator, no digit suffix required)
+        _nums = _re.findall(r'\btp\s+([\d][\d,.]*)\b', t, _re.I)
+        if not _nums:
+            _nums = _re.findall(r'\btp([\d][\d,.]*)\b', t, _re.I)
+        tps = [float(n.replace(",", "")) for n in _nums if float(n.replace(",", "")) > 10]
     tp = tps[0] if tps else None
 
     # SL
@@ -4652,7 +4660,7 @@ def _parse_tg_signal(text: str) -> dict | None:
         "side":     side,
         "entry":    entry,
         "tp":       tp,
-        "tps":      [float(x.replace(",","")) for x in tps],
+        "tps":      tps,   # already floats — all branches above call float() before storing
         "sl":       sl,
         "leverage": leverage,
         "raw":      t[:400],
@@ -4704,43 +4712,50 @@ def _tg_execute_signal_demo(sig: dict, cfg: dict) -> list:
     except Exception as e:
         return [{"exchange": "demo", "ok": False, "error": f"Price fetch failed: {e}"[:150]}]
 
-    st  = _load_tg_demo_state()
-    sym = sig["symbol"]
-    pos = st["positions"].get(sym)
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    with _TG_DEMO_LOCK:
+        st  = _load_tg_demo_state()
+        sym = sig["symbol"]
+        pos = st["positions"].get(sym)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # Close existing opposite position (signal flip)
-    if pos and pos["side"] != sig["side"]:
-        remaining = pos.get("amount", 0)
-        pnl = (price - pos["entry"]) * remaining if pos["side"] == "buy" else (pos["entry"] - price) * remaining
-        st["equity"] = round(st["equity"] + pnl, 4)
-        st["trades"].append({
-            "time": now_str, "symbol": sym, "side": pos["side"],
-            "entry": pos["entry"], "exit": price, "amount": remaining,
-            "pnl": round(pnl, 4), "status": "closed", "reason": "signal_flip",
-        })
-        del st["positions"][sym]
+        # Block duplicate same-side signal (would silently overwrite partial TP progress)
+        if pos and pos["side"] == sig["side"]:
+            return [{"exchange": "demo", "ok": False, "error": f"Position already open on {sym} ({pos['side']})"}]
 
-    # Open new position — size in contracts (coins), not USD
-    amt_usd   = cfg.get("amount", 200.0)
-    contracts = round(amt_usd / price, 6) if price > 0 else 0
+        # Close existing opposite position (signal flip)
+        if pos and pos["side"] != sig["side"]:
+            remaining = pos.get("amount", 0)
+            pnl = (price - pos["entry"]) * remaining if pos["side"] == "buy" else (pos["entry"] - price) * remaining
+            st["equity"] = round(st["equity"] + pnl, 4)
+            st["trades"].append({
+                "time": now_str, "symbol": sym, "side": pos["side"],
+                "entry": pos["entry"], "exit": price, "amount": remaining,
+                "pnl": round(pnl, 4), "status": "closed", "reason": "signal_flip",
+            })
+            del st["positions"][sym]
 
-    # Sort TP levels correctly
-    tps = [float(x) for x in sig.get("tps", []) if x]
-    if tps:
-        tps = sorted(set(tps), reverse=(sig["side"] == "sell"))
+        # Open new position — size in contracts (coins), not USD
+        amt_usd = cfg.get("amount", 200.0)
+        if amt_usd < 1:   # guard: old config stored contracts (e.g. 0.01), not USD
+            amt_usd = 200.0
+        contracts = round(amt_usd / price, 6) if price > 0 else 0
 
-    st["positions"][sym] = {
-        "side":            sig["side"],
-        "entry":           price,
-        "amount":          contracts,    # remaining contracts
-        "original_amount": contracts,    # full original size (for partial TP math)
-        "amount_usd":      amt_usd,
-        "tps":             tps,          # all TP price levels
-        "sl":              sig.get("sl"),
-        "tp_hits":         0,
-    }
-    _save_tg_demo_state(st)
+        # Sort TP levels correctly
+        tps = [float(x) for x in sig.get("tps", []) if x]
+        if tps:
+            tps = sorted(set(tps), reverse=(sig["side"] == "sell"))
+
+        st["positions"][sym] = {
+            "side":            sig["side"],
+            "entry":           price,
+            "amount":          contracts,    # remaining contracts
+            "original_amount": contracts,    # full original size (for partial TP math)
+            "amount_usd":      amt_usd,
+            "tps":             tps,          # all TP price levels
+            "sl":              sig.get("sl"),
+            "tp_hits":         0,
+        }
+        _save_tg_demo_state(st)
     return [{"exchange": "demo", "ok": True, "order_id": "demo",
              "side": sig["side"], "amount": contracts, "amount_usd": amt_usd,
              "entry_price": price, "tps": tps, "sl": sig.get("sl")}]
@@ -4748,7 +4763,8 @@ def _tg_execute_signal_demo(sig: dict, cfg: dict) -> list:
 
 def _tg_check_demo_positions():
     """Check open demo positions for TP/SL hits every minute. Partial TP: each level closes equal portion."""
-    st = _load_tg_demo_state()
+    with _TG_DEMO_LOCK:
+        st = _load_tg_demo_state()
     if not st.get("positions"):
         return
     pm = _get_pub_mkt()
@@ -4824,7 +4840,8 @@ def _tg_check_demo_positions():
     for sym in to_close:
         st["positions"].pop(sym, None)
     if changed:
-        _save_tg_demo_state(st)
+        with _TG_DEMO_LOCK:
+            _save_tg_demo_state(st)
 
 
 def _tg_monitor_loop():
@@ -4863,67 +4880,70 @@ def _tg_poll_loop():
 
         for upd in resp.get("result", []):
             _TG_OFFSET = upd["update_id"] + 1
-            # Get message from either personal chat or channel
-            msg = upd.get("message") or upd.get("channel_post") or {}
-            text = msg.get("text") or msg.get("caption") or ""
-            chat_id = str(msg.get("chat", {}).get("id", ""))
+            try:
+                # Get message from either personal chat or channel
+                msg = upd.get("message") or upd.get("channel_post") or {}
+                text = msg.get("text") or msg.get("caption") or ""
+                chat_id = str(msg.get("chat", {}).get("id", ""))
 
-            # Filter by allowed chat_id if configured
-            allowed = cfg.get("chat_id", "").strip()
-            if allowed and chat_id != allowed:
-                continue
+                # Filter by allowed chat_id if configured
+                allowed = cfg.get("chat_id", "").strip()
+                if allowed and chat_id != allowed:
+                    continue
 
-            if not text:
-                continue
+                if not text:
+                    continue
 
-            # Handle bot commands (/report, /pnl, /running, /help)
-            if text.strip().startswith("/"):
-                _tg_handle_command(token, chat_id, text)
-                continue
+                # Handle bot commands (/report, /pnl, /running, /help)
+                if text.strip().startswith("/"):
+                    _tg_handle_command(token, chat_id, text)
+                    continue
 
-            sig = _parse_tg_signal(text)
-            if not sig:
-                continue
+                sig = _parse_tg_signal(text)
+                if not sig:
+                    continue
 
-            # Build record
-            ts   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            rec  = {
-                "time":     ts,
-                "symbol":   sig["symbol"],
-                "side":     sig["side"],
-                "entry":    sig.get("entry"),
-                "tp":       sig.get("tp"),
-                "tps":      sig.get("tps", []),
-                "sl":       sig.get("sl"),
-                "leverage": sig.get("leverage"),
-                "raw":      sig.get("raw", "")[:200],
-                "status":   "received",
-                "results":  [],
-                "chat_id":  chat_id,
-                "source":   "bot_api",
-            }
+                # Build record
+                ts   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                rec  = {
+                    "time":     ts,
+                    "symbol":   sig["symbol"],
+                    "side":     sig["side"],
+                    "entry":    sig.get("entry"),
+                    "tp":       sig.get("tp"),
+                    "tps":      sig.get("tps", []),
+                    "sl":       sig.get("sl"),
+                    "leverage": sig.get("leverage"),
+                    "raw":      sig.get("raw", "")[:200],
+                    "status":   "received",
+                    "results":  [],
+                    "chat_id":  chat_id,
+                    "source":   "bot_api",
+                }
 
-            if cfg.get("auto_trade") and cfg.get("enabled"):
-                is_demo = cfg.get("mode", "demo") == "demo"
-                results = _tg_execute_signal_demo(sig, cfg) if is_demo else _tg_execute_signal(sig, cfg)
-                rec["results"] = results
-                rec["mode"]    = "demo" if is_demo else "live"
-                rec["status"]  = ("demo_executed" if is_demo else "executed") if any(r["ok"] for r in results) else "failed"
-                if any(r["ok"] for r in results):
-                    _tg_notify(
-                        f"<b>FarhanFX — Signal Executed ({'Demo' if is_demo else 'LIVE'})</b>\n"
-                        f"📨 Source: bot\n"
-                        f"{'🟢 BUY' if sig['side']=='buy' else '🔴 SELL'} {sig['symbol']}"
-                    )
-            else:
-                rec["status"] = "signal"   # received but not auto-traded
+                if cfg.get("auto_trade") and cfg.get("enabled"):
+                    is_demo = cfg.get("mode", "demo") == "demo"
+                    results = _tg_execute_signal_demo(sig, cfg) if is_demo else _tg_execute_signal(sig, cfg)
+                    rec["results"] = results
+                    rec["mode"]    = "demo" if is_demo else "live"
+                    rec["status"]  = ("demo_executed" if is_demo else "executed") if any(r["ok"] for r in results) else "failed"
+                    if any(r["ok"] for r in results):
+                        _tg_notify(
+                            f"<b>FarhanFX — Signal Executed ({'Demo' if is_demo else 'LIVE'})</b>\n"
+                            f"📨 Source: bot\n"
+                            f"{'🟢 BUY' if sig['side']=='buy' else '🔴 SELL'} {sig['symbol']}"
+                        )
+                else:
+                    rec["status"] = "signal"   # received but not auto-traded
 
-            _TG_SIGNALS.insert(0, rec)
-            if len(_TG_SIGNALS) > 100:
-                _TG_SIGNALS.pop()
-            _save_tg_signals()
+                _TG_SIGNALS.insert(0, rec)
+                if len(_TG_SIGNALS) > 100:
+                    _TG_SIGNALS.pop()
+                _save_tg_signals()
 
-            print(f"Telegram signal: {sig['side'].upper()} {sig['symbol']} → {rec['status']}")
+                print(f"Telegram signal: {sig['side'].upper()} {sig['symbol']} → {rec['status']}")
+            except Exception as _upd_err:
+                print(f"[TG Poll] update {upd.get('update_id')} error: {_upd_err}")
 
     print("Telegram bot: polling stopped")
 

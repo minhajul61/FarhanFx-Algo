@@ -6491,12 +6491,12 @@ async function loadStrategies() {
           <!-- Realized P&L (always) -->
           <div style="text-align:right">
             <div style="font-size:9px;color:var(--text3);letter-spacing:0.5px">REALIZED P&L</div>
-            <div id="strat-${s.id}-pnl" style="font-size:15px;font-weight:800;color:${realColor}">${realizedPnl>=0?'+':''}${realizedPnl.toFixed(2)}</div>
+            <div id="strat-${s.id}-pnl" style="font-size:15px;font-weight:800;color:${realColor}">${realizedPnl>=0?'+$':'-$'}${Math.abs(realizedPnl).toFixed(2)}</div>
           </div>
           <!-- Live floating P&L -->
           <div style="text-align:right">
             <div style="font-size:9px;color:var(--amber);letter-spacing:0.5px;animation:pulse 2s infinite">LIVE FLOAT</div>
-            <div id="strat-${s.id}-lpnl" style="font-size:13px;font-weight:800;color:${liveColor}">${livePnl!=null?(livePnl>=0?'+':'')+ livePnl.toFixed(2):'—'}</div>
+            <div id="strat-${s.id}-lpnl" style="font-size:13px;font-weight:800;color:${liveColor}">${livePnl!=null?(livePnl>=0?'+$':'-$')+Math.abs(livePnl).toFixed(2):'—'}</div>
           </div>
           <div style="text-align:right">
             <div style="font-size:9px;color:var(--text3);letter-spacing:0.5px">TRADES</div>
@@ -10277,9 +10277,9 @@ async function algoLoadHistory() {
     const pnlC      = pnlVal == null ? 'var(--text3)' : (pnlVal > 0 ? 'var(--green)' : (pnlVal < 0 ? 'var(--red)' : 'var(--text3)'));
     const pnlTxt    = isOpen
       ? (livePnl != null
-          ? `${livePnl >= 0 ? '+' : ''}$${livePnl.toFixed(2)} <span style="font-size:9px;color:var(--amber)">⚡</span>`
+          ? `${livePnl >= 0 ? '+$' : '-$'}${Math.abs(livePnl).toFixed(2)} <span style="font-size:9px;color:var(--amber)">⚡</span>`
           : '<span style="color:var(--text3)">— open</span>')
-      : `${closedPnl >= 0 ? '+' : ''}$${closedPnl.toFixed(2)}`;
+      : `${closedPnl >= 0 ? '+$' : '-$'}${Math.abs(closedPnl).toFixed(2)}`;
     const markCell  = isOpen && t.mark_price
       ? `<span style="color:var(--text2)">$${t.mark_price}</span>`
       : (t.exit_price ? `$${t.exit_price}` : '—');
@@ -10754,9 +10754,9 @@ async function loadIndianDashboard(autoRefresh=true) {
       ['Total Trades', bs.trades||0, 'var(--text2)'],
       ['Wins', bs.wins||0, 'var(--green)'],
       ['Win Rate', (bs.win_rate||0)+'%', (bs.win_rate||0)>=50?'var(--green)':'var(--red)'],
-      ['Closed P&L', (closedPnl>=0?'$+':'$')+closedPnl.toFixed(2), closedPnl>=0?'var(--green)':'var(--red)'],
-      ['Live P&L &#9889;', (upnl>=0?'$+':'$')+upnl.toFixed(2), upnl>=0?'var(--green)':'var(--red)'],
-      ['Total P&L', ((closedPnl+upnl)>=0?'$+':'$')+(closedPnl+upnl).toFixed(2), (closedPnl+upnl)>=0?'var(--green)':'var(--red)'],
+      ['Closed P&L', (closedPnl>=0?'+$':'-$')+Math.abs(closedPnl).toFixed(2), closedPnl>=0?'var(--green)':'var(--red)'],
+      ['Live P&L &#9889;', (upnl>=0?'+$':'-$')+Math.abs(upnl).toFixed(2), upnl>=0?'var(--green)':'var(--red)'],
+      ['Total P&L', ((closedPnl+upnl)>=0?'+$':'-$')+Math.abs(closedPnl+upnl).toFixed(2), (closedPnl+upnl)>=0?'var(--green)':'var(--red)'],
     ];
     perfEl.innerHTML = perfItems.map(function(item){
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.05)">'

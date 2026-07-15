@@ -902,6 +902,11 @@ def _execute(analysis, bots, state, now):
                     if bot.get("strategy") == strat and bot.get("symbol") not in ("TLM/USDT:USDT", "DRAM/USDT:USDT"):
                         old_pair = bot.get("symbol", "?")
                         if old_pair == new_pair:
+                            # Already correct pair — still mark claimed so uniqueness check works
+                            made.append({"time": now, "strategy": strat,
+                                         "action": f"assign_pair:{new_pair}",
+                                         "reason": f"Pair: {new_pair} (no change)",
+                                         "ai_detail": detail[:200]})
                             break
                         bot["symbol"]           = new_pair
                         bot["open_side"]        = None
