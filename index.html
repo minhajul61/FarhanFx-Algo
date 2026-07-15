@@ -2873,7 +2873,10 @@ tr:hover td{background:rgba(139,92,246,0.05)}
             <div class="jarvis-bracket bl"></div><div class="jarvis-bracket br"></div>
             <div class="jarvis-panel-hdr" style="justify-content:space-between">
               <span>AUTONOMOUS DECISION LOG</span>
-              <span id="js-decision-count" style="font-size:10px;color:#475569;letter-spacing:0;text-transform:none;font-weight:400"></span>
+              <div style="display:flex;gap:10px;align-items:center">
+                <span id="js-decision-updated" style="font-size:9px;color:#475569;letter-spacing:0">—</span>
+                <span id="js-decision-count" style="font-size:10px;color:#475569;letter-spacing:0;text-transform:none;font-weight:400"></span>
+              </div>
             </div>
             <div class="jarvis-terminal" id="jarvis-decision-feed" style="height:240px">
               <div class="t-line t-info">[ Awaiting decisions... ]</div>
@@ -9599,18 +9602,29 @@ function _jarvisRender(r) {
     if (!decs.length) {
       dfeed.innerHTML = '<div class="t-line t-info">[ No decisions yet ]</div>';
     } else {
-      dfeed.innerHTML = decs.slice().reverse().map(d => {
-        const cls = d.action.includes('paused') ? 't-err' :
-                    d.action.includes('resumed') ? 't-ok' :
-                    d.action.includes('adjust') ? 't-warn' :
-                    d.action.includes('research') ? 't-info' : 't-info';
-        const icon = d.action.includes('paused') ? '⏸' :
-                     d.action.includes('resumed') ? '▶' :
-                     d.action.includes('adjust') ? '⚙' :
-                     d.action.includes('research') ? '🔬' : '→';
-        return `<div class="t-line"><span class="t-ts">[${(d.time||'').slice(11,16)}]</span> <span class="${cls}">${icon} ${d.strategy}</span> <span style="color:#94a3b8">${d.reason||d.action}</span></div>`;
+      const atDecBottom = dfeed.scrollHeight - dfeed.scrollTop <= dfeed.clientHeight + 20;
+      // Newest at bottom (no reverse); last 3 highlighted
+      dfeed.innerHTML = decs.map((d, idx) => {
+        const isPaused   = d.action.includes('paused');
+        const isResumed  = d.action.includes('resumed');
+        const isAdjust   = d.action.includes('adjust');
+        const isResearch = d.action.includes('research') || d.action.includes('block');
+        const isLatest   = idx >= decs.length - 3;
+        const icon = isPaused ? '⏸' : isResumed ? '▶' : isAdjust ? '⊙' : '→';
+        const stratColor = isPaused  ? '#ef4444' :
+                           isResumed ? '#22c55e' :
+                           isAdjust  ? '#f59e0b' : '#06b6d4';
+        const dot = isLatest ? `<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#22c55e;margin-right:4px;vertical-align:middle"></span>` : '';
+        const lineColor = isLatest ? '#cbd5e1' : '#64748b';
+        return `<div class="t-line" style="color:${lineColor};border-left:${isLatest?'2px solid #22c55e33':'2px solid transparent'};padding-left:4px;margin-bottom:2px">${dot}<span class="t-ts" style="color:${isLatest?'#22c55e':'#475569'}">[${(d.time||'').slice(11,16)}]</span> <span style="color:${stratColor};font-weight:600">${icon} ${d.strategy}</span> <span style="color:${lineColor}">${d.reason||d.action}</span></div>`;
       }).join('');
-      dfeed.scrollTop = dfeed.scrollHeight;
+      if (atDecBottom) dfeed.scrollTop = dfeed.scrollHeight;
+      const decUpdEl = document.getElementById('js-decision-updated');
+      if (decUpdEl) {
+        const lt = decs[decs.length - 1]?.time || '';
+        decUpdEl.textContent = 'last: ' + (lt.slice(11, 16) || '—');
+        decUpdEl.style.color = '#22c55e';
+      }
     }
   }
 
