@@ -4602,9 +4602,26 @@ def _parse_tg_signal(text: str) -> dict | None:
         if m:
             entry = float(m.group(1).replace(",", ""))
 
-    # TP — collect all TP values, use first
-    tps = _re.findall(r'(?:tp\d*|take\s*profit|targets?\d*)\s*[:\-–]?\s*\$?\s*([\d,.]+)', t, _re.I)
-    tp = float(tps[0].replace(",", "")) if tps else None
+    # TP — extract all TP price levels from multiple formats
+    tps = []
+    # Format 1: TP1: 64000  TP2: 65000  TP3: 66000
+    _tp_explicit = _re.findall(r'tp\s*\d+\s*[:\-–]\s*\$?\s*([\d,.]+)', t, _re.I)
+    if _tp_explicit:
+        tps = [float(x.replace(",","")) for x in _tp_explicit]
+    if not tps:
+        # Format 2: TARGET - 86$  87$ 88$  $89 $90  (all numbers after TARGET keyword)
+        _m = _re.search(r'(?:target|targets)\s*[:\-–\s]+(.+?)(?:\n|sl|stop|leverage|$)', t, _re.I | _re.DOTALL)
+        if _m:
+            _raw = _m.group(1)[:200]
+            _nums = _re.findall(r'[\d]+(?:[,.][\d]+)?', _raw)
+            tps = [float(n.replace(",","")) for n in _nums if float(n.replace(",","")) > 0.0001]
+    if not tps:
+        # Format 3: TP: 64000, 65000 or take profit: 64000 65000
+        _m = _re.search(r'(?:tp|take\s*profit)\s*[:\-–]\s*([\d\$,.\s]+?)(?:\n|sl|stop|$)', t, _re.I)
+        if _m:
+            _nums = _re.findall(r'[\d]+(?:[,.][\d]+)?', _m.group(1))
+            tps = [float(n) for n in _nums]
+    tp = tps[0] if tps else None
 
     # SL
     sl = None
@@ -4667,11 +4684,7 @@ def _tg_execute_signal(sig: dict, cfg: dict) -> list:
 
 
 def _tg_execute_signal_demo(sig: dict, cfg: dict) -> list:
-    """Paper-trade version of _tg_execute_signal — same fixed-contract sizing
-    and same flip-on-opposite-signal behaviour, but fills against the live
-    public price instead of placing a real order. Lets you see how a
-    Telegram channel's signals would have performed before risking money on
-    them."""
+    """Paper-trade: fills at live price, stores TP levels + SL for partial-TP monitoring."""
     pm = _get_pub_mkt()
     if not pm:
         return [{"exchange": "demo", "ok": False, "error": "Market data not available"}]
@@ -4681,24 +4694,138 @@ def _tg_execute_signal_demo(sig: dict, cfg: dict) -> list:
     except Exception as e:
         return [{"exchange": "demo", "ok": False, "error": f"Price fetch failed: {e}"[:150]}]
 
-    st = _load_tg_demo_state()
+    st  = _load_tg_demo_state()
     sym = sig["symbol"]
     pos = st["positions"].get(sym)
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
+    # Close existing opposite position (signal flip)
     if pos and pos["side"] != sig["side"]:
-        pnl = (price - pos["entry"]) * pos["amount"] if pos["side"] == "buy" else (pos["entry"] - price) * pos["amount"]
+        remaining = pos.get("amount", 0)
+        pnl = (price - pos["entry"]) * remaining if pos["side"] == "buy" else (pos["entry"] - price) * remaining
         st["equity"] = round(st["equity"] + pnl, 4)
         st["trades"].append({
-            "time": datetime.now().strftime("%Y-%m-%d %H:%M"), "symbol": sym,
-            "side": pos["side"], "entry": pos["entry"], "exit": price,
-            "amount": pos["amount"], "pnl": round(pnl, 4), "status": "closed",
+            "time": now_str, "symbol": sym, "side": pos["side"],
+            "entry": pos["entry"], "exit": price, "amount": remaining,
+            "pnl": round(pnl, 4), "status": "closed", "reason": "signal_flip",
         })
         del st["positions"][sym]
 
-    amt = cfg.get("amount", 0.01)
-    st["positions"][sym] = {"side": sig["side"], "entry": price, "amount": amt}
+    # Open new position — size in contracts (coins), not USD
+    amt_usd   = cfg.get("amount", 200.0)
+    contracts = round(amt_usd / price, 6) if price > 0 else 0
+
+    # Sort TP levels correctly
+    tps = [float(x) for x in sig.get("tps", []) if x]
+    if tps:
+        tps = sorted(set(tps), reverse=(sig["side"] == "sell"))
+
+    st["positions"][sym] = {
+        "side":            sig["side"],
+        "entry":           price,
+        "amount":          contracts,    # remaining contracts
+        "original_amount": contracts,    # full original size (for partial TP math)
+        "amount_usd":      amt_usd,
+        "tps":             tps,          # all TP price levels
+        "sl":              sig.get("sl"),
+        "tp_hits":         0,
+    }
     _save_tg_demo_state(st)
-    return [{"exchange": "demo", "ok": True, "order_id": "demo", "side": sig["side"], "amount": amt}]
+    return [{"exchange": "demo", "ok": True, "order_id": "demo",
+             "side": sig["side"], "amount": contracts, "amount_usd": amt_usd,
+             "entry_price": price, "tps": tps, "sl": sig.get("sl")}]
+
+
+def _tg_check_demo_positions():
+    """Check open demo positions for TP/SL hits every minute. Partial TP: each level closes equal portion."""
+    st = _load_tg_demo_state()
+    if not st.get("positions"):
+        return
+    pm = _get_pub_mkt()
+    if not pm:
+        return
+    changed  = False
+    now_str  = datetime.now().strftime("%Y-%m-%d %H:%M")
+    to_close = []
+
+    for sym, pos in list(st["positions"].items()):
+        try:
+            last  = pm.fetch_ohlcv(sym, "1m", limit=1)
+            price = float(last[-1][4])
+        except Exception:
+            continue
+
+        side      = pos["side"]
+        entry     = pos["entry"]
+        remaining = pos.get("amount", 0)
+        tps       = pos.get("tps", [])
+        sl        = pos.get("sl")
+        tp_hits   = pos.get("tp_hits", 0)
+        orig_amt  = pos.get("original_amount", remaining)
+        num_tps   = len(tps)
+
+        # ── SL hit → close full remaining position ──
+        sl_hit = sl and ((side == "buy" and price <= sl) or (side == "sell" and price >= sl))
+        if sl_hit and remaining > 0:
+            pnl = (price - entry) * remaining if side == "buy" else (entry - price) * remaining
+            st["equity"] = round(st["equity"] + pnl, 4)
+            st["trades"].append({
+                "time": now_str, "symbol": sym, "side": side,
+                "entry": entry, "exit": price, "amount": remaining,
+                "pnl": round(pnl, 4), "status": "closed", "reason": "sl_hit",
+            })
+            to_close.append(sym)
+            changed = True
+            _tg_notify(f"🔴 SL Hit: {sym}\nEntry: ${entry:.4f} → Exit: ${price:.4f}\nPnL: {'+'if pnl>=0 else ''}${pnl:.2f}")
+            continue
+
+        # ── Next TP hit → partial close ──
+        if tps and tp_hits < num_tps and remaining > 0:
+            next_tp = tps[tp_hits]
+            tp_hit  = (side == "buy" and price >= next_tp) or (side == "sell" and price <= next_tp)
+            if tp_hit:
+                portion = round(orig_amt / num_tps, 6)
+                portion = min(portion, remaining)
+                pnl     = (next_tp - entry) * portion if side == "buy" else (entry - next_tp) * portion
+                st["equity"] = round(st["equity"] + pnl, 4)
+                st["trades"].append({
+                    "time": now_str, "symbol": sym, "side": side,
+                    "entry": entry, "exit": next_tp, "amount": portion,
+                    "pnl": round(pnl, 4), "status": "partial_close",
+                    "reason": f"tp{tp_hits + 1}_hit",
+                })
+                pos["amount"]  = round(remaining - portion, 8)
+                pos["tp_hits"] = tp_hits + 1
+                # Move SL to breakeven after first TP
+                if tp_hits == 0 and entry:
+                    pos["sl"] = entry
+                changed = True
+                _tg_notify(
+                    f"✅ TP{tp_hits+1} Hit: {sym}\n"
+                    f"@ ${next_tp:.4f} | Partial PnL: +${pnl:.2f}\n"
+                    f"Remaining: {pos['amount']:.4f} contracts | SL → breakeven"
+                    if tp_hits == 0 else
+                    f"✅ TP{tp_hits+1} Hit: {sym} @ ${next_tp:.4f} | Partial PnL: +${pnl:.2f}"
+                )
+                # All TPs done or no remainder
+                if pos["tp_hits"] >= num_tps or pos["amount"] <= 0:
+                    to_close.append(sym)
+
+    for sym in to_close:
+        st["positions"].pop(sym, None)
+    if changed:
+        _save_tg_demo_state(st)
+
+
+def _tg_monitor_loop():
+    """Background thread: checks demo positions for TP/SL hits every 60s."""
+    _time.sleep(30)
+    while True:
+        try:
+            _tg_check_demo_positions()
+        except Exception as e:
+            print(f"[TG Monitor] {e}")
+        _time.sleep(60)
 
 
 def _tg_poll_loop():
@@ -4756,6 +4883,7 @@ def _tg_poll_loop():
                 "side":     sig["side"],
                 "entry":    sig.get("entry"),
                 "tp":       sig.get("tp"),
+                "tps":      sig.get("tps", []),
                 "sl":       sig.get("sl"),
                 "leverage": sig.get("leverage"),
                 "raw":      sig.get("raw", "")[:200],
@@ -4927,13 +5055,19 @@ def _tg_handle_command(token: str, chat_id: str, text: str):
     _tg_api(token, "sendMessage", {"chat_id": chat_id, "text": reply, "parse_mode": "HTML"})
 
 
+_TG_MONITOR_THREAD: threading.Thread | None = None
+
 def _start_tg_bot():
-    global _TG_RUNNING, _TG_THREAD
+    global _TG_RUNNING, _TG_THREAD, _TG_MONITOR_THREAD
     if _TG_RUNNING:
         return
     _TG_RUNNING = True
     _TG_THREAD  = threading.Thread(target=_tg_poll_loop, daemon=True)
     _TG_THREAD.start()
+    if not (_TG_MONITOR_THREAD and _TG_MONITOR_THREAD.is_alive()):
+        _TG_MONITOR_THREAD = threading.Thread(target=_tg_monitor_loop, daemon=True)
+        _TG_MONITOR_THREAD.start()
+        print("[TG Monitor] Demo position TP/SL monitor started")
 
 
 def _stop_tg_bot():
@@ -4946,6 +5080,10 @@ try:
     _tg_startup_cfg = _load_tg_cfg()
     if _tg_startup_cfg.get("token") and _tg_startup_cfg.get("enabled"):
         _start_tg_bot()
+    else:
+        # Start monitor-only thread even if bot is not enabled (positions may exist)
+        _TG_MONITOR_THREAD = threading.Thread(target=_tg_monitor_loop, daemon=True)
+        _TG_MONITOR_THREAD.start()
 except Exception:
     pass
 
