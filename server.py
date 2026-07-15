@@ -2415,7 +2415,7 @@ def _get_bot_signal(bot, ohlcv):
     # range; breakout above = BUY, below = SELL. Win rate 65-75% on NSE/BSE.
     # Indian market open: 9:15 AM IST = 03:45 UTC. Crypto uses midnight UTC.
     elif strategy == "orb":
-        from datetime import datetime, timezone
+        # datetime and timezone already imported at module level (line 11)
         orb_min = bot.get("orb_minutes", 30)
         segment = bot.get("exchange_segment", "")
         if segment in ("nse_cm", "bse_cm", "nse_fo", "bse_fo"):
