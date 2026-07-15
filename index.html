@@ -2828,8 +2828,11 @@ tr:hover td{background:rgba(139,92,246,0.05)}
           <div class="jarvis-panel">
             <div class="jarvis-bracket tl"></div><div class="jarvis-bracket tr"></div>
             <div class="jarvis-bracket bl"></div><div class="jarvis-bracket br"></div>
-            <div class="jarvis-panel-hdr">ACCUMULATED RESEARCH INSIGHTS</div>
-            <div class="jarvis-terminal" id="jarvis-insights-feed" style="height:170px">
+            <div class="jarvis-panel-hdr" style="justify-content:space-between">
+              <span>ACCUMULATED RESEARCH INSIGHTS</span>
+              <span id="brain-insight-updated" style="font-size:9px;color:#475569;letter-spacing:0">—</span>
+            </div>
+            <div class="jarvis-terminal" id="jarvis-insights-feed" style="height:200px">
               <div class="t-line t-info">[ Waiting for brain data... ]</div>
             </div>
           </div>
@@ -9527,13 +9530,27 @@ function _jarvisRender(r) {
   const ifeed = document.getElementById('jarvis-insights-feed');
   if (ifeed) {
     const ins = r.research_insights || [];
+    const updEl = document.getElementById('brain-insight-updated');
     if (!ins.length) {
-      ifeed.innerHTML = '<div class="t-line t-info">[ No insights yet — first analysis will populate this ]</div>';
+      ifeed.innerHTML = '<div class="t-line t-info">[ No insights yet — Brain analysis pending ]</div>';
+      if (updEl) updEl.textContent = 'no data';
     } else {
-      ifeed.innerHTML = ins.slice().reverse().map(i =>
-        `<div class="t-line"><span class="t-ts">[${(i.time||'').slice(11,16)}]</span> <span class="t-info">${i.strategy||''}</span> <span style="color:#94a3b8">${i.insight||''}</span></div>`
-      ).join('');
-      ifeed.scrollTop = ifeed.scrollHeight;
+      const atBottom = ifeed.scrollHeight - ifeed.scrollTop <= ifeed.clientHeight + 20;
+      // Newest at bottom (terminal style) — no reverse; last 3 are highlighted
+      ifeed.innerHTML = ins.map((i, idx) => {
+        const timeStr = (i.time || '').slice(0, 16);
+        const timeShort = (i.time || '').slice(11, 16);
+        const isLatest = idx >= ins.length - 3;
+        const dot = isLatest ? `<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#22c55e;margin-right:4px;vertical-align:middle"></span>` : '';
+        const lineColor = isLatest ? '#cbd5e1' : '#64748b';
+        return `<div class="t-line" title="${timeStr}" style="color:${lineColor};border-left:${isLatest?'2px solid #22c55e33':'2px solid transparent'};padding-left:4px;margin-bottom:2px">${dot}<span class="t-ts" style="color:${isLatest?'#22c55e':'#475569'}">[${timeShort}]</span> <span style="color:${lineColor}">${i.insight || ''}</span></div>`;
+      }).join('');
+      if (atBottom) ifeed.scrollTop = ifeed.scrollHeight;
+      if (updEl) {
+        const latestTime = ins[ins.length - 1]?.time || '';
+        updEl.textContent = 'last: ' + (latestTime.slice(11, 16) || '—');
+        updEl.style.color = '#22c55e';
+      }
     }
   }
 
