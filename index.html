@@ -10240,8 +10240,18 @@ async function algoLoadHistory() {
     const stTxt  = isOpen ? 'var(--accent)' : 'var(--text3)';
     const stLbl  = isOpen ? 'OPEN' : (t.exit_reason || 'closed').replace(/_/g,' ').toUpperCase();
     const isDemo = (t.mode || 'live') === 'demo';
-    const pnlC   = (t.pnl || 0) > 0 ? 'var(--green)' : ((t.pnl || 0) < 0 ? 'var(--red)' : 'var(--text3)');
-    const pnlTxt = isOpen ? '—' : `${t.pnl >= 0 ? '+' : ''}$${(t.pnl || 0).toFixed(2)}`;
+    const closedPnl = t.pnl || 0;
+    const livePnl   = t.unrealized_pnl;
+    const pnlVal    = isOpen ? livePnl : closedPnl;
+    const pnlC      = pnlVal == null ? 'var(--text3)' : (pnlVal > 0 ? 'var(--green)' : (pnlVal < 0 ? 'var(--red)' : 'var(--text3)'));
+    const pnlTxt    = isOpen
+      ? (livePnl != null
+          ? `${livePnl >= 0 ? '+' : ''}$${livePnl.toFixed(2)} <span style="font-size:9px;color:var(--amber)">⚡</span>`
+          : '<span style="color:var(--text3)">— open</span>')
+      : `${closedPnl >= 0 ? '+' : ''}$${closedPnl.toFixed(2)}`;
+    const markCell  = isOpen && t.mark_price
+      ? `<span style="color:var(--text2)">$${t.mark_price}</span>`
+      : (t.exit_price ? `$${t.exit_price}` : '—');
     return `<tr style="background:${stBg}">
       <td style="font-size:10px;color:var(--text3)">${t.time||'—'}</td>
       <td style="font-size:10px;color:var(--text3)">${t.bot_id||'—'}</td>
@@ -10252,7 +10262,7 @@ async function algoLoadHistory() {
       <td style="color:${sigC};font-weight:800">${t.signal||'—'}</td>
       <td style="font-weight:700">$${t.price||0}</td>
       <td style="color:var(--text2)">${t.amount||0}</td>
-      <td style="color:var(--text2)">${t.exit_price ? '$'+t.exit_price : '—'}</td>
+      <td style="color:var(--text2)">${markCell}</td>
       <td style="font-weight:700;color:${pnlC}">${pnlTxt}</td>
       <td style="font-size:10px;color:var(--amber)">${t.exit_reason ? t.exit_reason.replace(/_/g,' ') : '—'}</td>
       <td><span style="font-size:9px;padding:2px 7px;border-radius:4px;background:${stBg};color:${stTxt};border:1px solid ${isOpen?'rgba(139,92,246,0.4)':'var(--border)'};font-weight:700">${stLbl}</span></td>

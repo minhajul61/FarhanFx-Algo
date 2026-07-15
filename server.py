@@ -3615,14 +3615,24 @@ def crypto_algo_history(current_user: dict = Depends(_get_current_user)):
         if b.get("username") != current_user["username"]:
             continue
         for t in b.get("trades", []):
-            rows.append({
+            row = {
                 "bot_id":   bid,
                 "mode":     b.get("mode", "live"),
                 "exchange": b.get("exchange", ""),
                 "symbol":   b.get("symbol", ""),
                 "strategy": b.get("strategy", ""),
                 **t,
-            })
+            }
+            # Inject live unrealized PnL for open trades
+            if t.get("status") == "open" and b.get("last_price") and b.get("open_entry_price"):
+                ep   = b.get("open_entry_price", 0)
+                amt  = b.get("open_amount", 0)
+                mark = b["last_price"]
+                side = b.get("open_side", "BUY")
+                upnl = (mark - ep) * amt if side == "BUY" else (ep - mark) * amt
+                row["unrealized_pnl"] = round(upnl, 4)
+                row["mark_price"]     = round(mark, 4)
+            rows.append(row)
     rows.sort(key=lambda x: x.get("time", ""), reverse=True)
     return rows[:300]
 
