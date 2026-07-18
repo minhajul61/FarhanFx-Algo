@@ -4204,9 +4204,11 @@ def crypto_algo_list(live: bool = False, current_user: dict = Depends(_get_curre
     return result
 
 
+_SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
+
 @app.get("/")
 def serve_index():
-    return FileResponse("index.html", headers={
+    return FileResponse(os.path.join(_SERVER_DIR, "index.html"), headers={
         "Cache-Control": "no-cache, no-store, must-revalidate",
         "Pragma": "no-cache",
         "Expires": "0"
@@ -5338,13 +5340,21 @@ def tg_open_positions():
                     upnl = round((pos["entry"] - current_price) * pos["amount"], 4)
         except Exception:
             pass
+        tps      = pos.get("tps", [])
+        tp_hits  = pos.get("tp_hits", 0)
+        next_tp  = tps[tp_hits] if tp_hits < len(tps) else (tps[-1] if tps else None)
         rows.append({
             "symbol":        sym,
             "side":          pos["side"],
             "entry":         pos["entry"],
             "amount":        pos["amount"],
+            "amount_usd":    pos.get("amount_usd"),
             "current_price": current_price,
             "upnl":          upnl,
+            "tps":           tps,
+            "next_tp":       next_tp,
+            "tp_hits":       tp_hits,
+            "sl":            pos.get("sl"),
         })
     rows.sort(key=lambda x: (x["upnl"] or 0), reverse=True)
     return rows
@@ -5685,6 +5695,107 @@ def indian_dashboard(current_user: dict = Depends(_get_current_user)):
     return result
 
 
+@app.post("/api/indian/options_ltp")
+def indian_options_ltp(body: dict, current_user: dict = Depends(_get_current_user)):
+    """Fetch live LTP for a batch of NSE F&O option symbols."""
+    symbols  = [s.upper() for s in body.get("symbols", [])[:40]]
+    exp_key  = body.get("exp_key", "")   # e.g. "NIFTY26723"
+    if not symbols:
+        return {}
+
+    result = {}
+
+    # ── Try Kotak Neo ──────────────────────────────────────────────────────
+    client = _get_neo_client(current_user["username"])
+    if client and exp_key:
+        try:
+            r = client.search_scrip(exchange_segment="nse_fo", symbol=exp_key)
+            items = r if isinstance(r, list) else (r.get("data", []) if isinstance(r, dict) else [])
+            print(f"[options_ltp] search_scrip({exp_key!r}) → {len(items)} items", flush=True)
+            if items:
+                print(f"[options_ltp] sample keys: {list(items[0].keys())}", flush=True)
+            token_map = {}   # symbol → token
+            for item in items:
+                tsym = (item.get("pTrdSymbol") or item.get("trading_symbol") or "").upper()
+                if not tsym:
+                    continue
+                # Extract LTP from whichever field has a non-zero value
+                for field in ("pLtp", "ltp", "last_traded_price", "pCLs", "pPrvCls", "pClose"):
+                    v = item.get(field)
+                    if v not in (None, "", 0):
+                        try:
+                            fv = round(float(v), 2)
+                            if fv > 0:
+                                result[tsym] = fv
+                                break
+                        except Exception:
+                            pass
+                tok = item.get("pScripCd") or item.get("instrument_token") or item.get("token")
+                if tok:
+                    token_map[tsym] = str(tok)
+
+            # If search_scrip didn't give us live LTP, try quotes() with tokens
+            if token_map and len(result) < len(symbols) // 2:
+                need_tokens = [token_map[s] for s in symbols if s in token_map and s not in result]
+                if need_tokens:
+                    try:
+                        qr = client.quotes(instrument_tokens=need_tokens, quote_type="", isIndex=False)
+                        qitems = qr if isinstance(qr, list) else (qr.get("data", []) if isinstance(qr, dict) else [])
+                        print(f"[options_ltp] quotes() → {len(qitems)} items", flush=True)
+                        for qi in qitems:
+                            tsym = (qi.get("pTrdSymbol") or qi.get("trading_symbol") or "").upper()
+                            for field in ("pLtp", "ltp", "last_traded_price", "lastPrice"):
+                                v = qi.get(field)
+                                if v not in (None, "", 0):
+                                    try:
+                                        fv = round(float(v), 2)
+                                        if fv > 0:
+                                            result[tsym] = fv
+                                            break
+                                    except Exception:
+                                        pass
+                    except Exception as qe:
+                        print(f"[options_ltp] quotes() error: {qe}", flush=True)
+        except Exception as e:
+            print(f"[options_ltp] search_scrip error: {e}", flush=True)
+
+    # ── yfinance fallback ──────────────────────────────────────────────────
+    if _YF_OK and not result and symbols:
+        try:
+            import re as _re
+            import datetime as _dt
+            sym_base = _re.match(r'^([A-Z]+)', symbols[0])
+            sym_base = sym_base.group(1) if sym_base else "NIFTY"
+            yf_map  = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "FINNIFTY": "^CNXFIN"}
+            yf_sym  = yf_map.get(sym_base, "^NSEI")
+            ticker  = _yf.Ticker(yf_sym)
+            avail   = ticker.options or []
+            target  = avail[0] if avail else None
+            print(f"[options_ltp] yfinance avail={avail[:3]}, using={target}", flush=True)
+            if target:
+                chain  = ticker.option_chain(target)
+                calls  = {int(round(float(k))): round(float(v), 2)
+                          for k, v in zip(chain.calls["strike"], chain.calls["lastPrice"])
+                          if float(v or 0) > 0}
+                puts   = {int(round(float(k))): round(float(v), 2)
+                          for k, v in zip(chain.puts["strike"],  chain.puts["lastPrice"])
+                          if float(v or 0) > 0}
+                print(f"[options_ltp] yf calls={len(calls)} puts={len(puts)}", flush=True)
+                for sym in symbols:
+                    m = _re.search(r'(\d{4,6})(CE|PE)$', sym)
+                    if not m:
+                        continue
+                    strike, kind = int(m.group(1)), m.group(2)
+                    p = (calls if kind == "CE" else puts).get(strike)
+                    if p:
+                        result[sym] = p
+        except Exception as ye:
+            print(f"[options_ltp] yfinance error: {ye}", flush=True)
+
+    print(f"[options_ltp] returning {len(result)} prices", flush=True)
+    return result
+
+
 @app.get("/api/indian/options_chain")
 def indian_options_chain(symbol: str = "NIFTY", strikes: int = 10,
                           current_user: dict = Depends(_get_current_user)):
@@ -5718,7 +5829,10 @@ def indian_options_chain(symbol: str = "NIFTY", strikes: int = 10,
             "ce_symbol": f"{symbol.upper()}{yy}{expiry_part}{s}CE",
             "pe_symbol": f"{symbol.upper()}{yy}{expiry_part}{s}PE",
             "atm": s == int(atm),
+            "ce_ltp": None,
+            "pe_ltp": None,
         })
+
     return {
         "spot": round(spot, 2),
         "atm_strike": int(atm),
@@ -5823,6 +5937,52 @@ _FO_INDEX_MAP = {
     "MIDCPNIFTY": "^NSEMDCP50", "SENSEX": "^BSESN",
 }
 
+def _cpr_daily_bias(yf_sym: str, today_open: float, bot: dict) -> tuple:
+    """
+    CPR (Central Pivot Range) day bias from previous trading day.
+    Returns: (bias, tc, bc)
+    bias: "BULLISH" | "BEARISH" | "NEUTRAL" | "NEUTRAL_PDH" | "NEUTRAL_PDL"
+    Result cached per day in bot state to avoid repeated yfinance calls.
+    """
+    today_str = _ist_now().strftime("%Y-%m-%d")
+    if bot.get("_cpr_cache_date") == today_str and "_cpr_cache" in bot:
+        c = bot["_cpr_cache"]
+        return c["bias"], c["tc"], c["bc"]
+    if not _YF_OK:
+        return "NEUTRAL", None, None
+    try:
+        df = _yf.download(yf_sym, period="5d", interval="1d", progress=False, auto_adjust=True)
+        if df.empty or len(df) < 2:
+            return "NEUTRAL", None, None
+        if hasattr(df.columns, "levels"):
+            df.columns = df.columns.get_level_values(0)
+        rows = [(float(r.High or 0), float(r.Low or 0), float(r.Close or 0))
+                for _, r in df.iterrows() if float(r.Close or 0) > 0]
+        if len(rows) < 2:
+            return "NEUTRAL", None, None
+        pdh, pdl, pdc = rows[-2]
+        pivot = (pdh + pdl + pdc) / 3
+        tc    = round((pdh + pdl) / 2, 1)
+        bc    = round(2 * pivot - tc, 1)
+        if today_open > tc:
+            bias = "BULLISH"
+        elif today_open < bc:
+            bias = "BEARISH"
+        else:
+            bias = "NEUTRAL"
+        # PDH proximity: open near PDH = gap-to-resistance trap
+        if bias == "BULLISH" and (pdh - 5) <= today_open <= (pdh + 30):
+            bias = "NEUTRAL_PDH"
+        # PDL proximity: open near PDL = gap-to-support trap
+        if bias == "BEARISH" and (pdl - 30) <= today_open <= (pdl + 5):
+            bias = "NEUTRAL_PDL"
+        bot["_cpr_cache_date"] = today_str
+        bot["_cpr_cache"] = {"bias": bias, "tc": tc, "bc": bc}
+        return bias, tc, bc
+    except Exception:
+        return "NEUTRAL", None, None
+
+
 def _fetch_indian_ohlcv(symbol: str, exchange_segment: str, timeframe: str, bars: int = 200):
     if not _YF_OK:
         return None
@@ -5859,15 +6019,198 @@ def _fetch_indian_ohlcv(symbol: str, exchange_segment: str, timeframe: str, bars
         return None
 
 
+def _ist_now():
+    from datetime import timezone, timedelta
+    return datetime.now(timezone(timedelta(hours=5, minutes=30)))
+
+
+def _ist_minutes() -> int:
+    t = _ist_now()
+    return t.hour * 60 + t.minute
+
+
 def _atm_option_symbol(underlying: str, direction: str, spot: float) -> str:
-    import datetime as _dt
-    today = _dt.date.today()
-    expiry = today + _dt.timedelta(days=(3 - today.weekday()) % 7)
+    from datetime import date, timedelta
+    today = date.today()
+    days_to_thu = (3 - today.weekday()) % 7
+    # Thursday after 15:00 IST → next week expiry
+    if days_to_thu == 0 and _ist_now().hour >= 15:
+        days_to_thu = 7
+    expiry = today + timedelta(days=days_to_thu)
     expiry_part = f"{expiry.month}{expiry.day:02d}"
     yy = expiry.strftime("%y")
     inc = 100 if "BANK" in underlying.upper() else 50
     atm = int(round(spot / inc) * inc)
     return f"{underlying.upper()}{yy}{expiry_part}{atm}{direction}"
+
+
+def _indian_intraday_options_signal(bot, ohlcv):
+    """
+    Enhanced intraday options buying signal (v5).
+    v4: ORB, W1 cutoff 10:20, W1 momentum 20pts, 5-indicator 4/5 score.
+    v5: CPR day bias filter, NEUTRAL day full skip, FCM at 9:20 (2 lots),
+        NEUTRAL_PDH/PDL W1 skip, W2 price-vs-CPR TC/BC filter.
+    Windows: FCM 9:20 | W1 9:20-10:20 | W2 13:00-14:30
+    Returns: "CE", "PE", or None. Sets bot["_fcm_high_conviction"]=True when FCM fires.
+    """
+    t = _ist_minutes()
+    fcm_tick = (t == 9*60+20)
+    in_w1    = 9*60+20 <= t <= 10*60+20
+    in_w2    = 13*60   <= t <= 14*60+30
+    if not (fcm_tick or in_w1 or in_w2):
+        return None
+
+    underlying = bot.get("symbol", "NIFTY").upper()
+    wd = _ist_now().weekday()
+    if "MIDCAP"   in underlying and wd == 0: return None
+    if "FINNIFTY"  in underlying and wd == 1: return None
+    if "BANKNIFTY" in underlying and wd == 2: return None
+    if "NIFTY"     in underlying and wd == 3: return None
+
+    # Today's bars (from 9:15 IST onward)
+    ist_now = _ist_now()
+    day_start_ms = int(ist_now.replace(hour=9, minute=14, second=0, microsecond=0).timestamp() * 1000)
+    today_bars = [b for b in ohlcv if b[0] >= day_start_ms]
+
+    # CPR day bias (cached per day)
+    yf_sym    = _FO_INDEX_MAP.get(underlying, underlying + ".NS")
+    today_open = float(today_bars[0][1]) if today_bars else float(ohlcv[-1][4])
+    cpr_bias, tc, bc = _cpr_daily_bias(yf_sym, today_open, bot)
+
+    # FCM — First Candle Momentum at exactly 9:20 (BULLISH/BEARISH days only)
+    if fcm_tick and len(today_bars) >= 1 and cpr_bias in ("BULLISH", "BEARISH"):
+        first_bar = today_bars[0]
+        body = float(first_bar[4]) - float(first_bar[1])   # close - open of 9:15 bar
+        if abs(body) >= 50:
+            if body > 0 and cpr_bias == "BULLISH":
+                bot["_fcm_high_conviction"] = True
+                return "CE"
+            if body < 0 and cpr_bias == "BEARISH":
+                bot["_fcm_high_conviction"] = True
+                return "PE"
+
+    if not (in_w1 or in_w2):
+        return None
+
+    # RULE B: Pure NEUTRAL = no edge → skip all windows
+    if cpr_bias == "NEUTRAL":
+        return None
+    # NEUTRAL_PDH/PDL = gap-to-resistance → skip W1, allow W2
+    if in_w1 and cpr_bias in ("NEUTRAL_PDH", "NEUTRAL_PDL"):
+        return None
+
+    # W1 uses today-only bars; W2 uses rolling window
+    bars_9_15 = 9*60+15
+    if in_w1:
+        today_bar_count = (t - bars_9_15) // 5
+        use_bars = ohlcv[-max(today_bar_count, 2):] if today_bar_count >= 2 else ohlcv[-2:]
+    else:
+        use_bars = ohlcv
+
+    if len(use_bars) < 6:
+        return None
+
+    closes = [float(c[4]) for c in use_bars]
+    highs  = [float(c[2]) for c in use_bars]
+    lows   = [float(c[3]) for c in use_bars]
+    vols   = [float(c[5]) for c in use_bars]
+    price  = closes[-1]
+
+    ema9  = _ema_calc(closes, min(9,  len(closes)))[-1]
+    ema21 = _ema_calc(closes, min(21, len(closes)))[-1]
+    rsi   = _rsi_calc(closes, min(14, len(closes)-1)) if len(closes) >= 5 else 50.0
+
+    tp_sum  = sum(((use_bars[i][2]+use_bars[i][3]+use_bars[i][4])/3)*use_bars[i][5]
+                  for i in range(len(use_bars)))
+    vol_sum = sum(float(b[5]) for b in use_bars)
+    vwap    = tp_sum / vol_sum if vol_sum > 0 else price
+
+    rolling = ohlcv if len(ohlcv) >= 11 else use_bars
+    tr_list = [max(rolling[i][2]-rolling[i][3],
+                   abs(rolling[i][2]-rolling[i-1][4]),
+                   abs(rolling[i][3]-rolling[i-1][4]))
+               for i in range(1, len(rolling))]
+    atr = sum(tr_list[-10:]) / 10 if len(tr_list) >= 10 else (highs[-1] - lows[-1])
+    st_bull = price > (highs[-1] + lows[-1]) / 2 - 3.0 * atr
+
+    avg_vol = sum(vols[-20:]) / 20 if len(vols) >= 20 else (vols[-1] if vols else 0)
+    vol_ok  = True if avg_vol == 0 else vols[-1] > avg_vol * 0.75
+
+    rolling_ema21 = _ema_calc([float(c[4]) for c in ohlcv], min(21, len(ohlcv)))[-1] if len(ohlcv) >= 5 else price
+    daily_bull = price > rolling_ema21
+    daily_bear = price < rolling_ema21
+
+    bull = sum([ema9 > ema21, price > vwap, 45 < rsi < 68, st_bull, daily_bull])
+    bear = sum([ema9 < ema21, price < vwap, 32 < rsi < 55, not st_bull, daily_bear])
+
+    # CPR direction filter: don't fight the day bias
+    if bull >= 4 and cpr_bias in ("BEARISH",):    return None
+    if bear >= 4 and cpr_bias in ("BULLISH",):    return None
+
+    # ORB (W1 only)
+    if in_w1 and len(use_bars) >= 3:
+        or_high = max(float(use_bars[i][2]) for i in range(3))
+        or_low  = min(float(use_bars[i][3]) for i in range(3))
+        if bull >= 4 and price <= or_high: return None
+        if bear >= 4 and price >= or_low:  return None
+
+    # W1 minimum momentum — 20+ pts from day open
+    if in_w1 and len(use_bars) >= 2:
+        day_open_close = float(use_bars[0][4])
+        w1_move = price - day_open_close
+        if bull >= 4 and w1_move < 20:  return None
+        if bear >= 4 and w1_move > -20: return None
+
+    # RULE C: W2 price-vs-CPR TC/BC filter
+    if in_w2 and tc and bull >= 4 and price < tc: return None
+    if in_w2 and bc and bear >= 4 and price > bc: return None
+
+    bot["_fcm_high_conviction"] = False
+    if bull >= 4 and vol_ok and rsi > 45:
+        return "CE"
+    if bear >= 4 and vol_ok and rsi < 55:
+        return "PE"
+    return None
+
+
+def _indian_futures_signal(bot, ohlcv):
+    """
+    Trend-following signal for NIFTY/BANKNIFTY futures.
+    Indicators: EMA(9/21/50) + RSI(14) + Supertrend(14, 3)
+    No time-window restriction — trades all day.
+    Returns: "BUY", "SELL", or None
+    """
+    if len(ohlcv) < 30:
+        return None
+
+    closes = [float(c[4]) for c in ohlcv]
+    highs  = [float(c[2]) for c in ohlcv]
+    lows   = [float(c[3]) for c in ohlcv]
+    price  = closes[-1]
+
+    ema9  = _ema_calc(closes, 9)[-1]
+    ema21 = _ema_calc(closes, 21)[-1]
+    ema50 = _ema_calc(closes, min(50, len(closes)))[-1]
+    rsi   = _rsi_calc(closes, 14)
+
+    # Supertrend (ATR 14, mult 3)
+    tr_list = [max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1]))
+               for i in range(1, len(ohlcv))]
+    atr = sum(tr_list[-14:]) / 14 if len(tr_list) >= 14 else (highs[-1] - lows[-1])
+    mid = (highs[-1] + lows[-1]) / 2
+    st_bull = price > mid - 3.0 * atr
+
+    # 3-candle momentum confirmation
+    mom_up  = len(closes) >= 4 and closes[-1] > closes[-4]
+    mom_dn  = len(closes) >= 4 and closes[-1] < closes[-4]
+
+    # BUY: all EMAs stacked bullish + RSI 50-75 + supertrend up
+    if ema9 > ema21 >= ema50 and 50 < rsi < 75 and st_bull and mom_up:
+        return "BUY"
+    # SELL: all EMAs stacked bearish + RSI 25-50 + supertrend down
+    if ema9 < ema21 <= ema50 and 25 < rsi < 50 and not st_bull and mom_dn:
+        return "SELL"
+    return None
 
 
 def _indian_market_open() -> bool:
@@ -5888,37 +6231,72 @@ def _indian_bot_tick(bot_id):
     try:
         if not _indian_market_open():
             bot["last_error"] = "Market closed (NSE 09:15–15:30 IST, Mon–Fri)"
-            return   # finally block still fires → timer rescheduled
-        is_opt = bot.get("options_bot", False)
-        # For options bots, always fetch underlying index data (not the option symbol)
+            return
+        strategy = bot.get("strategy", "")
+        is_opt = bot.get("options_bot", False) or strategy == "intraday_options_buy"
         fetch_sym = bot["symbol"]
         fetch_seg = "nse_fo" if is_opt else bot["exchange_segment"]
         ohlcv = _fetch_indian_ohlcv(fetch_sym, fetch_seg, bot["timeframe"])
         if not ohlcv or len(ohlcv) < 20:
-            bot["last_error"] = "Not enough OHLCV data — yfinance may be unavailable or market closed"
+            bot["last_error"] = "Not enough OHLCV data"
             return
-        signal = _get_bot_signal(bot, ohlcv)
-        price  = float(ohlcv[-1][4])
+        price = float(ohlcv[-1][4])
         bot["last_run"]   = datetime.now().strftime("%H:%M:%S")
         bot["last_price"] = round(price, 2)
 
-        # For options bot: determine CE/PE from signal, construct option symbol
+        # Hard close all options positions at 15:10 IST (theta protection)
+        if is_opt and bot.get("open_side") and _ist_minutes() >= 15 * 60 + 10:
+            live_cl = None
+            if bot.get("mode") == "live":
+                try: live_cl = _get_neo_client(bot.get("username", "admin"))
+                except Exception: pass
+            _close_indian_pos_fn = None  # defined later — use inline close here
+            ep    = bot.get("open_entry_price", price)
+            odir  = bot.get("_current_opt_dir", "CE")
+            lsize = _INDIAN_LOT_SIZES.get(bot["symbol"].upper(), 1)
+            qlots = int(bot.get("quantity", 1))
+            mv    = (price - ep) if odir == "CE" else (ep - price)
+            pnl   = mv * 0.5 * lsize * qlots
+            bot["demo_equity"] = round(bot.get("demo_equity", bot.get("demo_balance", 100000)) + pnl, 2)
+            if bot.get("trades"):
+                bot["trades"][-1].update(exit_price=round(price,2), exit_reason="eod_close_15:10",
+                                         pnl=round(pnl,2), status="closed")
+            bot.update(open_side=None, open_entry_price=None, open_peak=None, open_trough=None,
+                       _tsl_max_pts=0, _tsl_level=None, _fcm_high_conviction=False)
+            _tg_notify(f"<b>Indian EOD Close</b>\n{bot['strategy']} {bot['symbol']} ₹{pnl:+.2f}")
+            _save_indian_bots()
+            return
+
+        # Signal dispatch — strategy-specific
+        signal    = None
         opt_symbol = None
-        if is_opt and signal:
-            forced = bot.get("options_direction", "auto")
-            if forced == "CE":
-                opt_dir = "CE"
-            elif forced == "PE":
-                opt_dir = "PE"
-            else:  # auto
-                opt_dir = "CE" if signal == "BUY" else "PE"
-            opt_symbol = _atm_option_symbol(bot["symbol"], opt_dir, price)
-            bot["_current_opt_symbol"] = opt_symbol
-            bot["_current_opt_dir"] = opt_dir
-            signal = "BUY"  # options are always bought (long only)
+        if strategy == "intraday_options_buy":
+            opt_dir = _indian_intraday_options_signal(bot, ohlcv)
+            if opt_dir:
+                opt_symbol = _atm_option_symbol(bot["symbol"], opt_dir, price)
+                bot["_current_opt_symbol"] = opt_symbol
+                bot["_current_opt_dir"]    = opt_dir
+                signal = "BUY"
+        elif strategy == "nifty_futures":
+            signal = _indian_futures_signal(bot, ohlcv)
+        else:
+            # Legacy strategies (rsi, orb, macd_cross, etc.) — old path
+            raw_sig = _get_bot_signal(bot, ohlcv)
+            if is_opt and raw_sig:
+                forced = bot.get("options_direction", "auto")
+                opt_dir = forced if forced in ("CE","PE") else ("CE" if raw_sig == "BUY" else "PE")
+                opt_symbol = _atm_option_symbol(bot["symbol"], opt_dir, price)
+                bot["_current_opt_symbol"] = opt_symbol
+                bot["_current_opt_dir"]    = opt_dir
+                signal = "BUY"
+            else:
+                signal = raw_sig
 
         lot_size = _INDIAN_LOT_SIZES.get(bot["symbol"].upper(), 1) if is_opt else 1
         qty = int(bot.get("quantity", 1)) * lot_size if is_opt else int(bot.get("quantity", 1))
+        # FCM high conviction (first candle ≥50pts + CPR aligned) → 2 lots
+        if is_opt and bot.get("_fcm_high_conviction"):
+            qty *= 2
 
         def _close_indian_pos(exit_price, exit_reason, live_client=None):
             ep   = bot.get("open_entry_price", exit_price)
@@ -5936,10 +6314,13 @@ def _indian_bot_tick(bot_id):
                 bot["trades"][-1].update(exit_price=round(exit_price, 2),
                                          exit_reason=exit_reason,
                                          pnl=round(pnl, 2), status="closed")
-            bot["open_side"]         = None
-            bot["open_entry_price"]  = None
-            bot["open_peak"]         = None
-            bot["open_trough"]       = None
+            bot["open_side"]            = None
+            bot["open_entry_price"]     = None
+            bot["open_peak"]            = None
+            bot["open_trough"]          = None
+            bot["_tsl_max_pts"]         = 0
+            bot["_tsl_level"]           = None
+            bot["_fcm_high_conviction"] = False
             close_sym = bot.get("_current_opt_symbol", bot["symbol"]) if is_opt else bot["symbol"]
             if live_client:
                 try:
@@ -5994,6 +6375,23 @@ def _indian_bot_tick(bot_id):
                     should_exit, exit_reason = True, "stop_loss"
                 elif trail_pct > 0 and price > bot["open_trough"] * (1 + trail_pct / 100):
                     should_exit, exit_reason = True, "trailing_stop"
+            # Point-based TSL for options: +50pts → breakeven SL, +100pts → trail at +60pts
+            if is_opt and not should_exit:
+                cur_pts = (price - ep) if opt_dir == "CE" else (ep - price)
+                max_pts = bot.get("_tsl_max_pts", 0)
+                if cur_pts > max_pts:
+                    bot["_tsl_max_pts"] = cur_pts
+                    max_pts = cur_pts
+                tsl_lvl = bot.get("_tsl_level")
+                if max_pts >= 100 and tsl_lvl != 60:
+                    bot["_tsl_level"] = 60;  tsl_lvl = 60
+                elif max_pts >= 50 and tsl_lvl is None:
+                    bot["_tsl_level"] = 0;   tsl_lvl = 0
+                if tsl_lvl is not None:
+                    if opt_dir == "CE" and price < ep + tsl_lvl:
+                        should_exit, exit_reason = True, f"tsl_{tsl_lvl}pts"
+                    elif opt_dir == "PE" and price > ep - tsl_lvl:
+                        should_exit, exit_reason = True, f"tsl_{tsl_lvl}pts"
             if should_exit:
                 _close_indian_pos(price, exit_reason, live_cl)
 

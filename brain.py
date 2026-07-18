@@ -10,6 +10,7 @@ v4 upgrades over v3:
 Runs every 4h. Groq llama-3.3-70b, 4000 tokens output.
 """
 
+import concurrent.futures
 import json
 import os
 import re
@@ -338,10 +339,325 @@ def _format_pair_volumes(pairs: dict) -> str:
         return "[PAIRS] No data."
     lines = ["Pair                   | Vol(M$) | Volatility | 24h Chg"]
     lines.append("-" * 58)
-    for pair, d in list(pairs.items())[:20]:
+    for pair, d in list(pairs.items())[:10]:
         lines.append(
             f"{pair:<22} | ${d['vol_m']:>6,.0f}M | {d['volatility_pct']:>5.1f}%     | {d['chg_24h']:+.2f}%"
         )
+    return "\n".join(lines)
+
+
+# ── Market Condition Scanner ──────────────────────────────────────────────────
+
+def _ema_calc(closes, n):
+    if len(closes) < n:
+        return None
+    k = 2.0 / (n + 1)
+    ema = sum(closes[:n]) / n
+    for c in closes[n:]:
+        ema = c * k + ema * (1 - k)
+    return ema
+
+
+def _rsi_calc(closes, n=14):
+    if len(closes) < n + 2:
+        return None
+    gains, losses = [], []
+    for i in range(1, len(closes)):
+        d = closes[i] - closes[i - 1]
+        gains.append(max(d, 0.0))
+        losses.append(max(-d, 0.0))
+    avg_g = sum(gains[:n]) / n
+    avg_l = sum(losses[:n]) / n
+    for i in range(n, len(gains)):
+        avg_g = (avg_g * (n - 1) + gains[i]) / n
+        avg_l = (avg_l * (n - 1) + losses[i]) / n
+    if avg_l == 0:
+        return 100.0
+    return round(100 - 100 / (1 + avg_g / avg_l), 1)
+
+
+def _compute_coin_conditions(klines):
+    """Compute live technical indicators from 1h OHLCV klines."""
+    if len(klines) < 22:
+        return None
+    opens  = [float(k[1]) for k in klines]
+    highs  = [float(k[2]) for k in klines]
+    lows   = [float(k[3]) for k in klines]
+    closes = [float(k[4]) for k in klines]
+    vols   = [float(k[5]) for k in klines]
+    price  = closes[-1]
+
+    rsi   = _rsi_calc(closes, 14)
+    ema9  = _ema_calc(closes, 9)
+    ema21 = _ema_calc(closes, 21)
+    if ema9 and ema21:
+        trend = "up" if ema9 > ema21 * 1.002 else ("down" if ema9 < ema21 * 0.998 else "sideways")
+    else:
+        trend = "sideways"
+
+    # MACD cross detection
+    ema12 = _ema_calc(closes, 12)
+    ema26 = _ema_calc(closes, 26)
+    ema12p = _ema_calc(closes[:-1], 12)
+    ema26p = _ema_calc(closes[:-1], 26)
+    macd_now  = (ema12 - ema26) if (ema12 and ema26) else 0
+    macd_prev = (ema12p - ema26p) if (ema12p and ema26p) else 0
+    macd_cross = (macd_prev <= 0 < macd_now) or (macd_prev >= 0 > macd_now)
+
+    # Bollinger Band (20,2)
+    bb_mid = sum(closes[-20:]) / 20
+    bb_std = (sum((c - bb_mid) ** 2 for c in closes[-20:]) / 20) ** 0.5
+    bb_up  = bb_mid + 2 * bb_std
+    bb_lo  = bb_mid - 2 * bb_std
+    bb_pos = round((price - bb_lo) / (bb_up - bb_lo), 2) if bb_up > bb_lo else 0.5
+
+    # BB squeeze (current width vs 10 bars ago)
+    old_c = closes[-30:-10]
+    if len(old_c) >= 10:
+        om = sum(old_c) / len(old_c)
+        os = (sum((c - om) ** 2 for c in old_c) / len(old_c)) ** 0.5
+        bb_squeeze = bb_std < os * 0.7
+    else:
+        bb_squeeze = False
+
+    # False breakout score (max wick ratio in last 5 candles)
+    fb_score = 0.0
+    for i in range(-5, 0):
+        total = highs[i] - lows[i]
+        if total < 1e-9:
+            continue
+        body  = abs(closes[i] - opens[i])
+        ratio = (total - body) / total
+        fb_score = max(fb_score, ratio)
+    fb_score = round(fb_score, 2)
+
+    # Liquidity sweep: wick beyond 20-bar swing high/low but closed inside
+    ref_h = highs[-22:-2]
+    ref_l = lows[-22:-2]
+    swing_h = max(ref_h) if ref_h else highs[-1]
+    swing_l = min(ref_l)  if ref_l  else lows[-1]
+    sweep_up   = highs[-1] > swing_h and closes[-1] < swing_h
+    sweep_down = lows[-1]  < swing_l and closes[-1] > swing_l
+
+    # Structure break (new closing high/low in last 10 bars)
+    new_high = closes[-1] > max(closes[-11:-1])
+    new_low  = closes[-1] < min(closes[-11:-1])
+
+    # FVG detection (3-candle gap in last 12 bars)
+    fvg_bull = fvg_bear = False
+    n = len(klines)
+    for i in range(max(0, n - 12), n - 2):
+        if highs[i] < lows[i + 2]:    # bullish gap
+            fvg_bull = True; break
+        if lows[i] > highs[i + 2]:    # bearish gap
+            fvg_bear = True; break
+
+    # Volume ratio vs 20-bar avg
+    avg_vol   = sum(vols[-20:]) / 20 if len(vols) >= 20 else 1
+    vol_ratio = round(vols[-1] / avg_vol, 1) if avg_vol > 0 else 1.0
+
+    return {
+        "rsi":        rsi,
+        "trend":      trend,
+        "macd_cross": macd_cross,
+        "bb_pos":     bb_pos,
+        "bb_squeeze": bb_squeeze,
+        "fb_score":   fb_score,
+        "sweep_up":   sweep_up,
+        "sweep_down": sweep_down,
+        "new_high":   new_high,
+        "new_low":    new_low,
+        "fvg_bull":   fvg_bull,
+        "fvg_bear":   fvg_bear,
+        "fvg_present": fvg_bull or fvg_bear,
+        "vol_ratio":  vol_ratio,
+    }
+
+
+def _scan_market_for_strategies():
+    """Fetch 1h OHLCV for top 25 pairs, compute live condition indicators."""
+    SCAN_PAIRS = [
+        "BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT",
+        "AVAXUSDT","LINKUSDT","DOTUSDT","LTCUSDT","DOGEUSDT",
+        "ADAUSDT","MATICUSDT","ATOMUSDT","UNIUSDT","APTUSDT",
+        "OPUSDT","ARBUSDT","SUIUSDT","NEARUSDT","INJUSDT",
+        "TIAUSDT","JUPUSDT","LDOUSDT","STXUSDT","FILUSDT",
+    ]
+    base   = "https://fapi.binance.com"
+    result = {}
+    for sym in SCAN_PAIRS:
+        try:
+            klines = _requests.get(
+                f"{base}/fapi/v1/klines?symbol={sym}&interval=1h&limit=50",
+                timeout=8,
+            ).json()
+            if not isinstance(klines, list) or len(klines) < 22:
+                continue
+            pair = sym.replace("USDT", "/USDT:USDT")
+            cond = _compute_coin_conditions(klines)
+            if cond:
+                result[pair] = cond
+        except Exception:
+            continue
+    return result
+
+
+_STRATEGY_CONDITIONS = {
+    "false_breakout":          ("fb_score>0.6",        "large rejection wicks near S/R — price entered a level and reversed"),
+    "liquidity_sweep":         ("sweep_up/down",        "price swept above swing high or below swing low then closed back inside"),
+    "bos_choch":               ("new_high/new_low",     "fresh break of structure — new closing high or low vs last 10 bars"),
+    "ob_fvg":                  ("fvg_present+vol>1.3",  "Fair Value Gap present + above-average volume (institutional activity)"),
+    "fvg":                     ("fvg_present",          "unmitigated Fair Value Gap in last 12 bars (bull or bear)"),
+    "ifvg":                    ("fvg_present+fb>0.4",   "FVG present (strategy trades retests of inverted FVG)"),
+    "bpr":                     ("fvg_bull+fvg_bear",    "BOTH bullish and bearish FVGs present (balanced price range)"),
+    "rsi":                     ("rsi<30 or rsi>70",     "RSI in oversold (<30) or overbought (>70) zone"),
+    "rsi_divergence":          ("rsi 40-60+trend",      "RSI near midline while price is trending (divergence setup)"),
+    "macd_cross":              ("macd_cross",           "MACD line just crossed signal line in last 1 bar"),
+    "vwap_rsi":                ("rsi>65 or rsi<35",     "RSI at moderate extreme with trending price"),
+    "bb_rsi_strict":           ("bb_pos<0.1 or >0.9",  "price touching Bollinger Band extreme (top or bottom band)"),
+    "bb_squeeze":              ("bb_squeeze",           "Bollinger Bands compressing (low volatility, breakout imminent)"),
+    "vwap_bands":              ("trend!=sideways",      "clear trending market for VWAP band entries"),
+    "super_breakout":          ("vol_ratio>1.8",        "high volume spike (>1.8x avg) indicating breakout momentum"),
+    "trend_breakout":          ("trend+new_high/low",   "strong trend + price breaking to new high/low (continuation)"),
+    "inducement_continuation": ("sweep+reversal",       "swept a level AND then reversed — sweep_up+new_low or sweep_down+new_high"),
+    "volume_profile":          ("vol_ratio>2.0",        "unusually high volume (>2x average) = institutional footprint"),
+    "fibonacci_retracement":   ("trend+bb0.4-0.6",      "clear trend direction + price at midpoint BB (50-62% retrace area)"),
+    "funding_rate":            ("any perp+active",      "any liquid perp market with active funding (use live ctx data)"),
+    "orb":                     ("vol+volatile",         "time-based strategy (session open range), prefer volatile coins"),
+    "silver_bullet":           ("fvg_present+vol",      "FVG present for ICT kill zone entry (07-11 UTC / 12-16 UTC)"),
+    "pa_structure":            ("new_high/new_low",     "pure price action structure — new swing high or low forming"),
+}
+
+
+def _score_pair_for_strategy(strat: str, c: dict) -> float:
+    """Return 0-3 score for how well a coin's current conditions match a strategy."""
+    rsi = c.get("rsi") or 50
+    fb  = c.get("fb_score", 0)
+    bb  = c.get("bb_pos",   0.5)
+    vol = c.get("vol_ratio",1.0)
+    trend = c.get("trend", "sideways")
+
+    if strat == "false_breakout":
+        s = fb * 2.5
+        if c.get("sweep_up") or c.get("sweep_down"): s += 0.5
+        return s
+
+    if strat == "liquidity_sweep":
+        s = 2.5 if (c.get("sweep_up") or c.get("sweep_down")) else 0
+        s += fb * 0.4
+        return s
+
+    if strat in ("bos_choch", "pa_structure"):
+        s = 2.0 if (c.get("new_high") or c.get("new_low")) else 0
+        if trend != "sideways": s += 0.5
+        return s
+
+    if strat in ("fvg", "ob_fvg"):
+        s = 2.0 if c.get("fvg_present") else 0
+        if strat == "ob_fvg" and vol > 1.3: s += 0.5
+        return s
+
+    if strat == "ifvg":
+        s = 1.5 if c.get("fvg_present") else 0
+        s += fb * 0.5
+        return s
+
+    if strat == "bpr":
+        if c.get("fvg_bull") and c.get("fvg_bear"): return 3.0
+        return 1.0 if c.get("fvg_present") else 0
+
+    if strat == "rsi":
+        if rsi > 70: return 2.0 + (rsi - 70) / 10
+        if rsi < 30: return 2.0 + (30 - rsi) / 10
+        if rsi > 65 or rsi < 35: return 1.0
+        return 0
+
+    if strat == "rsi_divergence":
+        return 2.0 if (40 < rsi < 60 and trend != "sideways") else 0.5
+
+    if strat == "macd_cross":
+        return 3.0 if c.get("macd_cross") else 0
+
+    if strat in ("vwap_rsi", "vwap_bands"):
+        if rsi > 65 or rsi < 35: return 1.5
+        return 1.0 if trend != "sideways" else 0.5
+
+    if strat == "bb_rsi_strict":
+        if bb < 0.1 or bb > 0.9: return 2.5
+        if bb < 0.2 or bb > 0.8: return 1.5
+        return 0
+
+    if strat == "bb_squeeze":
+        return 3.0 if c.get("bb_squeeze") else 0
+
+    if strat in ("super_breakout", "volume_profile"):
+        if vol > 2.0: return 2.5
+        if vol > 1.5: return 1.5
+        return 0
+
+    if strat in ("trend_breakout", "fibonacci_retracement"):
+        s = 1.0 if trend != "sideways" else 0
+        if c.get("new_high") or c.get("new_low"): s += 1.5
+        return s
+
+    if strat == "inducement_continuation":
+        if (c.get("sweep_up") and c.get("new_low")) or (c.get("sweep_down") and c.get("new_high")):
+            return 3.0
+        return 1.5 if (c.get("sweep_up") or c.get("sweep_down")) else 0
+
+    if strat in ("orb", "funding_rate", "silver_bullet"):
+        s = 1.5 if (vol > 1.3 or c.get("fvg_present")) else 1.0
+        if strat == "silver_bullet" and c.get("fvg_present"): s += 0.5
+        return s
+
+    return 0.5
+
+
+def _format_strategy_scan(scan: dict) -> str:
+    if not scan:
+        return "[SCAN] Market scan unavailable."
+
+    # Sort by signal activity (more signals = more interesting)
+    def _sig_count(c):
+        return sum(1 for k in ("sweep_up","sweep_down","fvg_bull","fvg_bear","macd_cross","bb_squeeze","new_high","new_low") if c.get(k))
+
+    top_pairs = sorted(scan.items(), key=lambda x: _sig_count(x[1]), reverse=True)[:12]
+
+    lines = [
+        "Pair       | RSI  | Trend   | Signals",
+        "-" * 55,
+    ]
+    for pair, c in top_pairs:
+        name = pair.split("/")[0]
+        sigs = []
+        if c.get("sweep_up"):   sigs.append("SWEEP_UP")
+        if c.get("sweep_down"): sigs.append("SWEEP_DN")
+        if c.get("fvg_bull"):   sigs.append("FVG_BULL")
+        if c.get("fvg_bear"):   sigs.append("FVG_BEAR")
+        if c.get("macd_cross"): sigs.append("MACD_X")
+        if c.get("bb_squeeze"): sigs.append("BB_SQZ")
+        if c.get("new_high"):   sigs.append("NH")
+        if c.get("new_low"):    sigs.append("NL")
+        rsi = c.get("rsi")
+        if rsi and rsi > 70:    sigs.append(f"OB{rsi:.0f}")
+        if rsi and rsi < 30:    sigs.append(f"OS{rsi:.0f}")
+        lines.append(
+            f"{name:<10} | {(f'{rsi:.0f}' if rsi else '?'):<5}| "
+            f"{c.get('trend','?')[:7]:<8}| {' '.join(sigs) or '-'}"
+        )
+
+    # Top 3 matches per strategy (compact)
+    lines.append("")
+    lines.append("BEST PAIR PER STRATEGY:")
+    for strat, (condition, _) in _STRATEGY_CONDITIONS.items():
+        matches = sorted(
+            ((pair.split("/")[0], _score_pair_for_strategy(strat, c))
+             for pair, c in scan.items()),
+            key=lambda x: x[1], reverse=True
+        )
+        top = [f"{n}[{s:.1f}]" for n, s in matches[:2] if s > 0]
+        lines.append(f"  {strat:<28}: {', '.join(top) or 'no match'}")
+
     return "\n".join(lines)
 
 
@@ -365,35 +681,60 @@ def _format_market_ctx(ctx: dict) -> str:
 
 
 def _web_research():
-    """Live market intelligence from DuckDuckGo — no API key, completely free."""
-    try:
-        from duckduckgo_search import DDGS
-    except ImportError:
-        return "[WEB] duckduckgo_search not installed — run: pip install duckduckgo-search"
+    """Live market intelligence from DuckDuckGo with 20s timeout."""
+    DDGS = None
+    for mod in ("ddgs", "duckduckgo_search"):
+        try:
+            if mod == "ddgs":
+                from ddgs import DDGS as _D
+            else:
+                from duckduckgo_search import DDGS as _D
+            DDGS = _D
+            break
+        except ImportError:
+            continue
+    if DDGS is None:
+        return "[WEB] ddgs not installed"
 
     month_year = datetime.now().strftime("%B %Y")
     queries = [
-        f"BTC ETH crypto market trend analysis {month_year}",
-        f"gold XAU USD technical analysis forecast {month_year}",
-        "crypto trading trending ranging market regime scalping strategy",
+        f"BTC ETH crypto market trend {month_year}",
+        "crypto scalping signals",
     ]
-    snippets = []
-    try:
-        with DDGS() as ddgs:
-            for q in queries:
-                try:
-                    results = list(ddgs.text(q, max_results=2))
-                    for r in results:
-                        body  = (r.get("body")  or "")[:200]
-                        title = (r.get("title") or "")[:70]
-                        if body:
-                            snippets.append(f"• [{title}] {body}")
-                except Exception:
-                    continue
-    except Exception as e:
-        return f"[WEB] Search failed: {e}"
 
-    return "\n".join(snippets[:6]) if snippets else "[WEB] No results returned."
+    def _do_search():
+        snippets = []
+        try:
+            ddgs_kwargs = {}
+            try:
+                import inspect
+                if "timeout" in inspect.signature(DDGS.__init__).parameters:
+                    ddgs_kwargs["timeout"] = 15
+            except Exception:
+                pass
+            with DDGS(**ddgs_kwargs) as ddgs:
+                for q in queries:
+                    try:
+                        results = list(ddgs.text(q, max_results=2))
+                        for r in results:
+                            body  = (r.get("body")  or "")[:150]
+                            title = (r.get("title") or "")[:50]
+                            if body:
+                                snippets.append(f"• [{title}] {body}")
+                    except Exception:
+                        continue
+        except Exception as e:
+            return f"[WEB] Search failed: {e}"
+        return "\n".join(snippets[:4]) if snippets else "[WEB] No results."
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(_do_search)
+            return fut.result(timeout=20)
+    except concurrent.futures.TimeoutError:
+        return "[WEB] Search timed out (20s)"
+    except Exception as e:
+        return f"[WEB] Error: {e}"
 
 
 # ── Full Metrics Calculator ───────────────────────────────────────────────────
@@ -494,12 +835,13 @@ def calculate_metrics(bots):
 
 # ── Prompt Builder ────────────────────────────────────────────────────────────
 
-def _build_prompt(metrics, state, tg_trades, tg_stats, web_research="", market_ctx=None, pair_volumes=None):
+def _build_prompt(metrics, state, tg_trades, tg_stats, web_research="", market_ctx=None, pair_volumes=None, scan_results=None):
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # ── Strategy blocks ──
+    # ── Strategy blocks — compact, top 12 by |PnL| ──
     strat_lines = []
-    for strat, m in sorted(metrics.items(), key=lambda x: x[1]["total_pnl"], reverse=True):
+    sorted_metrics = sorted(metrics.items(), key=lambda x: abs(x[1]["total_pnl"]), reverse=True)
+    for strat, m in sorted_metrics[:12]:
         if m["total_closed"] == 0:
             tag = "NEW"
         elif m["win_rate"] >= 60:
@@ -508,65 +850,29 @@ def _build_prompt(metrics, state, tg_trades, tg_stats, web_research="", market_c
             tag = "WATCH"
         else:
             tag = "POOR"
-
-        streak_flag = f" ⚠️STREAK={m['loss_streak']}" if m["loss_streak"] >= 3 else ""
-        block = [
-            f"▶ {strat} [{tag}]{streak_flag} | {m['timeframe']} | status={m['bot_status']}"
-            f" | trades={m['total_closed']} | WR={m['win_rate']}% | PF={m['profit_factor']}"
-            f" | PnL=${m['total_pnl']:+.2f}"
-        ]
-
-        # Current params
-        pkeys = ["adx_min","rsi_ob","rsi_os","max_open_trades","risk_pct","tp_atr","trailing_atr"]
-        pstr  = " | ".join(f"{k}={v}" for k, v in m["current_params"].items() if k in pkeys)
+        streak_flag = f" STREAK={m['loss_streak']}" if m["loss_streak"] >= 3 else ""
+        # Single compact line
+        line = (f"{strat}[{tag}]{streak_flag} {m['timeframe']} "
+                f"t={m['total_closed']} WR={m['win_rate']}% PF={m['profit_factor']} PnL=${m['total_pnl']:+.0f}")
+        # Key params only
+        pkeys = ["risk_pct", "tp_atr", "max_open_trades"]
+        pstr  = " ".join(f"{k}={v}" for k, v in m["current_params"].items() if k in pkeys)
         if pstr:
-            block.append(f"  params: {pstr}")
-
-        # Brain-enforced rules (already implemented — do NOT re-implement)
+            line += f" | {pstr}"
+        # Brain rules
         if m.get("blocked_hours"):
-            block.append(f"  ✅ BRAIN RULE: blocked_hours={m['blocked_hours']} UTC (already set)")
+            line += f" | blk={m['blocked_hours']}"
         if m.get("direction_bias", "both") != "both":
-            block.append(f"  ✅ BRAIN RULE: direction_bias={m['direction_bias']} (already set)")
-
-        # Recent trades (W/L sequence)
+            line += f" | bias={m['direction_bias']}"
+        # Recent 5 trades
         if m["recent_trades"]:
-            seq = " ".join(
-                f"{'W' if t['pnl'] > 0 else 'L'}${t['pnl']:+.2f}[{t['exit'] or '?'}]"
-                for t in m["recent_trades"]
-            )
-            block.append(f"  recent: {seq}")
-
-        # Time analysis
+            seq = "".join("W" if t["pnl"] > 0 else "L" for t in m["recent_trades"][:5])
+            line += f" | seq={seq}"
+        # Best hour (1 entry only)
         if m["time_analysis"]:
-            t_str = " | ".join(
-                f"{k}: {v['trades']}trades WR={v['wr']}% PnL=${v['pnl']:+.2f}"
-                for k, v in m["time_analysis"].items()
-            )
-            block.append(f"  time:   {t_str}")
-
-        # Direction analysis
-        if m["direction_analysis"]:
-            d_str = " | ".join(
-                f"{k}: {v['count']}t WR={v['wr']}% PnL=${v['pnl']:+.2f}"
-                for k, v in m["direction_analysis"].items()
-            )
-            block.append(f"  dir:    {d_str}")
-
-        # Exit analysis
-        if m["exit_analysis"]:
-            e_str = " | ".join(
-                f"{k}: {v['count']}t WR={v['wr']}%"
-                for k, v in m["exit_analysis"].items()
-            )
-            block.append(f"  exits:  {e_str}")
-
-        # Best/worst trade
-        if m["best_trade"]:
-            block.append(f"  best trade:  +${m['best_trade'].get('pnl',0):.2f} @ {m['best_trade'].get('time','?')}")
-        if m["worst_trade"]:
-            block.append(f"  worst trade: ${m['worst_trade'].get('pnl',0):+.2f} @ {m['worst_trade'].get('time','?')}")
-
-        strat_lines.append("\n".join(block))
+            best_h = max(m["time_analysis"].items(), key=lambda x: x[1]["pnl"])
+            line += f" | best_hr={best_h[0]}({best_h[1]['wr']}%WR)"
+        strat_lines.append(line)
 
     # ── Telegram section ──
     tg_section = "No Telegram trades yet."
@@ -627,6 +933,7 @@ def _build_prompt(metrics, state, tg_trades, tg_stats, web_research="", market_c
     web_section  = web_research if web_research else "[WEB] No research available this run."
     mkt_section  = _format_market_ctx(market_ctx) if market_ctx else "[MARKET] No data fetched."
     pair_section = _format_pair_volumes(pair_volumes) if pair_volumes else "[PAIRS] No data fetched."
+    scan_section = _format_strategy_scan(scan_results) if scan_results else "[SCAN] Market scan not available this run."
 
     return f"""You are FarhanFX AI Trading Brain v4 — expert self-learning algorithmic trading analyst with internet research capability.
 Your mission: deeply analyze ALL trade data + live market intel, find patterns, learn, and auto-implement smart fixes.
@@ -642,6 +949,11 @@ CRYPTO ALGO BOT PERFORMANCE (deep analysis)
 BINANCE PERP PAIRS — 24H VOLUME + VOLATILITY
 ════════════════════════════════════════════
 {pair_section}
+
+════════════════════════════════════════════
+LIVE MARKET SCAN — CURRENT CONDITIONS PER PAIR (1h data)
+════════════════════════════════════════════
+{scan_section}
 
 PAIR SELECTION GUIDE (for assign_pair action):
 • ICT/Smart Money (bos_choch, ob_fvg, liquidity_sweep, silver_bullet, fvg, ifvg, bpr): HIGH volatility + HIGH volume (BTC, ETH, SOL, BNB)
@@ -713,16 +1025,20 @@ YOUR ANALYSIS RULES
 11. SET DIRECTION (v4 new!): if direction_analysis shows one side dominates (gap >30% WR), action="set_direction" with action_detail="direction=buy_only reason=..." — valid values: buy_only, sell_only, both
 12. NEVER re-implement rules already shown as ✅ BRAIN RULE above. Only add new rules or expand existing ones.
 13. USE INTERNET DATA: Cross-reference live market intelligence (above) with trade patterns. If web shows BTC is ranging → adjust strategies accordingly. Note web-derived insights in research_insights.
-14. ASSIGN_PAIR (MANDATORY every run): For EVERY strategy, pick the optimal unique pair from the BINANCE PAIRS table above.
-    Use action="assign_pair" with action_detail="pair=SOL/USDT:USDT reason=high volatility suits ICT kill zone"
+14. ASSIGN_PAIR (MANDATORY every run): For EVERY strategy, use the LIVE MARKET SCAN above to find which pair CURRENTLY shows the right conditions.
+    Use action="assign_pair" with action_detail="pair=SOL/USDT:USDT reason=SOL shows SWEEP_UP+FB=0.82 matching liquidity_sweep conditions"
     RULES for assign_pair:
-    - Each strategy gets a DIFFERENT pair — no duplicates across all strategies
-    - Pick pairs with highest daily volume ($500M+) for ICT strategies
-    - ICT (bos_choch, ob_fvg, liquidity_sweep, silver_bullet) → BTC/ETH/SOL/BNB only
-    - Breakout/trend (super_breakout, orb, trend_breakout) → AVAX/LINK/APT/OP/ARB
-    - Oscillators (rsi, macd_cross, vwap*) → mid-cap coins LINK/DOT/LTC/ATOM/UNI
-    - If strategy already has a good pair with no issues, still include it with current pair (no unnecessary change)
+    - PRIMARY: Use LIVE MARKET SCAN scores. Pick the pair with the HIGHEST score for each strategy (score>1.5 = good match).
+    - If the top-scored pair is already claimed by another strategy, use the 2nd highest scorer.
+    - SECONDARY (if scan unavailable): Use volume/volatility from BINANCE PAIRS table.
+    - Each strategy gets a DIFFERENT pair — no duplicates across all strategies.
+    - Do NOT assign a sideways/low-score coin just because it has high volume — current conditions matter more.
+    - Example reasoning: "false_breakout → SOL because SOL has FB=0.82 + SWEEP_UP right now (score=2.5)"
+    - Example reasoning: "rsi → LINK because LINK RSI=71.4 OB (overbought, score=2.1)"
+    - Example reasoning: "macd_cross → ETH because ETH MACD_X detected this candle (score=3.0)"
+    - If ALL top coins for a strategy already have owners, fall back to 2nd/3rd scan match.
     - TLM and DRAM bots: leave them as-is (they have fixed pairs)
+    - If strategy already has a matching pair AND scan shows it still fits (score>1.0), keep it (no unnecessary change)
 
 Respond ONLY with valid JSON:
 {{
@@ -962,26 +1278,49 @@ def run_analysis():
             market_ctx   = _fetch_market_context()
             print("[Brain] Fetching pair volumes...")
             pair_volumes = _fetch_pair_volumes()
+            print("[Brain] Scanning live market conditions for all strategies...")
+            scan_results = _scan_market_for_strategies()
+            print(f"[Brain] Market scan done: {len(scan_results)} pairs analysed.")
             print("[Brain] Running live web research...")
             web_research = _web_research()
-            prompt       = _build_prompt(metrics, state, tg_trades, tg_stats, web_research, market_ctx, pair_volumes)
+            prompt       = _build_prompt(metrics, state, tg_trades, tg_stats, web_research, market_ctx, pair_volumes, scan_results)
             state["last_market_ctx"] = market_ctx
 
-            resp = _requests.post(
-                _GROQ_API_URL,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type":  "application/json",
-                },
-                json={
-                    "model":       BRAIN_MODEL,
-                    "messages":    [{"role": "user", "content": prompt}],
-                    "max_tokens":  4000,
-                    "temperature": 0.2,
-                },
-                timeout=120,
+            # Hard cap: keep prompt small to avoid Groq 413 / token limits
+            MAX_PROMPT_CHARS = 12_000
+            _JSON_REMINDER = (
+                "\n\n[data trimmed for brevity]\n\n"
+                "IMPORTANT: Respond ONLY with a valid JSON object, no extra text:\n"
+                '{"overall_assessment":"...","market_insight":"...","research_insights":[],"decisions":[]}'
             )
-            resp.raise_for_status()
+            if len(prompt) > MAX_PROMPT_CHARS:
+                print(f"[Brain] Prompt trimmed {len(prompt)}→{MAX_PROMPT_CHARS} chars", flush=True)
+                prompt = prompt[:MAX_PROMPT_CHARS] + _JSON_REMINDER
+
+            print(f"[Brain] Sending prompt ({len(prompt)} chars) to Groq...", flush=True)
+
+            # Try primary model, fallback to smaller if 413
+            for _model in (BRAIN_MODEL, "llama-3.1-8b-instant"):
+                resp = _requests.post(
+                    _GROQ_API_URL,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type":  "application/json",
+                    },
+                    json={
+                        "model":       _model,
+                        "messages":    [{"role": "user", "content": prompt}],
+                        "max_tokens":  2000,
+                        "temperature": 0.2,
+                    },
+                    timeout=120,
+                )
+                if resp.status_code == 413:
+                    print(f"[Brain] 413 on {_model}, trying smaller model...", flush=True)
+                    continue
+                resp.raise_for_status()
+                print(f"[Brain] Got response from {_model}", flush=True)
+                break
             raw = resp.json()["choices"][0]["message"]["content"].strip()
 
             json_match = re.search(r"\{.*\}", raw, re.DOTALL)
