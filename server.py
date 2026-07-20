@@ -5955,7 +5955,8 @@ class IndianBotReq(BaseModel):
 
 _INDIAN_LOT_SIZES = {"NIFTY": 75, "BANKNIFTY": 30, "FINNIFTY": 65, "MIDCPNIFTY": 120, "SENSEX": 20,
                      "INFY": 400, "RELIANCE": 250, "TCS": 175, "WIPRO": 500, "HDFCBANK": 550,
-                     "ICICIBANK": 700, "SBIN": 1500, "BAJFINANCE": 125, "AXISBANK": 625}
+                     "ICICIBANK": 700, "SBIN": 1500, "BAJFINANCE": 125, "AXISBANK": 625,
+                     "MARUTI": 9}
 
 _FO_INDEX_MAP = {
     "NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "FINNIFTY": "^CNXFIN",

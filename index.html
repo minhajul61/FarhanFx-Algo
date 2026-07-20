@@ -2640,10 +2640,11 @@ tr:hover td{background:rgba(139,92,246,0.07)}
                 <div class="field" style="margin:0">
                   <label>Stock Symbol</label>
                   <select id="in-orb-symbol" class="sinput" style="width:100%">
-                    <option value="INFY">INFY (lot=400, validated)</option>
-                    <option value="WIPRO">WIPRO (lot=500)</option>
+                    <option value="WIPRO">WIPRO (lot=500, PF=2.32 ✅)</option>
+                    <option value="INFY">INFY (lot=400, PF=5.99 ✅)</option>
+                    <option value="MARUTI">MARUTI (lot=9, PF=1.53 ✅)</option>
+                    <option value="RELIANCE">RELIANCE (lot=250, PF=1.53)</option>
                     <option value="BAJFINANCE">BAJFINANCE (lot=125)</option>
-                    <option value="RELIANCE">RELIANCE (lot=250)</option>
                     <option value="TCS">TCS (lot=175)</option>
                   </select>
                 </div>
@@ -2665,7 +2666,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
               </div>
               <div style="background:rgba(245,158,11,.06);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:10px;color:var(--text3);line-height:1.8;border-left:3px solid #f59e0b">
                 📉 <b style="color:#f59e0b">ORB Rules:</b> Watches 9:15–9:30 AM opening range. Shorts when price breaks BELOW range low after 9:30 AM. Stop = range HIGH. Target = 1.5× range size. One trade/day. Auto-exit 3:14 PM.
-                <br>⚠️ <b style="color:var(--amber)">Minimum capital for INFY:</b> ₹1,30,000+ recommended (MIS margin ~₹43k + buffer).
+                <br>💰 <b style="color:#22c55e">Capital needed:</b> WIPRO ≈ ₹53,000 (PF=2.32, WR=61%) &nbsp;|&nbsp; INFY ≈ ₹2,61,000 (PF=5.99, WR=67%) &nbsp;|&nbsp; MARUTI ≈ ₹73,000 (PF=1.53)
               </div>
               <button class="sbtn" onclick="indianOrbBotStart()" style="padding:8px 24px;background:#d97706;color:#fff;border-color:#d97706;font-weight:700">📉 START ORB SHORT BOT</button>
               <div id="in-orb-err" style="font-size:11px;color:var(--red);margin-top:8px;display:none"></div>
