@@ -6807,6 +6807,19 @@ def brain_run_now(current_user: dict = Depends(_get_current_user)):
     return result
 
 
+@app.get("/api/brain/scanner")
+def brain_scanner(current_user: dict = Depends(_get_current_user)):
+    """Return stored scanner data (Fear & Greed, momentum, whales, news)."""
+    try:
+        state = _brain._load_state()
+        scanner = state.get("scanner")
+        if not scanner:
+            return {"success": False, "error": "No scanner data yet — run brain analysis first."}
+        return {"success": True, "scanner": scanner}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 class BrainConfigureRequest(BaseModel):
     api_key: str
 

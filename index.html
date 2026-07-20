@@ -3228,6 +3228,22 @@ tr:hover td{background:rgba(139,92,246,0.07)}
           </div>
         </div>
 
+        <!-- ── MARKET INTELLIGENCE v5 SCANNER ── -->
+        <div class="jarvis-panel" id="brain-scanner-panel" style="margin-bottom:14px">
+          <div class="jarvis-bracket tl"></div><div class="jarvis-bracket tr"></div>
+          <div class="jarvis-bracket bl"></div><div class="jarvis-bracket br"></div>
+          <div class="jarvis-panel-hdr" style="justify-content:space-between">
+            <span>🛰 MARKET INTELLIGENCE v5 — Fear & Greed · Momentum · Whales</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="scanner-updated" style="font-size:9px;color:#475569;letter-spacing:0">—</span>
+              <button onclick="loadBrainScanner()" style="padding:4px 10px;background:transparent;border:1px solid rgba(6,182,212,.3);color:#06b6d4;border-radius:6px;font-size:10px;cursor:pointer;font-weight:700">↺</button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:180px 1fr 1fr;gap:12px;align-items:start" id="scanner-grid">
+            <div style="color:#475569;font-size:12px;text-align:center;grid-column:1/-1;padding:16px">Loading intelligence data...</div>
+          </div>
+        </div>
+
         <!-- Strategy intelligence grid -->
         <div class="jarvis-panel" style="margin-bottom:14px">
           <div class="jarvis-bracket tl"></div><div class="jarvis-bracket tr"></div>
@@ -10009,6 +10025,7 @@ function _jarvisStopAuto() { clearInterval(_jarvisTimer); _jarvisTimer = null; }
 async function jarvisInit() {
   _jarvisStopAuto();
   await jarvisRefresh();
+  loadBrainScanner();
   _jarvisTimer = setInterval(jarvisRefresh, 20000);
   const badge = document.getElementById('jarvis-auto-badge');
   if (badge) badge.textContent = 'AUTO: 20s';
@@ -10027,6 +10044,132 @@ async function jarvisRefresh() {
   } catch(e) { console.error('Jarvis refresh error:', e); }
 }
 
+// ── BRAIN INTELLIGENCE SCANNER ────────────────────────────────────────────────
+async function loadBrainScanner() {
+  const grid = document.getElementById('scanner-grid');
+  if (!grid) return;
+  try {
+    const r = await apiFetch('/api/brain/scanner');
+    if (!r.success || !r.scanner) {
+      grid.innerHTML = `<div style="color:#475569;font-size:12px;text-align:center;grid-column:1/-1;padding:16px">${r.error || 'No scanner data yet — run brain analysis first.'}</div>`;
+      return;
+    }
+    _renderBrainScanner(r.scanner);
+    const upd = document.getElementById('scanner-updated');
+    if (upd && r.scanner.updated) upd.textContent = r.scanner.updated;
+  } catch(e) {
+    if (grid) grid.innerHTML = '<div style="color:#ef4444;font-size:12px;grid-column:1/-1;padding:16px">Scanner load error</div>';
+  }
+}
+
+function _renderBrainScanner(sc) {
+  const grid = document.getElementById('scanner-grid');
+  if (!grid) return;
+
+  // Column 1: Fear & Greed gauge
+  const fg = sc.fear_greed || {};
+  const score = fg.score != null ? fg.score : null;
+  const fgColor = score == null ? '#475569' : score >= 75 ? '#ef4444' : score >= 55 ? '#f59e0b' : score >= 45 ? '#94a3b8' : score >= 25 ? '#22c55e' : '#06b6d4';
+  const fgLabel = fg.label || '—';
+  const fgSignal = fg.signal || '—';
+  const fgTrend = fg.trend || '—';
+  const gaugePct = score != null ? Math.round(score) : 0;
+  const gaugeAngle = (gaugePct / 100) * 180 - 90; // -90 to +90 degrees
+
+  const fgHtml = `
+    <div style="text-align:center;padding:8px 0">
+      <div style="font-size:9px;letter-spacing:1.5px;color:#06b6d4;font-weight:700;margin-bottom:10px">FEAR & GREED</div>
+      <div style="position:relative;width:120px;height:64px;margin:0 auto 8px">
+        <svg viewBox="0 0 120 64" width="120" height="64">
+          <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#1e293b" stroke-width="10" stroke-linecap="round"/>
+          <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="url(#fgGrad)" stroke-width="10" stroke-linecap="round"
+                stroke-dasharray="${(gaugePct/100)*157} 157"/>
+          <defs>
+            <linearGradient id="fgGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#06b6d4"/>
+              <stop offset="50%" style="stop-color:#f59e0b"/>
+              <stop offset="100%" style="stop-color:#ef4444"/>
+            </linearGradient>
+          </defs>
+          <line x1="60" y1="60" x2="${60 + 34*Math.cos((gaugeAngle-90)*Math.PI/180)}" y2="${60 + 34*Math.sin((gaugeAngle-90)*Math.PI/180)}"
+                stroke="${fgColor}" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="60" cy="60" r="4" fill="${fgColor}"/>
+        </svg>
+        <div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);font-size:22px;font-weight:800;color:${fgColor};font-family:monospace">${score != null ? score : '—'}</div>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:${fgColor};margin-bottom:4px">${fgLabel}</div>
+      <div style="font-size:10px;color:#64748b">Trend: ${fgTrend}</div>
+      <div style="font-size:10px;color:#94a3b8;margin-top:4px;padding:3px 8px;background:rgba(6,182,212,.08);border-radius:4px">${fgSignal}</div>
+    </div>`;
+
+  // Column 2: Momentum leaderboard
+  const momentum = sc.momentum || [];
+  let momRows = '';
+  momentum.slice(0, 5).forEach((m, i) => {
+    const sc2 = m.score || 0;
+    const bar = Math.round((sc2 / 100) * 80);
+    const col = sc2 >= 70 ? '#22c55e' : sc2 >= 50 ? '#f59e0b' : '#64748b';
+    momRows += `
+      <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+        <span style="font-size:9px;color:#475569;width:14px;text-align:right">#${i+1}</span>
+        <span style="font-size:11px;font-weight:700;color:#e2e8f0;width:52px;font-family:monospace">${m.coin || '?'}</span>
+        <div style="flex:1;background:#1e293b;border-radius:2px;height:6px;overflow:hidden">
+          <div style="width:${bar}%;height:100%;background:${col};border-radius:2px;transition:width .4s"></div>
+        </div>
+        <span style="font-size:10px;font-weight:700;color:${col};width:28px;text-align:right;font-family:monospace">${sc2}</span>
+        <span style="font-size:9px;color:#475569">RSI ${m.rsi || '—'}</span>
+      </div>`;
+  });
+  const momHtml = `
+    <div>
+      <div style="font-size:9px;letter-spacing:1.5px;color:#a855f7;font-weight:700;margin-bottom:8px">MOMENTUM LEADERBOARD</div>
+      ${momRows || '<div style="color:#475569;font-size:11px">No momentum data</div>'}
+    </div>`;
+
+  // Column 3: Whale signals + News
+  const whales = sc.whales || [];
+  const news = sc.news || [];
+  let whaleRows = whales.slice(0, 3).map(w => {
+    const col = w.strength === 'STRONG' ? '#ef4444' : '#f59e0b';
+    return `<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:11px">
+      <span style="color:${col};font-weight:700">[${w.strength}]</span>
+      <span style="color:#e2e8f0;margin:0 4px">${w.coin}</span>
+      <span style="color:#64748b">${w.signal}</span>
+      <div style="color:#94a3b8;font-size:10px;margin-top:1px">→ ${w.action}</div>
+    </div>`;
+  }).join('') || '<div style="color:#475569;font-size:11px">No extreme whale signals</div>';
+
+  const trending = news.filter(n => n.type === 'trending').slice(0, 3);
+  const gainers  = news.filter(n => n.type === 'gainer').slice(0, 2);
+  let newsRows = '';
+  trending.forEach(n => {
+    const chg = n.change_24h;
+    const col = chg >= 0 ? '#22c55e' : '#ef4444';
+    newsRows += `<div style="font-size:10px;display:flex;justify-content:space-between;padding:2px 0">
+      <span style="color:#94a3b8">🔥 ${n.coin}</span>
+      <span style="color:${col};font-family:monospace">${chg >= 0 ? '+' : ''}${chg.toFixed(1)}%</span></div>`;
+  });
+  gainers.forEach(n => {
+    const chg = n.change_24h;
+    newsRows += `<div style="font-size:10px;display:flex;justify-content:space-between;padding:2px 0">
+      <span style="color:#94a3b8">📈 ${n.coin}</span>
+      <span style="color:#22c55e;font-family:monospace">+${chg.toFixed(1)}%</span></div>`;
+  });
+
+  const rightHtml = `
+    <div>
+      <div style="font-size:9px;letter-spacing:1.5px;color:#f59e0b;font-weight:700;margin-bottom:6px">WHALE SIGNALS</div>
+      ${whaleRows}
+      <div style="font-size:9px;letter-spacing:1.5px;color:#22c55e;font-weight:700;margin:10px 0 6px">MARKET MOVERS (24h)</div>
+      ${newsRows || '<div style="color:#475569;font-size:11px">No mover data</div>'}
+    </div>`;
+
+  grid.innerHTML = `
+    <div style="background:rgba(6,182,212,.04);border:1px solid rgba(6,182,212,.1);border-radius:8px;padding:10px">${fgHtml}</div>
+    <div style="background:rgba(168,85,247,.04);border:1px solid rgba(168,85,247,.1);border-radius:8px;padding:10px">${momHtml}</div>
+    <div style="background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.1);border-radius:8px;padding:10px">${rightHtml}</div>`;
+}
+
 async function jarvisRunNow() {
   const btn = document.getElementById('jarvis-run-btn');
   if (btn) { btn.disabled = true; btn.textContent = '⚙ ANALYZING...'; }
@@ -10034,6 +10177,7 @@ async function jarvisRunNow() {
     const r = await apiFetch('/api/brain/run', { method: 'POST' });
     toast(r.error ? '⚠️ Brain error: ' + r.error : '🧠 Analysis complete — ' + (r.decisions||[]).length + ' decision(s)');
     await jarvisRefresh();
+    loadBrainScanner();
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '⚡ ANALYZE NOW'; }
   }

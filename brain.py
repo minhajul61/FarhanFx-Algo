@@ -737,6 +737,190 @@ def _web_research():
         return f"[WEB] Error: {e}"
 
 
+# ── Fear & Greed + News + Whale + Momentum ───────────────────────────────────
+
+def _fetch_fear_greed():
+    """Crypto Fear & Greed Index — alternative.me (free, no key)."""
+    try:
+        r = _requests.get("https://api.alternative.me/fng/?limit=2", timeout=8)
+        data = r.json().get("data", [])
+        if not data:
+            return {}
+        now_score = int(data[0].get("value", 50))
+        label     = data[0].get("value_classification", "Neutral")
+        prev      = int(data[1].get("value", 50)) if len(data) > 1 else now_score
+        trend     = "rising" if now_score > prev else ("falling" if now_score < prev else "stable")
+        if now_score <= 25:   signal = "EXTREME_FEAR — strong BUY zone historically"
+        elif now_score <= 45: signal = "FEAR — cautious buy opportunities"
+        elif now_score <= 55: signal = "NEUTRAL — no strong bias"
+        elif now_score <= 75: signal = "GREED — take profits, reduce longs"
+        else:                 signal = "EXTREME_GREED — strong SELL zone historically"
+        return {"score": now_score, "label": label, "trend": trend,
+                "signal": signal, "yesterday": prev}
+    except Exception as e:
+        return {"error": str(e)[:80]}
+
+
+def _fetch_crypto_news():
+    """CoinGecko trending + Binance top movers as market news (free, no key)."""
+    results = []
+    try:
+        r = _requests.get("https://api.coingecko.com/api/v3/search/trending", timeout=8)
+        coins = r.json().get("coins", [])
+        for c in coins[:5]:
+            item = c.get("item", {})
+            chg  = item.get("data", {}).get("price_change_percentage_24h", {}).get("usd", 0)
+            results.append({"type": "trending", "coin": item.get("symbol","?").upper(),
+                            "name": item.get("name",""), "change_24h": round(chg or 0, 2)})
+    except Exception:
+        pass
+    try:
+        tickers = _requests.get("https://fapi.binance.com/fapi/v1/ticker/24hr", timeout=8).json()
+        liquid  = [t for t in tickers if isinstance(t, dict)
+                   and t.get("symbol","").endswith("USDT")
+                   and float(t.get("quoteVolume", 0)) > 100_000_000]
+        by_chg  = sorted(liquid, key=lambda x: float(x.get("priceChangePercent", 0)), reverse=True)
+        for t in by_chg[:3]:
+            results.append({"type": "gainer", "coin": t["symbol"].replace("USDT",""),
+                            "change_24h": round(float(t["priceChangePercent"]), 2)})
+        for t in by_chg[-3:]:
+            results.append({"type": "loser", "coin": t["symbol"].replace("USDT",""),
+                            "change_24h": round(float(t["priceChangePercent"]), 2)})
+    except Exception:
+        pass
+    return results
+
+
+def _fetch_whale_signals(market_ctx: dict) -> list:
+    """Derive whale signals from funding extremes, OI spikes, and top-trader L/S."""
+    signals = []
+    for sym, d in market_ctx.items():
+        if "error" in d:
+            continue
+        funding = d.get("funding_pct", 0)
+        oi_chg  = d.get("oi_5h_chg", 0)
+        ls      = d.get("ls_ratio", 1.0)
+
+        if abs(funding) > 0.05:
+            fade = "SHORT" if funding > 0 else "LONG"
+            signals.append({"coin": sym, "strength": "HIGH",
+                            "signal": f"Extreme funding {funding:+.4f}%",
+                            "action": f"Whales likely {fade}ing — retail over-leveraged"})
+        if abs(oi_chg) > 8:
+            move = "ENTERING" if oi_chg > 0 else "EXITING"
+            signals.append({"coin": sym, "strength": "HIGH" if abs(oi_chg) > 15 else "MEDIUM",
+                            "signal": f"OI {oi_chg:+.1f}% in 5h",
+                            "action": f"Big money {move} {sym} — watch for volatility"})
+        if ls > 2.0:
+            signals.append({"coin": sym, "strength": "MEDIUM",
+                            "signal": f"Top traders heavily LONG (L/S={ls})",
+                            "action": "Smart money bullish — follow trend or wait for reversal"})
+        elif ls < 0.55:
+            signals.append({"coin": sym, "strength": "MEDIUM",
+                            "signal": f"Top traders heavily SHORT (L/S={ls})",
+                            "action": "Smart money bearish — short squeeze risk if price pumps"})
+    return signals
+
+
+def _compute_momentum_scores(scan_results: dict, market_ctx: dict) -> list:
+    """Score 0-100 per coin based on RSI + trend + volume + MACD + signals."""
+    scores = {}
+    for pair, c in scan_results.items():
+        sym       = pair.split("/")[0]
+        rsi       = c.get("rsi") or 50
+        trend     = c.get("trend", "sideways")
+        vol_ratio = c.get("vol_ratio", 1.0)
+        score     = 0
+        reasons   = []
+
+        # RSI health
+        if 42 <= rsi <= 65:
+            score += 22; reasons.append(f"RSI={rsi:.0f}")
+        elif rsi > 70:
+            score += 4
+        elif rsi < 30:
+            score += 8; reasons.append(f"OS RSI={rsi:.0f}")
+
+        # Trend
+        if trend == "up":
+            score += 22; reasons.append("uptrend")
+        elif trend == "sideways":
+            score += 4
+
+        # Volume spike
+        if vol_ratio >= 2.0:
+            score += 20; reasons.append(f"VOL {vol_ratio:.1f}×")
+        elif vol_ratio >= 1.5:
+            score += 12; reasons.append(f"vol {vol_ratio:.1f}×")
+
+        # MACD cross
+        if c.get("macd_cross"):
+            score += 15; reasons.append("MACD✗")
+
+        # Breakout signals
+        if c.get("new_high"):
+            score += 10; reasons.append("new high")
+        if c.get("bb_squeeze"):
+            score += 8;  reasons.append("BB squeeze")
+        if c.get("fvg_present"):
+            score += 7;  reasons.append("FVG")
+
+        # Funding bonus (neutral = safer momentum)
+        ctx = market_ctx.get(sym[:3], {})
+        if ctx and abs(ctx.get("funding_pct", 0)) < 0.02:
+            score += 4
+
+        scores[sym] = {"score": min(score, 100), "rsi": round(rsi, 1),
+                       "trend": trend, "vol": round(vol_ratio, 1),
+                       "reasons": reasons[:5]}
+
+    ranked = sorted(scores.items(), key=lambda x: x[1]["score"], reverse=True)
+    return [{"rank": i+1, "coin": sym, **data} for i, (sym, data) in enumerate(ranked[:10])]
+
+
+def _format_intelligence(fg, news, whales, momentum) -> str:
+    """Format all intelligence data into a prompt section."""
+    lines = []
+
+    # Fear & Greed
+    if fg and "score" not in fg.get("error", "x") if "error" not in fg else False:
+        pass
+    if fg and "score" in fg:
+        lines.append(f"FEAR & GREED: {fg['score']}/100 ({fg['label']}) — trend={fg['trend']}")
+        lines.append(f"  Signal: {fg['signal']}")
+    else:
+        lines.append("FEAR & GREED: unavailable")
+
+    # News / movers
+    lines.append("\nMARKET MOVERS (24h):")
+    trending = [n for n in news if n.get("type") == "trending"]
+    gainers  = [n for n in news if n.get("type") == "gainer"]
+    losers   = [n for n in news if n.get("type") == "loser"]
+    if trending:
+        lines.append("  Trending: " + ", ".join(f"{n['coin']}({n['change_24h']:+.1f}%)" for n in trending[:4]))
+    if gainers:
+        lines.append("  Top gains: " + ", ".join(f"{n['coin']} {n['change_24h']:+.1f}%" for n in gainers))
+    if losers:
+        lines.append("  Top drops: " + ", ".join(f"{n['coin']} {n['change_24h']:+.1f}%" for n in losers))
+
+    # Whale signals
+    lines.append("\nWHALE SIGNALS:")
+    if whales:
+        for w in whales[:4]:
+            lines.append(f"  [{w['strength']}] {w['coin']}: {w['signal']} → {w['action']}")
+    else:
+        lines.append("  No extreme whale signals detected.")
+
+    # Momentum leaderboard
+    lines.append("\nMOMENTUM LEADERBOARD (top 5 coins right now):")
+    for m in momentum[:5]:
+        tag = "🔥" if m["score"] >= 70 else ("✅" if m["score"] >= 50 else "⚠️")
+        lines.append(f"  #{m['rank']} {m['coin']:6s} score={m['score']:3d}/100  RSI={m['rsi']}  {m['trend']}  "
+                     f"vol={m['vol']}×  [{', '.join(m['reasons'])}] {tag}")
+
+    return "\n".join(lines)
+
+
 # ── Full Metrics Calculator ───────────────────────────────────────────────────
 
 def calculate_metrics(bots):
@@ -835,7 +1019,7 @@ def calculate_metrics(bots):
 
 # ── Prompt Builder ────────────────────────────────────────────────────────────
 
-def _build_prompt(metrics, state, tg_trades, tg_stats, web_research="", market_ctx=None, pair_volumes=None, scan_results=None):
+def _build_prompt(metrics, state, tg_trades, tg_stats, web_research="", market_ctx=None, pair_volumes=None, scan_results=None, intelligence=""):
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     # ── Strategy blocks — compact, top 12 by |PnL| ──
@@ -934,8 +1118,10 @@ def _build_prompt(metrics, state, tg_trades, tg_stats, web_research="", market_c
     mkt_section  = _format_market_ctx(market_ctx) if market_ctx else "[MARKET] No data fetched."
     pair_section = _format_pair_volumes(pair_volumes) if pair_volumes else "[PAIRS] No data fetched."
     scan_section = _format_strategy_scan(scan_results) if scan_results else "[SCAN] Market scan not available this run."
+    intel_section = intelligence if intelligence else "[INTEL] Not available."
 
-    return f"""You are FarhanFX AI Trading Brain v4 — expert self-learning algorithmic trading analyst with internet research capability.
+    return f"""You are FarhanFX AI Trading Brain v5 — expert self-learning algorithmic trading analyst with full market intelligence.
+Your mission: deeply analyze ALL trade data + live market intel (fear/greed, whale signals, momentum), find patterns, learn, and auto-implement smart fixes.
 Your mission: deeply analyze ALL trade data + live market intel, find patterns, learn, and auto-implement smart fixes.
 
 DATE: {now_str}
@@ -974,6 +1160,11 @@ Rules for market context:
 • L/S ratio < 0.75  → retail shorts crowded → short squeeze coming, avoid trend-follow shorts
 • OI 5h change >+5% → hot market, volatility spiking → tighten risk_pct or max_open_trades
 • OI 5h change <-5% → mass liquidation/exits → extra caution, may be false signal period
+
+════════════════════════════════════════════
+MARKET INTELLIGENCE v5 (Fear/Greed + News + Whales + Momentum)
+════════════════════════════════════════════
+{intel_section}
 
 ════════════════════════════════════════════
 LIVE MARKET INTELLIGENCE (internet research)
@@ -1025,6 +1216,10 @@ YOUR ANALYSIS RULES
 11. SET DIRECTION (v4 new!): if direction_analysis shows one side dominates (gap >30% WR), action="set_direction" with action_detail="direction=buy_only reason=..." — valid values: buy_only, sell_only, both
 12. NEVER re-implement rules already shown as ✅ BRAIN RULE above. Only add new rules or expand existing ones.
 13. USE INTERNET DATA: Cross-reference live market intelligence (above) with trade patterns. If web shows BTC is ranging → adjust strategies accordingly. Note web-derived insights in research_insights.
+15. FEAR & GREED: score<25 → bias buy_only for trend strategies; score>75 → bias sell_only or reduce risk_pct; score 40-60 → no bias change needed.
+16. WHALE SIGNALS: HIGH strength whale signal → treat as market regime signal (reduce max_open_trades if conflicting with bots). MEDIUM → note as research insight.
+17. MOMENTUM LEADERBOARD: Top 3 coins with score≥70 → prioritize for assign_pair actions. Coins with score<30 → avoid assigning strategies to them.
+18. NEWS/MOVERS: If a coin is top gainer/loser (+/-10%) AND has a bot on it, note as research insight. Extreme moves often mean strategy conditions broken.
 14. ASSIGN_PAIR (MANDATORY every run): For EVERY strategy, use the LIVE MARKET SCAN above to find which pair CURRENTLY shows the right conditions.
     Use action="assign_pair" with action_detail="pair=SOL/USDT:USDT reason=SOL shows SWEEP_UP+FB=0.82 matching liquidity_sweep conditions"
     RULES for assign_pair:
@@ -1281,10 +1476,27 @@ def run_analysis():
             print("[Brain] Scanning live market conditions for all strategies...")
             scan_results = _scan_market_for_strategies()
             print(f"[Brain] Market scan done: {len(scan_results)} pairs analysed.")
+            print("[Brain] Fetching Fear & Greed index...")
+            fear_greed   = _fetch_fear_greed()
+            print("[Brain] Fetching crypto news & movers...")
+            crypto_news  = _fetch_crypto_news()
+            print("[Brain] Computing whale signals...")
+            whale_sigs   = _fetch_whale_signals(market_ctx)
+            print("[Brain] Computing momentum scores...")
+            momentum     = _compute_momentum_scores(scan_results, market_ctx)
+            intelligence = _format_intelligence(fear_greed, crypto_news, whale_sigs, momentum)
             print("[Brain] Running live web research...")
             web_research = _web_research()
-            prompt       = _build_prompt(metrics, state, tg_trades, tg_stats, web_research, market_ctx, pair_volumes, scan_results)
+            prompt       = _build_prompt(metrics, state, tg_trades, tg_stats, web_research,
+                                         market_ctx, pair_volumes, scan_results, intelligence)
             state["last_market_ctx"] = market_ctx
+            state["scanner"] = {
+                "updated":    datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "fear_greed": fear_greed,
+                "news":       crypto_news,
+                "whales":     whale_sigs,
+                "momentum":   momentum,
+            }
 
             # Hard cap: keep prompt small to avoid Groq 413 / token limits
             MAX_PROMPT_CHARS = 12_000
