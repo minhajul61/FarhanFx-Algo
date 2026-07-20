@@ -6308,9 +6308,10 @@ def _indian_market_open() -> bool:
 
 
 def _append_indian_signal_log(bot: dict, event: str, price: float, note: str = ""):
+    _now_ist = _ist_now()
     entry = {
-        "time":     datetime.now().strftime("%H:%M:%S"),
-        "date":     datetime.now().strftime("%d %b"),
+        "time":     _now_ist.strftime("%H:%M:%S"),
+        "date":     _now_ist.strftime("%d %b"),
         "bot_id":   bot.get("id", ""),
         "symbol":   bot.get("symbol", ""),
         "strategy": bot.get("strategy", ""),
