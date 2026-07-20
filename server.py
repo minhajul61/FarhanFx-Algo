@@ -5872,6 +5872,8 @@ _indian_bots: dict = {}
 _indian_bot_timers: dict = {}
 _INDIAN_TF_SECONDS = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "1d": 86400}
 _INDIAN_BOTS_FILE = "indian_bots.json"
+_indian_signal_log: list = []   # rolling 300-entry signal log
+_INDIAN_SIGNAL_LOG_MAX = 300
 
 
 def _save_indian_bots():
@@ -6305,6 +6307,23 @@ def _indian_market_open() -> bool:
     return 9 * 60 + 15 <= t <= 15 * 60 + 30
 
 
+def _append_indian_signal_log(bot: dict, event: str, price: float, note: str = ""):
+    entry = {
+        "time":     datetime.now().strftime("%H:%M:%S"),
+        "date":     datetime.now().strftime("%d %b"),
+        "bot_id":   bot.get("id", ""),
+        "symbol":   bot.get("symbol", ""),
+        "strategy": bot.get("strategy", ""),
+        "mode":     bot.get("mode", "demo"),
+        "event":    event,      # SIGNAL_CE / SIGNAL_PE / SELL / BUY / OPEN / CLOSE / SKIP
+        "price":    round(price, 2),
+        "note":     note,
+    }
+    _indian_signal_log.insert(0, entry)
+    if len(_indian_signal_log) > _INDIAN_SIGNAL_LOG_MAX:
+        _indian_signal_log.pop()
+
+
 def _indian_bot_tick(bot_id):
     bot = _indian_bots.get(bot_id)
     if not bot or bot["status"] != "active":
@@ -6375,6 +6394,11 @@ def _indian_bot_tick(bot_id):
             else:
                 signal = raw_sig
 
+        if signal:
+            sig_note = bot.get("_current_opt_dir", "") if is_opt else signal
+            _append_indian_signal_log(bot, f"SIGNAL_{sig_note}" if is_opt else f"SIGNAL_{signal}",
+                                      price, f"strategy={strategy}")
+
         lot_size = _INDIAN_LOT_SIZES.get(bot["symbol"].upper(), 1) if is_opt else 1
         qty = int(bot.get("quantity", 1)) * lot_size if is_opt else int(bot.get("quantity", 1))
         # FCM high conviction (first candle ≥50pts + CPR aligned) → 2 lots
@@ -6420,6 +6444,8 @@ def _indian_bot_tick(bot_id):
                 except Exception:
                     pass
             mode_label = "Live" if bot.get("mode") == "live" else "Demo"
+            _append_indian_signal_log(bot, "CLOSE", exit_price,
+                                      f"{exit_reason} | PnL=₹{pnl:.2f}")
             _tg_notify(
                 f"<b>FarhanFX Indian — Closed ({mode_label})</b>\n"
                 f"📊 <b>{bot['strategy']}</b> | {bot['symbol']}\n"
@@ -6560,6 +6586,8 @@ def _indian_bot_tick(bot_id):
             bot["open_peak"]        = price
             bot["open_trough"]      = price
             bot["last_error"]       = None
+            open_note = f"qty={qty} | {bot.get('_current_opt_dir','') if is_opt else signal}"
+            _append_indian_signal_log(bot, "OPEN", price, open_note)
             _save_indian_bots()
             mode_label = "Live" if bot.get("mode") == "live" else "Demo"
             disp_sym = trade_sym if is_opt else bot["symbol"]
@@ -6658,6 +6686,13 @@ def indian_algo_bots(current_user: dict = Depends(_get_current_user)):
             "_orb_low":       bot.get("_orb_low"),
         })
     return result
+
+
+@app.get("/api/indian/signal-log")
+def indian_signal_log_api(current_user: dict = Depends(_get_current_user)):
+    uname = current_user["username"]
+    user_bots = {b["id"] for b in _indian_bots.values() if b.get("username") == uname}
+    return [e for e in _indian_signal_log if e.get("bot_id") in user_bots]
 
 
 @app.get("/api/indian/algo/history")

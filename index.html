@@ -2246,6 +2246,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
             <button class="crypto-sub-tab" id="in-tab-btn-manual" onclick="indianTab('manual')">MANUAL TRADE</button>
             <button class="crypto-sub-tab" id="in-tab-btn-algo" onclick="indianTab('algo')">ALGO BOTS</button>
             <button class="crypto-sub-tab" id="in-tab-btn-history" onclick="indianTab('history')">BOT HISTORY</button>
+            <button class="crypto-sub-tab" id="in-tab-btn-signallog" onclick="indianTab('signallog')">📋 SIGNAL LOG</button>
           </div>
 
           <!-- ── DASHBOARD TAB ── -->
@@ -2700,6 +2701,49 @@ tr:hover td{background:rgba(139,92,246,0.07)}
                 <table>
                   <thead><tr><th>TIME</th><th>SYMBOL</th><th>STRATEGY</th><th>TF</th><th>MODE</th><th>SIGNAL</th><th>ENTRY ₹</th><th>EXIT ₹</th><th>QTY</th><th>P&amp;L ₹</th><th>STATUS</th><th>REASON</th></tr></thead>
                   <tbody id="in-history-tbody"><tr><td colspan="12" style="text-align:center;color:var(--text3);padding:16px">No trades yet.</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── SIGNAL LOG TAB ── -->
+          <div id="in-tab-signallog" style="display:none">
+            <div class="panel">
+              <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span>📋 Signal Log</span>
+                  <span id="in-siglog-count" style="font-size:9px;background:rgba(139,92,246,.2);color:#c4b5fd;border-radius:20px;padding:1px 8px;font-weight:700">0 events</span>
+                </div>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <select id="in-siglog-filter" onchange="filterIndianSignalLog()" style="background:var(--card2);border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:2px 6px;font-size:10px;font-family:var(--font)">
+                    <option value="all">All Events</option>
+                    <option value="SIGNAL">Signals only</option>
+                    <option value="OPEN">Opens only</option>
+                    <option value="CLOSE">Closes only</option>
+                  </select>
+                  <button class="sbtn" onclick="loadIndianSignalLog()" style="font-size:9px;padding:2px 8px">↻ REFRESH</button>
+                  <button class="sbtn" onclick="clearIndianSignalLog()" style="font-size:9px;padding:2px 8px;background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.3);color:var(--red)">CLEAR</button>
+                </div>
+              </div>
+              <div style="overflow-x:auto">
+                <table style="min-width:600px">
+                  <thead>
+                    <tr>
+                      <th style="width:90px">TIME</th>
+                      <th style="width:60px">DATE</th>
+                      <th style="width:80px">SYMBOL</th>
+                      <th>STRATEGY</th>
+                      <th style="width:60px">MODE</th>
+                      <th style="width:100px">EVENT</th>
+                      <th style="width:80px;text-align:right">PRICE ₹</th>
+                      <th>NOTE</th>
+                    </tr>
+                  </thead>
+                  <tbody id="in-siglog-tbody">
+                    <tr><td colspan="8" style="text-align:center;color:var(--text3);padding:24px">
+                      Bot চালু করো — signal, open, close সব এখানে দেখাবে।
+                    </td></tr>
+                  </tbody>
                 </table>
               </div>
             </div>
@@ -11687,7 +11731,7 @@ async function _refreshBotPnlLive() {
 }
 
 function indianTab(tab) {
-  ['dashboard','manual','algo','history'].forEach(t => {
+  ['dashboard','manual','algo','history','signallog'].forEach(t => {
     const el = document.getElementById(`in-tab-${t}`);
     if (el) el.style.display = t === tab ? 'block' : 'none';
     const btn = document.getElementById(`in-tab-btn-${t}`);
@@ -11702,6 +11746,7 @@ function indianTab(tab) {
   if (tab === 'manual')    indianLoadOptionsChain();
   if (tab === 'dashboard') loadIndianDashboard();
   if (tab === 'history')   indianAlgoLoadHistory();
+  if (tab === 'signallog') loadIndianSignalLog();
 }
 
 // ── INDIAN MARKET — ALGO BOTS ────────────────────────────────────────────────
@@ -11899,6 +11944,74 @@ async function indianAlgoLoadHistory() {
       <td style="font-size:10px;color:var(--text3)">${r.exit_reason||'—'}</td>
     </tr>`;
   }).join('');
+}
+
+// ── INDIAN MARKET — SIGNAL LOG ─────────────────────────────────────────────────
+let _indSigLogAll = [];
+
+async function loadIndianSignalLog() {
+  const tbody = document.getElementById('in-siglog-tbody');
+  const count = document.getElementById('in-siglog-count');
+  if (!tbody) return;
+  const data = await apiFetch('/api/indian/signal-log');
+  if (!Array.isArray(data)) return;
+  _indSigLogAll = data;
+  if (count) count.textContent = `${data.length} events`;
+  _renderIndianSignalLog(data);
+}
+
+function filterIndianSignalLog() {
+  const f = document.getElementById('in-siglog-filter')?.value || 'all';
+  const filtered = f === 'all' ? _indSigLogAll
+    : _indSigLogAll.filter(e => e.event && e.event.startsWith(f));
+  _renderIndianSignalLog(filtered);
+}
+
+function _renderIndianSignalLog(rows) {
+  const tbody = document.getElementById('in-siglog-tbody');
+  if (!tbody) return;
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:24px">Bot চালু করো — signal, open, close সব এখানে দেখাবে।</td></tr>';
+    return;
+  }
+  const eventColor = e => {
+    if (e.startsWith('SIGNAL')) return '#f59e0b';
+    if (e === 'OPEN')  return '#22c55e';
+    if (e === 'CLOSE') return '#ef4444';
+    return 'var(--text2)';
+  };
+  const eventIcon = e => {
+    if (e.startsWith('SIGNAL_CE') || e === 'SIGNAL_BUY') return '📈';
+    if (e.startsWith('SIGNAL_PE') || e === 'SIGNAL_SELL') return '📉';
+    if (e === 'OPEN')  return '🟢';
+    if (e === 'CLOSE') return '🔴';
+    return '•';
+  };
+  tbody.innerHTML = rows.map(r => {
+    const modeBadge = r.mode === 'live'
+      ? '<span style="background:#ef4444;color:#fff;border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700">LIVE</span>'
+      : '<span style="background:rgba(139,92,246,.3);color:#c4b5fd;border-radius:3px;padding:1px 5px;font-size:9px">DEMO</span>';
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,.03)">
+      <td style="color:var(--text3);font-size:11px;font-variant-numeric:tabular-nums">${r.time||'—'}</td>
+      <td style="color:var(--text3);font-size:10px">${r.date||'—'}</td>
+      <td style="color:var(--cyan);font-weight:700;font-size:11px">${r.symbol||'—'}</td>
+      <td style="font-size:10px;color:var(--text2)">${(r.strategy||'').replace('_',' ')}</td>
+      <td>${modeBadge}</td>
+      <td style="font-weight:700;color:${eventColor(r.event||'')}">
+        ${eventIcon(r.event||'')} ${r.event||'—'}
+      </td>
+      <td style="text-align:right;font-weight:700;font-size:11px;font-variant-numeric:tabular-nums">₹${r.price||'—'}</td>
+      <td style="font-size:10px;color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.note||''}">${r.note||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function clearIndianSignalLog() {
+  if (!confirm('Signal log clear করবো?')) return;
+  _indSigLogAll = [];
+  _renderIndianSignalLog([]);
+  const count = document.getElementById('in-siglog-count');
+  if (count) count.textContent = '0 events';
 }
 </script>
 <!-- Symbol datalist at body level so browser can access from any input -->
