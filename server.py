@@ -5781,11 +5781,28 @@ def indian_options_ltp(body: dict, current_user: dict = Depends(_get_current_use
                           for k, v in zip(chain.puts["strike"],  chain.puts["lastPrice"])
                           if float(v or 0) > 0}
                 print(f"[options_ltp] yf calls={len(calls)} puts={len(puts)}", flush=True)
+                prefix = exp_key.upper() if exp_key else ""
                 for sym in symbols:
-                    m = _re.search(r'(\d{4,6})(CE|PE)$', sym)
-                    if not m:
-                        continue
-                    strike, kind = int(m.group(1)), m.group(2)
+                    sym_u = sym.upper()
+                    # Strip known date prefix (e.g. "NIFTY26723") then parse strike+type
+                    if prefix and sym_u.startswith(prefix):
+                        tail = sym_u[len(prefix):]  # e.g. "24250CE"
+                        tm = _re.match(r'^(\d+)(CE|PE)$', tail)
+                        if not tm:
+                            continue
+                        strike, kind = int(tm.group(1)), tm.group(2)
+                    else:
+                        # Fallback: strip CE/PE then take trailing digits
+                        if sym_u.endswith("CE"):
+                            kind = "CE"
+                        elif sym_u.endswith("PE"):
+                            kind = "PE"
+                        else:
+                            continue
+                        td = _re.search(r'(\d{4,6})$', sym_u[:-2])
+                        if not td:
+                            continue
+                        strike = int(td.group(1))
                     p = (calls if kind == "CE" else puts).get(strike)
                     if p:
                         result[sym] = p
