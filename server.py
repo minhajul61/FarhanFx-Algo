@@ -5864,8 +5864,10 @@ def _save_indian_bots():
         for bid, bot in _indian_bots.items():
             saveable[bid] = {k: v for k, v in bot.items() if not callable(v)}
             saveable[bid]['trades'] = bot.get('trades', [])[-200:]
-        with open(_INDIAN_BOTS_FILE, 'w') as f:
+        tmp = _INDIAN_BOTS_FILE + ".tmp"
+        with open(tmp, 'w') as f:
             json.dump(saveable, f, indent=2, default=str)
+        _os.replace(tmp, _INDIAN_BOTS_FILE)
     except Exception as e:
         print(f"_save_indian_bots error: {e}")
 
@@ -6462,6 +6464,7 @@ def _indian_bot_tick(bot_id):
             bot["open_peak"]        = price
             bot["open_trough"]      = price
             bot["last_error"]       = None
+            _save_indian_bots()
             mode_label = "Live" if bot.get("mode") == "live" else "Demo"
             disp_sym = trade_sym if is_opt else bot["symbol"]
             disp_dir = f"{'📈 CE BUY' if bot.get('_current_opt_dir')=='CE' else '📉 PE BUY'}" if is_opt else f"{'🟢 BUY' if signal == 'BUY' else '🔴 SELL'}"
