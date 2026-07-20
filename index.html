@@ -11459,7 +11459,7 @@ async function indianOrbBotStart() {
   try {
     const r = await apiFetch('/api/indian/algo/start', {method:'POST', body:JSON.stringify(body)});
     if (r.error) { errEl.textContent = r.error; errEl.style.display = ''; return; }
-    showToast(`📉 ORB Short bot started (${symbol})`, 'success');
+    toast(`📉 ORB Short bot started (${symbol})`);
     indianAlgoLoadBots();
   } catch(e) { errEl.textContent = e.message; errEl.style.display = ''; }
 }
