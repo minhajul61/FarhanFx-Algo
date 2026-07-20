@@ -5883,6 +5883,8 @@ def _load_indian_bots():
         for bid, bot in data.items():
             if bid in _indian_bots:
                 continue
+            if bot.get("status") == "stopped":
+                continue
             try:
                 bot.setdefault("username", "admin")
                 bot.setdefault("trades", [])
@@ -6521,12 +6523,12 @@ def indian_algo_stop(bot_id: str, current_user: dict = Depends(_get_current_user
     bot = _indian_bots.get(bot_id)
     if not bot:
         return JSONResponse(status_code=404, content={"error": "Bot not found"})
-    bot["status"] = "stopped"
     t = _indian_bot_timers.pop(bot_id, None)
     if t:
         t.cancel()
+    _indian_bots.pop(bot_id, None)
     _save_indian_bots()
-    return {"status": "stopped"}
+    return {"status": "deleted"}
 
 
 @app.get("/api/indian/algo/bots")

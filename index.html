@@ -11617,10 +11617,10 @@ async function indianAlgoStart() {
 }
 
 async function indianAlgoStop(botId) {
-  if (!confirm('Stop this bot?')) return;
+  if (!confirm('Stop and remove this bot?')) return;
   const r = await apiFetch(`/api/indian/algo/stop/${botId}`, { method: 'POST' });
   if (r.error) { toast(r.error, false); return; }
-  toast('Bot stopped', true);
+  toast('Bot removed');
   indianAlgoLoadBots();
 }
 
