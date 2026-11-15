@@ -21,6 +21,9 @@ import brain as _brain
 import engine as _engine
 import risk_manager as _risk_manager
 import autopilot as _autopilot_mod
+import market_guard as _market_guard
+import custom_strategy as _custom
+import trade_ledger as _trade_ledger
 
 
 # ── FASTAPI APP ─────────────────────────────────────────────────────────────────
@@ -46,7 +49,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_CLIENT_ALLOWED_PREFIXES = ("/api/auth/", "/api/crypto/", "/api/payment/")
+_CLIENT_ALLOWED_PREFIXES = ("/api/auth/", "/api/crypto/", "/api/payment/", "/api/lab/", "/api/reports")
 
 @app.middleware("http")
 async def _role_gate(request: Request, call_next):
@@ -754,10 +757,12 @@ class CryptoOrderReq(BaseModel):
     symbol:      str           # e.g. "BTC/USDT:USDT"
     side:        str           # "buy" | "sell"
     order_type:  str           # "market" | "limit"
-    amount:      float         # in contracts (base coin)
+    amount:      float = 0.0   # in contracts (base coin); 0 = let the risk manager size it
     price:       Optional[float] = None
     leverage:    int  = 10
     reduce_only: bool = False
+    stop_loss:   Optional[float] = None   # required for every opening order
+    take_profit: Optional[float] = None
 
 
 class CryptoCloseReq(BaseModel):
@@ -829,8 +834,15 @@ def _restore_exchanges():
                 print(f"Crypto: {username}/{name} restore failed — {e}")
     # After exchanges are ready, restore bots
     _load_saved_bots()
+    # Trade ledger: copy bot history in, then watch hand-placed live trades
+    _ledger_backfill()
+    threading.Thread(target=_ledger_tracker_loop, daemon=True, name="ledger").start()
+    # AI Market Guard (market shock / sentiment / crowding watch)
+    _guard.start()
     # Start the AI autopilot loop (it only trades when switched on)
     _autopilot.start()
+    # AI coin re-pick for ALGO BOTS created with "AI picks the pair"
+    threading.Thread(target=_ai_pair_loop, daemon=True, name="ai-pair").start()
     # Start AI brain (self-learning trade monitor)
     _brain.start()
 
@@ -1093,36 +1105,189 @@ def crypto_orders(exchange: str = "binance", symbol: str = "BTC/USDT:USDT",
         return JSONResponse(status_code=400, content={"error": str(e)[:200]})
 
 
+_manual_lock = threading.Lock()
+
+
+def _manual_order_plan(ex, uname, symbol, side, stop_loss, take_profit, leverage, amount=0.0):
+    """Check a hand-placed order against the risk manager and the AI guard,
+    and size it. Raises _Skip with the reason when it is not allowed."""
+    symbol = _perp_symbol(symbol)
+    if side not in ("buy", "sell"):
+        raise _Skip("side must be buy or sell")
+    long = side == "buy"
+    _check_one_way_mode(ex, uname)
+    ex.load_markets()
+    try:
+        m = ex.market(symbol)
+    except Exception:
+        raise _Skip(f"{symbol} is not a Binance USDT-M futures market")
+    t = ex.fetch_ticker(symbol)
+    price = float(t.get("last") or t.get("close") or 0)
+    if price <= 0:
+        raise _Skip(f"No price for {symbol}")
+    sl = float(stop_loss or 0)
+    tp = float(take_profit or 0)
+    if sl <= 0:
+        raise _Skip("🛑 Stop Loss is required — the Risk Manager sizes every trade from its stop")
+    if long and sl >= price:
+        raise _Skip(f"Stop loss must be BELOW the price ({price:g}) for a LONG")
+    if not long and sl <= price:
+        raise _Skip(f"Stop loss must be ABOVE the price ({price:g}) for a SHORT")
+    if tp and ((long and tp <= price) or (not long and tp >= price)):
+        raise _Skip(f"Take profit must be {'ABOVE' if long else 'BELOW'} the price ({price:g}) for a {'LONG' if long else 'SHORT'}")
+    if any(b.get("open_side") and b.get("symbol") == symbol and b.get("mode", "live") == "live"
+           for b in _crypto_bots.values()):
+        raise _Skip(f"A bot already holds {symbol} — one position per coin")
+    if _live_position(ex, symbol):
+        raise _Skip(f"You already have a {symbol} position — close it first (one position per coin)")
+    guard = _guard.entry_check(symbol, side)
+    if not guard["ok"]:
+        raise _Skip(guard["reason"])
+    equity = _live_equity(ex, uname)
+    appr = _rm_for(uname).approve("live", _open_positions("live", ex, uname), equity, leverage)
+    if not appr["ok"]:
+        raise _Skip(appr["reason"])
+    risk_pct = appr["risk_pct"] * guard["risk_mult"]
+    max_qty = _engine.position_size(appr["capital"], risk_pct, price, sl, appr["leverage"])
+    max_qty = min(max_qty, appr["max_notional"] / price)
+    try:
+        max_qty = float(ex.amount_to_precision(symbol, max_qty))
+    except Exception:
+        max_qty = 0.0
+    qty = float(amount or 0) or max_qty
+    if qty > max_qty * 1.000001:
+        raise _Skip(f"Too big for the Risk Manager: max {max_qty:g} for this stop "
+                    f"({risk_pct:.2f}% risk of ${appr['capital']:.2f}). Move the stop closer or trade smaller.")
+    try:
+        qty = float(ex.amount_to_precision(symbol, qty))
+    except Exception:
+        qty = 0.0
+    lim = m.get("limits") or {}
+    min_amt = float((lim.get("amount") or {}).get("min") or 0)
+    min_cost = float((lim.get("cost") or {}).get("min") or 5)
+    if qty <= 0 or qty < min_amt or qty * price < min_cost:
+        raise _Skip(f"Order too small: {qty * price:.2f} USDT (Binance min {min_cost:g}). "
+                    f"With this stop the Risk Manager allows {max_qty:g} — widen capital or use a closer stop.")
+    cost_per_unit = abs(price - sl) + price * 2 * (_engine.TAKER_FEE + _engine.SLIPPAGE)
+    risk_usd = qty * cost_per_unit
+    reward = qty * abs(tp - price) if tp else None
+    return {
+        "symbol": symbol, "side": side, "qty": qty, "max_qty": max_qty, "price": price,
+        "sl": sl, "tp": tp or None, "leverage": appr["leverage"],
+        "risk_usd": round(risk_usd, 2), "risk_pct": round(risk_usd / appr["capital"] * 100, 3),
+        "risk_limit_pct": round(risk_pct, 3), "capital": round(appr["capital"], 2),
+        "notional": round(qty * price, 2), "margin": round(qty * price / appr["leverage"], 2),
+        "rr": round(reward / (qty * abs(price - sl)), 2) if reward else None,
+        "guard_note": guard["reason"],
+    }
+
+
+def _manual_order_execute(ex, uname, plan, source="MANUAL"):
+    sym, side = plan["symbol"], plan["side"]
+    _set_margin_mode_safe(ex, sym, "isolated")
+    try:
+        ex.set_leverage(plan["leverage"], sym)
+    except Exception:
+        pass
+    order = ex.create_order(sym, "market", side, plan["qty"])
+    fill = float(order.get("average") or 0) or plan["price"]
+    filled = float(order.get("filled") or 0) or plan["qty"]
+    pos = {"symbol": sym, "open_side": "BUY" if side == "buy" else "SELL"}
+    try:
+        _place_stop(ex, pos, filled, plan["sl"])
+    except Exception as e:
+        try:
+            _flatten_live(ex, pos)
+        except Exception as e2:
+            _tg_notify(f"<b>⚠ FarhanFX — UNPROTECTED POSITION</b>\n{sym}: stop failed ({e}) and close failed ({e2}). Close it on Binance now.")
+            raise RuntimeError(f"STOP FAILED AND CLOSE FAILED — close {sym} on Binance manually: {e2}")
+        raise RuntimeError(f"Stop loss could not be placed ({str(e)[:120]}) — position closed for safety")
+    warn = None
+    if plan.get("tp"):
+        try:
+            _place_target(ex, pos, filled, plan["tp"])
+        except Exception as e:
+            warn = f"Take profit not placed (stop is active): {str(e)[:100]}"
+    _pos_cache.pop(uname, None)
+    _wallet_cache.pop(uname, None)
+    base = sym.split("/")[0]
+    _rm_for(uname).record_open("live", f"{source} {base}", pos["open_side"], filled, fill, plan["risk_usd"])
+    open_ms = int(_time.time() * 1000)
+    _ledger.open(f"{source.lower()}-{uname}-{open_ms}", account=uname, source=source.lower(), mode="live",
+                 strategy="manual" if source == "MANUAL" else "telegram signal", symbol=sym, side=pos["open_side"],
+                 qty=filled, entry=round(fill, 8), sl=pos.get("sl"), tp=pos.get("tp"), risk_usd=plan["risk_usd"],
+                 open_ms=open_ms)
+    _tg_notify(f"<b>FarhanFX — {source} Trade Opened (LIVE)</b>\n{sym} {'🟢 LONG' if side == 'buy' else '🔴 SHORT'} "
+               f"@ <code>{fill:g}</code> qty <code>{filled:g}</code>\nSL <code>{plan['sl']:g}</code>"
+               + (f" · TP <code>{plan['tp']:g}</code>" if plan.get("tp") else "") + f" · risk <code>${plan['risk_usd']:.2f}</code>")
+    return {"success": True, "order_id": order.get("id"), "symbol": sym, "side": side, "amount": filled,
+            "price": fill, "status": order.get("status"), "sl": pos.get("sl"), "tp": pos.get("tp"),
+            "risk_usd": plan["risk_usd"], "warning": warn}
+
+
+def _binance_for(uname, exchange="binance"):
+    if (exchange or "binance").lower() != "binance":
+        raise _Skip("Only Binance Futures is supported — every order goes through the Risk Manager")
+    ex = _active_ex.get(uname, {}).get("binance")
+    if not ex:
+        raise _Skip("Binance not connected — connect it first")
+    return ex
+
+
+@app.get("/api/crypto/risk_status")
+def crypto_risk_status(current_user: dict = Depends(_get_current_user)):
+    """This account's risk manager + the AI guard, for the Trade tab."""
+    uname = current_user["username"]
+    ex = _active_ex.get(uname, {}).get("binance")
+    live_eq = None
+    if ex:
+        try:
+            live_eq = _live_equity(ex, uname)
+        except Exception:
+            live_eq = None
+    g = _guard.snapshot()
+    g.pop("log", None)
+    return {"risk": _rm_for(uname).snapshot(live_eq), "guard": g, "binance_connected": bool(ex),
+            "open_positions": {"live": _open_positions("live", ex, uname), "demo": _open_positions("demo", None, uname)},
+            "allocated": {"live": _allocated(uname, "live"), "demo": _allocated(uname, "demo")}}
+
+
+@app.post("/api/crypto/order/preview")
+def crypto_order_preview(req: CryptoOrderReq, current_user: dict = Depends(_get_current_user)):
+    """What the risk manager would allow for this order — nothing is sent."""
+    try:
+        ex = _binance_for(current_user["username"], req.exchange)
+        plan = _manual_order_plan(ex, current_user["username"], req.symbol, req.side,
+                                  req.stop_loss, req.take_profit, req.leverage, req.amount)
+        return {"ok": True, **plan}
+    except _Skip as e:
+        return {"ok": False, "reason": str(e)}
+    except Exception as e:
+        return {"ok": False, "reason": str(e)[:200]}
+
+
 @app.post("/api/crypto/order")
 def crypto_order(req: CryptoOrderReq, current_user: dict = Depends(_get_current_user)):
-    ex = _active_ex.get(current_user["username"], {}).get(req.exchange.lower())
-    if not ex:
-        return JSONResponse(status_code=400, content={"error": f"{req.exchange} not connected"})
+    uname = current_user["username"]
     try:
-        # Set leverage + isolated margin before placing
-        try: ex.set_leverage(req.leverage, req.symbol)
-        except: pass
-        _set_margin_mode_safe(ex, req.symbol)
-        params = {}
+        ex = _binance_for(uname, req.exchange)
         if req.reduce_only:
-            params["reduceOnly"] = True
-        order = ex.create_order(
-            symbol=req.symbol,
-            type=req.order_type,
-            side=req.side,
-            amount=req.amount,
-            price=req.price if req.order_type == "limit" else None,
-            params=params,
-        )
-        return {
-            "success":  True,
-            "order_id": order.get("id"),
-            "symbol":   order.get("symbol"),
-            "side":     order.get("side"),
-            "amount":   order.get("amount"),
-            "price":    order.get("price") or order.get("average"),
-            "status":   order.get("status"),
-        }
+            # closing part of a position never adds risk
+            order = ex.create_order(_perp_symbol(req.symbol), "market", req.side, req.amount, None, {"reduceOnly": True})
+            _pos_cache.pop(uname, None)
+            return {"success": True, "order_id": order.get("id"), "amount": order.get("amount"), "side": req.side}
+        if req.order_type != "market":
+            raise _Skip("Only MARKET orders — the stop loss is placed the moment the order fills")
+        if not _manual_lock.acquire(timeout=20):
+            raise _Skip("Another order is being placed — try again")
+        try:
+            plan = _manual_order_plan(ex, uname, req.symbol, req.side, req.stop_loss,
+                                      req.take_profit, req.leverage, req.amount)
+            return _manual_order_execute(ex, uname, plan, "MANUAL")
+        finally:
+            _manual_lock.release()
+    except _Skip as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
     except _ccxt.InsufficientFunds:
         return JSONResponse(status_code=400, content={"error": "Insufficient USDT margin"})
     except _ccxt.InvalidOrder as e:
@@ -1133,7 +1298,8 @@ def crypto_order(req: CryptoOrderReq, current_user: dict = Depends(_get_current_
 
 @app.post("/api/crypto/close")
 def crypto_close(req: CryptoCloseReq, current_user: dict = Depends(_get_current_user)):
-    ex = _active_ex.get(current_user["username"], {}).get(req.exchange.lower())
+    uname = current_user["username"]
+    ex = _active_ex.get(uname, {}).get(req.exchange.lower())
     if not ex:
         return JSONResponse(status_code=400, content={"error": f"{req.exchange} not connected"})
     try:
@@ -1145,6 +1311,14 @@ def crypto_close(req: CryptoCloseReq, current_user: dict = Depends(_get_current_
             amount=req.amount,
             params={"reduceOnly": True},
         )
+        _pos_cache.pop(uname, None)
+        _wallet_cache.pop(uname, None)
+        # the position is gone: remove its stop / target so they cannot open a new one
+        try:
+            if not _live_position(ex, req.symbol):
+                ex.cancel_all_orders(req.symbol, {"trigger": True})
+        except Exception:
+            pass
         return {"success": True, "order_id": order.get("id")}
     except Exception as e:
         return JSONResponse(status_code=400, content={"error": str(e)[:200]})
@@ -1349,8 +1523,9 @@ def _perp_symbol(raw: str) -> str:
 
 
 class CryptoBotReq(BaseModel):
-    exchange:       str
-    symbol:         str   # one symbol, or comma-separated for a multi-coin bot, e.g. "BTC/USDT:USDT,ETH/USDT:USDT"
+    exchange:       str = "binance"
+    symbol:         str = "auto"   # "auto" = the AI picks the coin; or one symbol / comma-separated list
+    capital_usd:    float = 0.0    # this bot's trading balance (USDT); 0 = size from the whole wallet
     name:           str = ""   # optional label shown on the bot card, mainly useful for multi-coin groups
     strategy:       str          # rsi|macd_cross|bb_squeeze|false_breakout|trend_breakout|vwap_bands — validated strategies
     timeframe:      str   = "1h"
@@ -2004,6 +2179,8 @@ def _ai_full_analysis(ohlcv, bot_params=None):
 
 
 def _bot_lookback_bars(bot) -> int:
+    if str(bot.get("strategy", "")).startswith("custom:"):
+        return _custom.lookback(bot.get("custom_def") or {})
     base = max(100, (bot.get("slow_ema", 21) or 21) + 30)
     st = bot.get("strategy", "")
     if st == "trend_breakout":
@@ -2025,6 +2202,8 @@ def _bot_lookback_bars(bot) -> int:
 
 # ── STRATEGY SIGNAL ENGINE ───────────────────────────────────────────────────────
 def _get_bot_signal(bot, ohlcv):
+    if str(bot.get("strategy", "")).startswith("custom:"):
+        return _custom.signal(bot.get("custom_def") or {}, ohlcv)
     closes  = [c[4] for c in ohlcv]
     highs   = [c[2] for c in ohlcv]
     lows    = [c[3] for c in ohlcv]
@@ -2928,7 +3107,49 @@ def _get_bot_signal(bot, ohlcv):
 # Ticks run just after each candle closes, and every 60s while a position is
 # open so stops, targets and trailing stops are booked promptly.
 
-_rm = _risk_manager.RiskManager()
+_rm = _risk_manager.RiskManager()          # the owner's (admin) wallet + rules
+_ledger = _trade_ledger.TradeLedger()
+_rm_users: dict = {}
+
+
+def _rm_for(username):
+    """Each account has its own risk manager — a client's trades never touch
+    the owner's daily stop, position count or kill switch."""
+    if not username or username == "admin":
+        return _rm
+    r = _rm_users.get(username)
+    if r is None:
+        safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(username))[:40]
+        r = _rm_users[username] = _risk_manager.RiskManager(f"risk_manager_{safe}.json")
+    return r
+
+
+def _guard_btc_ohlcv():
+    pm = _get_pub_mkt()
+    return pm.fetch_ohlcv("BTC/USDT:USDT", "1h", limit=30) if pm else None
+
+
+def _guard_fear_greed():
+    fg = _brain._fetch_fear_greed()
+    return fg if fg and "score" in fg else None
+
+
+def _guard_funding():
+    import urllib.request as _ur
+    with _ur.urlopen("https://fapi.binance.com/fapi/v1/premiumIndex", timeout=10) as r:
+        rows = json.loads(r.read())
+    out = {}
+    for row in rows:
+        sym = row.get("symbol", "")
+        if sym.endswith("USDT") and row.get("lastFundingRate") not in (None, ""):
+            out[sym[:-4]] = round(float(row["lastFundingRate"]) * 100, 4)
+    return out
+
+
+# AI Market Guard — can only pause entries or lower risk (see market_guard.py)
+_guard = _market_guard.MarketGuard({
+    "btc_ohlcv": _guard_btc_ohlcv, "fear_greed": _guard_fear_greed, "funding": _guard_funding,
+})
 _bot_locks: dict = {}
 _wallet_cache: dict = {}
 _hedge_mode_checked: dict = {}
@@ -2947,9 +3168,92 @@ def _bot_label(bot) -> str:
     return f"{bot.get('strategy')} {str(bot.get('symbol', '')).split('/')[0]} {bot.get('timeframe')}"
 
 
-def _open_positions(mode: str) -> int:
-    return sum(1 for b in _crypto_bots.values()
-               if b.get("open_side") and b.get("mode", "live") == mode)
+_pos_cache: dict = {}
+
+
+def _exchange_position_symbols(ex, username) -> set:
+    """Symbols with an open position on the exchange (bots + hand-placed), cached 20s."""
+    c = _pos_cache.get(username)
+    if c and _time.time() - c[0] < 20:
+        return c[1]
+    syms = {p.get("symbol") for p in ex.fetch_positions() if abs(float(p.get("contracts") or 0)) > 0}
+    _pos_cache[username] = (_time.time(), syms)
+    return syms
+
+
+def _open_positions(mode: str, ex=None, username="admin") -> int:
+    """Open positions this account's risk manager counts against max_positions:
+    every bot position, plus (live) positions opened by hand on Binance."""
+    username = username or "admin"
+    mine = [b for b in _crypto_bots.values()
+            if b.get("open_side") and b.get("mode", "live") == mode and b.get("username", "admin") == username]
+    held = {b.get("symbol") for b in mine}
+    n = len(mine)
+    if mode == "live" and ex is not None:
+        try:
+            n += len(_exchange_position_symbols(ex, username) - held)
+        except Exception:
+            pass
+    return n
+
+
+def _live_profile_error(strategy, timeframe):
+    """None when this strategy/timeframe passed the 1-year backtest; else why
+    it may only run in demo."""
+    if str(strategy).startswith("custom:"):
+        return "custom strategies run in demo only — test them in the Strategy Lab first"
+    prof = _autopilot_mod.APPROVED_PROFILES.get(strategy)
+    if prof and prof["tf"] == timeframe:
+        return None
+    if prof:
+        return (f"{strategy} is only tested on {prof['tf']} — on {timeframe} it lost money in the "
+                f"1-year backtest. Use {prof['tf']} for live, or keep this bot in demo.")
+    ok = ", ".join(f"{k} {v['tf']}" for k, v in _autopilot_mod.APPROVED_PROFILES.items())
+    return (f"{strategy} {timeframe} lost money in the 1-year backtest (fees + stop loss), so it can only "
+            f"run in demo. Tested for live: {ok}.")
+
+
+def _allocated(username, mode, exclude_id=None) -> float:
+    """Trading balance already given to this account's running bots in `mode`."""
+    return round(sum(float(b.get("capital_usd") or 0) for b in _crypto_bots.values()
+                     if b.get("username", "admin") == username and b.get("mode", "live") == mode
+                     and b.get("status") == "active" and b.get("id") != exclude_id), 2)
+
+
+def _wallet_for(username, mode):
+    if mode == "live":
+        ex = _active_ex.get(username, {}).get("binance")
+        if not ex:
+            raise _Skip("Binance not connected")
+        return _live_equity(ex, username)
+    return _rm_for(username).state["demo_wallet"]
+
+
+def _allocation_error(username, mode, amount, exclude_id=None):
+    """None when `amount` fits in the wallet next to the other bots' balances;
+    otherwise why not. Bot balances are a split of the wallet, never extra money."""
+    if not amount:
+        return None
+    try:
+        wallet = _wallet_for(username, mode)
+    except _Skip as e:
+        return str(e)
+    except Exception as e:
+        return f"Could not read the {mode} balance: {str(e)[:120]}"
+    used = _allocated(username, mode, exclude_id)
+    free = max(0.0, wallet - used)
+    if amount > free + 1e-6:
+        return (f"Not enough free balance: {mode} wallet ${wallet:,.2f}, already given to other bots "
+                f"${used:,.2f}, free ${free:,.2f} — this bot asks for ${amount:,.2f}. "
+                f"Lower its balance or stop another bot.")
+    return None
+
+
+def _apply_live_profile(bot):
+    """Live bots always use the exact stop/target settings that were tested."""
+    prof = _autopilot_mod.APPROVED_PROFILES.get(bot.get("strategy"))
+    if prof:
+        bot.update(prof["params"])
 
 
 def _split_closed(ohlcv, timeframe):
@@ -3068,13 +3372,30 @@ def _flatten_live(ex, bot):
 
 def _finalize_close(bot, exit_price, pnl, reason, bar_ts=None):
     mode = bot.get("mode", "live")
+    try:
+        lid = bot.get("ledger_id")
+        if lid and _ledger.get(lid):
+            _ledger.close(lid, exit_price, pnl, reason)
+        elif bot.get("trades") and bot["trades"][-1].get("status") == "open":
+            t = bot["trades"][-1]          # position opened before the ledger existed
+            _ledger.add_closed(f"{bot.get('id')}-{t.get('time')}-{t.get('price')}",
+                               account=bot.get("username", "admin"), source="autopilot" if bot.get("autopilot") else "bot",
+                               mode=mode, bot_id=bot.get("id"), strategy=bot.get("custom_name") or bot.get("strategy"),
+                               timeframe=bot.get("timeframe"), symbol=bot.get("symbol"), side=t.get("signal"),
+                               qty=t.get("amount"), entry=t.get("price"), exit=exit_price, sl=t.get("sl"), tp=t.get("tp"),
+                               risk_usd=t.get("risk_usd"), pnl=round(pnl, 4), exit_reason=reason,
+                               open_time=t.get("time"), close_time=_trade_ledger.now_utc())
+            _ledger.flush()
+    except Exception as e:
+        print(f"[ledger] close not recorded: {e}")
+    bot["ledger_id"] = None
     if bot.get("trades") and bot["trades"][-1].get("status") == "open":
         bot["trades"][-1].update(exit_reason=reason, exit_price=round(exit_price, 6) if exit_price else None,
                                  pnl=round(pnl, 4), status="closed",
                                  exit_time=datetime.now().strftime("%Y-%m-%d %H:%M"))
     if mode == "demo":
         bot["demo_equity"] = round(bot.get("demo_equity", bot.get("demo_balance", 1000)) + pnl, 4)
-    _rm.record_close(mode, _bot_label(bot), pnl, reason)
+    _rm_for(bot.get("username")).record_close(mode, _bot_label(bot), pnl, reason)
     for k in ("open_side", "open_entry_price", "sl", "tp", "initial_sl", "sl_order_id", "tp_order_id",
               "entry_bar_ts", "open_time_ms", "open_peak", "open_trough"):
         bot[k] = None
@@ -3245,13 +3566,19 @@ def _open_position(bot, ex, signal, qty, price, atr_now, leverage, bar_ts, risk_
             _place_target(ex, bot, filled, tp)
         except Exception as e:
             bot["last_error"] = f"⚠ Take profit not placed (stop is active): {str(e)[:100]}"
+    lid = f"{bot.get('id', 'bot')}-{bot['open_time_ms']}"
+    bot["ledger_id"] = lid
     bot["trades"].append({
         "time": datetime.now().strftime("%Y-%m-%d %H:%M"), "mode": mode, "signal": signal,
         "price": round(fill, 8), "amount": filled, "order_id": order_id,
         "sl": round(bot["sl"], 8), "tp": round(tp, 8), "risk_usd": round(risk_usd, 4),
-        "pnl": 0, "status": "open",
+        "pnl": 0, "status": "open", "ledger_id": lid,
     })
-    _rm.record_open(mode, _bot_label(bot), signal, filled, fill, risk_usd)
+    _ledger.open(lid, account=bot.get("username", "admin"), source="autopilot" if bot.get("autopilot") else "bot",
+                 mode=mode, bot_id=bot.get("id"), strategy=bot.get("custom_name") or bot.get("strategy"),
+                 timeframe=bot.get("timeframe"), symbol=bot["symbol"], side=signal, qty=filled, entry=round(fill, 8),
+                 sl=bot["sl"], tp=tp, risk_usd=round(risk_usd, 4))
+    _rm_for(bot.get("username")).record_open(mode, _bot_label(bot), signal, filled, fill, risk_usd)
     _tg_notify(f"<b>FarhanFX — Trade Opened ({mode.upper()})</b>\n📊 <b>{bot['strategy']}</b> | {bot['symbol']}\n"
                f"{'🟢 BUY' if signal == 'BUY' else '🔴 SELL'} @ <code>{fill:g}</code>  qty <code>{filled:g}</code>\n"
                f"SL <code>{bot['sl']:g}</code> · TP <code>{tp:g}</code> · risk <code>${risk_usd:.2f}</code>")
@@ -3325,13 +3652,27 @@ def _bot_step(bot):
     if atr_now <= 0:
         raise _Skip("⏸ Not enough candles for ATR yet")
 
-    equity = _rm.state["demo_wallet"] if mode == "demo" else _live_equity(ex, uname)
-    appr = _rm.approve(mode, _open_positions(mode), equity, bot.get("leverage", 10))
+    if mode == "live" and not bot.get("autopilot"):
+        err = _live_profile_error(bot.get("strategy"), bot.get("timeframe"))
+        if err:
+            raise _Skip("🛑 Live entries blocked: " + err)
+    rm = _rm_for(uname)
+    equity = rm.state["demo_wallet"] if mode == "demo" else _live_equity(ex, uname)
+    appr = rm.approve(mode, _open_positions(mode, ex, uname), equity, bot.get("leverage", 10))
     if not appr["ok"]:
         raise _Skip(appr["reason"])
+    guard = _guard.entry_check(bot["symbol"], signal)
+    if not guard["ok"]:
+        raise _Skip(guard["reason"])
+    risk_pct = appr["risk_pct"] * guard["risk_mult"]
+    capital, max_notional = appr["capital"], appr["max_notional"]
+    if float(bot.get("capital_usd") or 0) > 0:
+        # the bot trades only its own balance: risk % of it, notional <= balance x leverage
+        capital = min(capital, float(bot["capital_usd"]))
+        max_notional = min(max_notional, float(bot["capital_usd"]) * appr["leverage"])
     stop, _tp = _engine.protective_levels(bot, signal, price, atr_now)
-    qty = _engine.position_size(appr["capital"], appr["risk_pct"], price, stop, appr["leverage"])
-    qty = min(qty, appr["max_notional"] / price)
+    qty = _engine.position_size(capital, risk_pct, price, stop, appr["leverage"])
+    qty = min(qty, max_notional / price)
     if bot.get("fixed_amount", 0) > 0:
         qty = min(qty, float(bot["fixed_amount"]))
     elif bot.get("fixed_usd", 0) > 0:
@@ -3382,7 +3723,12 @@ def _bot_tick(bot_id):
 @app.post("/api/crypto/algo/start")
 def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_current_user)):
     uname = current_user["username"]
-    if req.strategy not in _ALL_CRYPTO_STRATEGIES:
+    custom = None
+    if req.strategy.startswith("custom:"):
+        custom = _custom_get(req.strategy)
+        if not custom or custom.get("owner") != uname:
+            return JSONResponse(status_code=400, content={"error": "Custom strategy not found"})
+    elif req.strategy not in _ALL_CRYPTO_STRATEGIES:
         return JSONResponse(status_code=400, content={"error": f"Unknown strategy '{req.strategy}'"})
     if req.timeframe not in _TF_SECONDS:
         return JSONResponse(status_code=400, content={"error": f"Unsupported timeframe '{req.timeframe}'"})
@@ -3391,10 +3737,42 @@ def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_curre
     # Live mode needs a real connected exchange to place orders on. Demo mode
     # runs purely off public market data — no exchange connection required,
     # so a strategy can be paper-traded before the user ever adds API keys.
+    if req.exchange.lower() != "binance":
+        return JSONResponse(status_code=400, content={"error": "Only Binance Futures is supported (stop loss orders, risk manager)"})
     if req.mode == "live":
+        err = _live_profile_error(req.strategy, req.timeframe)
+        if err:
+            return JSONResponse(status_code=400, content={"error": "Live not allowed: " + err})
         ex = _active_ex.get(uname, {}).get(req.exchange.lower())
         if not ex:
             return JSONResponse(status_code=400, content={"error": f"{req.exchange} not connected — connect it or switch this bot to Demo mode"})
+    # Stop loss / take profit are not the user's to tune: tested strategies use
+    # the exact settings that passed the backtest, the rest a 2 ATR stop, 2R target.
+    prof = _autopilot_mod.APPROVED_PROFILES.get(req.strategy)
+    exits = dict(prof["params"]) if prof else {"sl_atr": 2.0, "reward_r": 2.0, "tp_atr": 0.0, "trailing_atr": 0.0}
+    if custom:
+        exits = {"sl_atr": custom["def"]["sl_atr"], "reward_r": custom["def"]["reward_r"],
+                 "tp_atr": 0.0, "trailing_atr": 0.0, "custom_def": custom["def"]}
+    req.sl_atr, req.reward_r, req.tp_atr, req.trailing_atr = (exits["sl_atr"], exits["reward_r"],
+                                                              exits["tp_atr"], exits["trailing_atr"])
+    req.leverage = max(1, min(int(req.leverage or 1), int(_rm_for(uname).config["max_leverage"])))
+    cap = float(req.capital_usd or 0)
+    if cap < 10:
+        return JSONResponse(status_code=400, content={"error": "Enter the trading balance for this bot (at least $10)"})
+    alloc_err = _allocation_error(uname, req.mode, cap)
+    if alloc_err:
+        return JSONResponse(status_code=400, content={"error": alloc_err})
+    ai_pick = None
+    if (req.symbol or "auto").strip().lower() in ("", "auto"):
+        held = {b.get("symbol") for b in _crypto_bots.values()
+                if b.get("username") == uname and b.get("status") == "active"}
+        try:
+            ai_pick = _autopilot.pick_for_strategy(req.strategy, req.timeframe, exits, exclude=held)
+        except Exception as e:
+            return JSONResponse(status_code=400, content={"error": f"AI coin picker failed: {str(e)[:150]}"})
+        if not ai_pick:
+            return JSONResponse(status_code=400, content={"error": "AI could not read market data to pick a coin — try again in a minute"})
+        req.symbol = ai_pick["symbol"]
     # A comma-separated symbol list creates one independent bot per symbol
     # — same proven single-symbol tick/signal/exit logic for each, just
     # grouped under one group_id so the UI can show them as a single
@@ -3430,6 +3808,10 @@ def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_curre
             "group_id": group_id, "group_name": req.name.strip(),
             "timeframe": req.timeframe, "risk_pct": req.risk_pct,
             "fixed_amount": req.fixed_amount, "fixed_usd": req.fixed_usd,
+            "capital_usd": round(cap, 2), "ai_pair": bool(ai_pick),
+            "custom_def": custom["def"] if custom else None, "custom_name": custom["name"] if custom else None,
+            "ai_pair_why": ai_pick["why"] if ai_pick else None,
+            "ai_pair_time": datetime.now().strftime("%Y-%m-%d %H:%M") if ai_pick else None,
             "leverage": req.leverage, "margin_mode": req.margin_mode,
             "mode": req.mode, "demo_balance": req.demo_balance,
             "demo_equity": req.demo_balance,
@@ -3470,9 +3852,13 @@ def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_curre
             "open_trade_count": 0,
             "created": datetime.now().strftime("%Y-%m-%d %H:%M"),
         }
+        if req.mode == "live":
+            _apply_live_profile(_crypto_bots[bid])
         _schedule_tick(bid, 3)
     _save_bots()
-    return {"success": True, "bot_id": bot_ids[0], "bot_ids": bot_ids, "group_id": group_id}
+    return {"success": True, "bot_id": bot_ids[0], "bot_ids": bot_ids, "group_id": group_id,
+            "symbol": symbols[0], "ai_pick": ai_pick, "sl_atr": exits["sl_atr"], "reward_r": exits["reward_r"],
+            "leverage": req.leverage, "capital_usd": round(cap, 2)}
 
 
 # ── AI AUTOPILOT + RISK MANAGER wiring ───────────────────────────────────────
@@ -3568,6 +3954,7 @@ def _ap_ohlcv(sym, tf, limit):
 
 _autopilot = _autopilot_mod.Autopilot({
     "tickers": lambda: _get_pub_mkt().fetch_tickers(),
+    "markets": lambda: _get_pub_mkt().load_markets(),   # cached by ccxt after the first call
     "ohlcv": _ap_ohlcv,
     "history": lambda sym, tf, days: _fetch_backtest_ohlcv(sym, tf, days),
     "backtest": lambda st, rows, sym, tf, params: _run_backtest_strategy(
@@ -3576,6 +3963,48 @@ _autopilot = _autopilot_mod.Autopilot({
     "apply": _autopilot_apply,
     "can_go_live": _autopilot_can_go_live,
 })
+
+
+def _ai_pair_repick(bot) -> str | None:
+    """Re-run the AI coin pick for a flat bot; switch coin if the current one
+    lost its edge. Returns a log line when the coin changed."""
+    if not bot.get("ai_pair") or bot.get("open_side") or bot.get("status") != "active" or bot.get("autopilot"):
+        return None
+    uname = bot.get("username", "admin")
+    held = {b.get("symbol") for b in _crypto_bots.values()
+            if b is not bot and b.get("username") == uname and b.get("status") == "active"}
+    params = {k: bot.get(k) for k in ("sl_atr", "reward_r", "tp_atr", "trailing_atr", "custom_def") if bot.get(k) is not None}
+    pick = _autopilot.pick_for_strategy(bot["strategy"], bot["timeframe"], params, exclude=held, keep=bot["symbol"])
+    if not pick:
+        return None
+    with _bot_lock(bot["id"]):
+        if bot.get("open_side"):
+            return None
+        bot["ai_pair_time"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        bot["ai_pair_why"] = pick["why"]
+        if pick["symbol"] == bot["symbol"]:
+            return None
+        old = bot["symbol"]
+        bot["symbol"] = pick["symbol"]
+        bot["last_eval_bar"] = None
+        bot["last_close_bar"] = None
+        bot["last_error"] = f"🤖 AI moved this bot from {old.split('/')[0]} to {pick['symbol'].split('/')[0]}"
+    _save_bots()
+    return f"{bot['strategy']} {bot['timeframe']}: {old.split('/')[0]} → {pick['symbol'].split('/')[0]} ({pick['why']})"
+
+
+def _ai_pair_loop():
+    """Every 4h (just after the 4h candle closes) flat AI-pair bots re-check their coin."""
+    _time.sleep(90)
+    while True:
+        for b in list(_crypto_bots.values()):
+            try:
+                msg = _ai_pair_repick(b)
+                if msg:
+                    print(f"[ai-pair] {msg}")
+            except Exception as e:
+                print(f"[ai-pair] {b.get('id')}: {e}")
+        _time.sleep(_engine.candle_close_delay(4 * 3600, _time.time(), grace=120))
 
 
 def _bot_health(b) -> dict:
@@ -3589,7 +4018,7 @@ def _bot_health(b) -> dict:
         health, note = "error", b["last_error"]
     elif b.get("open_side") and not b.get("sl"):
         health, note = "error", "Position without stop loss"
-    elif (b.get("last_error") or "").startswith(("⏸", "🛑", "🧠")):
+    elif (b.get("last_error") or "").startswith(("⏸", "🛑", "🧠", "⚡", "⚖", "🤖")):
         health, note = "waiting", b["last_error"]
     if b.get("retiring"):
         note = (note + " · " if note else "") + "retiring after this trade"
@@ -3605,7 +4034,8 @@ def _bot_health(b) -> dict:
         } if b.get("open_side") else None),
         "trades": len(closed), "pnl": round(sum(t.get("pnl") or 0 for t in closed), 4),
         "wins": sum(1 for t in closed if (t.get("pnl") or 0) > 0),
-        "why": b.get("autopilot_why"), "last_signal": b.get("last_signal"),
+        "why": b.get("autopilot_why") or b.get("ai_pair_why"), "last_signal": b.get("last_signal"),
+        "capital_usd": b.get("capital_usd"),
     }
 
 
@@ -3623,11 +4053,43 @@ def autopilot_status(current_user: dict = Depends(_get_current_user)):
     return {
         "autopilot": _autopilot.snapshot(),
         "risk": _rm.snapshot(live_eq),
+        "guard": _guard.snapshot([b["symbol"] for b in bots if b["status"] == "active"]),
+        "brain": _brain_summary(),
         "bots": bots,
         "binance_connected": bool(ex),
-        "open_positions": {"live": _open_positions("live"), "demo": _open_positions("demo")},
+        "open_positions": {"live": _open_positions("live", ex, current_user["username"]),
+                           "demo": _open_positions("demo", None, current_user["username"])},
         "server_time": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
     }
+
+
+def _brain_summary() -> dict:
+    try:
+        st = _brain.get_status()
+    except Exception:
+        return {"enabled": False}
+    j = st.get("latest_journal") or {}
+    return {"enabled": st.get("enabled"), "key_configured": st.get("key_configured"),
+            "last_run": st.get("last_run"), "analyses": st.get("total_analyses", 0),
+            "overall": j.get("overall"), "market_insight": j.get("market_insight"),
+            "next_focus": j.get("next_focus"), "guard": j.get("guard"),
+            "learnings": (j.get("key_learnings") or [])[:3]}
+
+
+def _brain_guard_context() -> dict:
+    picks = [{"symbol": b.get("symbol"), "strategy": b.get("strategy"), "tf": b.get("timeframe"),
+              "mode": b.get("mode"), "position": b.get("open_side"), "upnl": b.get("unrealized_pnl")}
+             for b in _crypto_bots.values() if b.get("status") == "active"]
+    g = _guard.snapshot([p["symbol"] for p in picks])
+    g.pop("log", None)
+    g.pop("rules", None)
+    rm = _rm.snapshot(None)
+    return {"active_bots": picks[:10], "guard": g,
+            "risk_rules": rm["config"], "today": {m: {k: rm["modes"][m][k] for k in ("day_pnl_pct", "trades_today", "halted")}
+                                                   for m in ("live", "demo")}}
+
+
+_brain.GUARD_PROVIDER = (_brain_guard_context, lambda view: _guard.apply_llm(view, "AI Brain"))
 
 
 class AutopilotToggleReq(BaseModel):
@@ -3682,10 +4144,27 @@ def risk_reset_demo(admin: dict = Depends(_require_admin)):
     return {"success": True}
 
 
+@app.post("/api/guard/refresh")
+def guard_refresh(admin: dict = Depends(_require_admin)):
+    _guard.refresh()
+    return {"success": True, "guard": _guard.snapshot()}
+
+
+@app.post("/api/guard/clear_ai")
+def guard_clear_ai(admin: dict = Depends(_require_admin)):
+    """Drop the AI Brain's current risk advice (back to normal risk)."""
+    with _guard._lock:
+        _guard.state["llm"] = None
+        _guard._log("🧠 AI Brain advice cleared by admin")
+        _guard._save()
+    return {"success": True}
+
+
 # ── Brain bridge: the Brain reads/writes bots through the server's memory,
 # never bots.json directly (the server would overwrite it), and it may only
 # touch manual DEMO bots — never live bots or autopilot bots. ───────────────
-_BRAIN_ALLOWED_KEYS = {"status", "last_error", "max_open_trades", "adx_min", "rsi_ob", "rsi_os", "risk_pct",
+# risk_pct / max_open_trades are owned by the risk manager now — not the brain's to change
+_BRAIN_ALLOWED_KEYS = {"status", "last_error", "adx_min", "rsi_ob", "rsi_os",
                        "tp_atr", "trailing_atr", "bb_std", "slow_ema", "fast_ema", "blocked_hours",
                        "direction_bias", "symbol"}
 
@@ -3746,8 +4225,9 @@ def crypto_algo_kill_all(current_user: dict = Depends(_get_current_user)):
     cannot open anything until it is switched off again."""
     uname = current_user["username"]
     stopped, closed, errors = 0, 0, []
-    _rm.set_manual_halt(True)
-    _autopilot.set_enabled(False)
+    _rm_for(uname).set_manual_halt(True)
+    if uname == _ap_owner():
+        _autopilot.set_enabled(False)
     for bid, bot in list(_crypto_bots.items()):
         if bot.get("username") != uname or bot.get("status") != "active":
             continue
@@ -3805,6 +4285,14 @@ def crypto_algo_resume(bot_id: str, current_user: dict = Depends(_get_current_us
         return JSONResponse(status_code=404, content={"error": "Bot not found"})
     if bot.get("mode") == "live" and not _active_ex.get(current_user["username"], {}).get(bot["exchange"]):
         return JSONResponse(status_code=400, content={"error": f"{bot['exchange']} not connected"})
+    if bot.get("mode") == "live" and not bot.get("autopilot") and not bot.get("open_side"):
+        err = _live_profile_error(bot.get("strategy"), bot.get("timeframe"))
+        if err:
+            return JSONResponse(status_code=400, content={"error": "Live not allowed: " + err})
+    if bot.get("status") != "active" and not bot.get("open_side"):
+        err = _allocation_error(current_user["username"], bot.get("mode", "live"), float(bot.get("capital_usd") or 0), bot_id)
+        if err:
+            return JSONResponse(status_code=400, content={"error": err})
     bot["status"] = "active"
     bot["last_error"] = None
     _schedule_tick(bot_id, 2)
@@ -3838,9 +4326,18 @@ def crypto_algo_promote(bot_id: str, current_user: dict = Depends(_get_current_u
         return JSONResponse(status_code=400, content={"error": "Bot is already live"})
     if not _active_ex.get(current_user["username"], {}).get(bot["exchange"]):
         return JSONResponse(status_code=400, content={"error": f"{bot['exchange']} not connected — connect it before promoting to live"})
+    if bot.get("autopilot"):
+        return JSONResponse(status_code=400, content={"error": "Autopilot bots follow the autopilot mode — use GO LIVE on the AI Autopilot page"})
+    err = _live_profile_error(bot.get("strategy"), bot.get("timeframe"))
+    if err:
+        return JSONResponse(status_code=400, content={"error": "Live not allowed: " + err})
+    err = _allocation_error(current_user["username"], "live", float(bot.get("capital_usd") or 0), bot_id)
+    if err:
+        return JSONResponse(status_code=400, content={"error": err})
     with _bot_lock(bot_id):
         _bot_close_now(bot, "promoted_to_live")
         bot["mode"] = "live"
+        _apply_live_profile(bot)
     _save_bots()
     return {"success": True, "mode": "live"}
 
@@ -3853,12 +4350,18 @@ def crypto_algo_toggle_all_mode(current_user: dict = Depends(_get_current_user))
     uname = current_user["username"]
     promoted, demoted, skipped = 0, 0, []
     for bid, bot in list(_crypto_bots.items()):
-        if bot.get("username") != uname or bot.get("status") != "active":
+        if bot.get("username") != uname or bot.get("status") != "active" or bot.get("autopilot"):
             continue
         with _bot_lock(bid):
             to_live = bot.get("mode", "live") == "demo"
             if to_live and not _active_ex.get(uname, {}).get(bot["exchange"]):
                 skipped.append(f"{bid}: {bot['exchange']} not connected")
+                continue
+            if to_live and _live_profile_error(bot.get("strategy"), bot.get("timeframe")):
+                skipped.append(f"{_bot_label(bot)}: not tested for live — stays demo")
+                continue
+            if to_live and _allocation_error(uname, "live", float(bot.get("capital_usd") or 0), bid):
+                skipped.append(f"{_bot_label(bot)}: not enough free live balance — stays demo")
                 continue
             err = _bot_close_now(bot, "toggled_to_live" if to_live else "toggled_to_demo")
             if err:
@@ -3866,6 +4369,7 @@ def crypto_algo_toggle_all_mode(current_user: dict = Depends(_get_current_user))
                 continue
             bot["mode"] = "live" if to_live else "demo"
             if to_live:
+                _apply_live_profile(bot)
                 promoted += 1
             else:
                 demoted += 1
@@ -3951,59 +4455,6 @@ def crypto_algo_history(current_user: dict = Depends(_get_current_user)):
             rows.append(row)
     rows.sort(key=lambda x: x.get("time", ""), reverse=True)
     return rows[:300]
-
-
-@app.get("/api/crypto/reports/summary")
-def crypto_reports_summary(mode: str = "live", current_user: dict = Depends(_get_current_user)):
-    """Full analytics across this user's crypto bots — by-session win rate,
-    by-symbol breakdown (for a pie chart), daily equity curve, best day/month.
-    Same shape regardless of mode so Demo and Live can be compared the same
-    way. mode: 'live' (default) | 'demo' | 'all'."""
-    uname = current_user["username"]
-    closed_trades = []
-    open_pnl_total = 0.0
-    for b in _crypto_bots.values():
-        if b.get("username") != uname:
-            continue
-        if mode != "all" and b.get("mode", "live") != mode:
-            continue
-        for t in b.get("trades", []):
-            if t.get("status") == "closed":
-                closed_trades.append({**t, "symbol": b.get("symbol", ""), "strategy": b.get("strategy", "")})
-        if b.get("open_side") and b.get("last_price"):
-            ep, amt, mark = b.get("open_entry_price", 0), b.get("open_amount", 0), b["last_price"]
-            if b.get("mode", "live") == "demo":
-                open_pnl_total += (mark - ep) * amt if b["open_side"] == "BUY" else (ep - mark) * amt
-            elif b.get("status") == "active":
-                ex = _active_ex.get(uname, {}).get(b["exchange"])
-                if ex:
-                    try:
-                        for p in ex.fetch_positions():
-                            if p.get("symbol") == b["symbol"] and float(p.get("contracts") or 0) > 0:
-                                open_pnl_total += float(p.get("unrealizedPnl") or 0)
-                                break
-                    except Exception:
-                        pass
-
-    if not closed_trades:
-        return {
-            "summary": {"total_trades": 0, "win_rate": None, "profit_factor": None, "net_pnl": 0.0,
-                        "open_pnl": round(open_pnl_total, 4)},
-            "by_session": [], "by_symbol": [], "daily": [], "monthly": [],
-            "best_day": {}, "best_month": {}, "equity_curve": [],
-        }
-
-    report = _aggregate_trade_report(closed_trades)
-    return {
-        "summary": {**report["stats"], "total_trades": len(closed_trades), "open_pnl": round(open_pnl_total, 4)},
-        "by_session": report["by_session"],
-        "by_symbol": report["by_symbol"],
-        "daily": report["daily"],
-        "monthly": report["monthly"],
-        "best_day": report["best_day"],
-        "best_month": report["best_month"],
-        "equity_curve": report["equity_curve"],
-    }
 
 
 def _session_name(hour: int) -> str:
@@ -4152,6 +4603,9 @@ def _fetch_backtest_ohlcv(symbol: str = "BTC/USDT", timeframe: str = "1h", days:
     if all_rows and all_rows[-1][0] + tf_ms > _time.time() * 1000:
         all_rows = all_rows[:-1]
     _backtest_data_cache[cache_key] = {"data": all_rows, "fetched_at": _time.time()}
+    while len(_backtest_data_cache) > 60:
+        oldest = min(_backtest_data_cache, key=lambda k: _backtest_data_cache[k]["fetched_at"])
+        _backtest_data_cache.pop(oldest, None)
     return all_rows
 
 
@@ -4179,6 +4633,10 @@ def _strategy_bot_template(strategy: str, symbol: str = "BTC/USDT:USDT", timefra
     prof = _STRATEGY_DEFAULTS.get(strategy)
     if prof:
         bot.update(prof[1])
+    if strategy.startswith("custom:"):
+        defn = (overrides or {}).get("custom_def") or (_custom_get(strategy) or {}).get("def") or {}
+        bot["custom_def"] = defn
+        bot["sl_atr"], bot["reward_r"] = defn.get("sl_atr", 2.0), defn.get("reward_r", 2.0)
     if overrides:
         bot.update(overrides)
     return bot
@@ -4206,41 +4664,6 @@ def _run_backtest_strategy(strategy: str, ohlcv: list, symbol: str, timeframe: s
         "equity_curve": report["equity_curve"],
     }
 
-
-@app.get("/api/crypto/backtest/all")
-def crypto_backtest_all(symbol: str = "BTC/USDT", timeframe: str = "1h", days: int = 365,
-                         current_user: dict = Depends(_get_current_user)):
-    """Run every crypto strategy through a 1-year (default) historical replay
-    in paper-trading mode and return a side-by-side performance report — lets
-    you pick a strategy before pointing real money (or even a live demo bot)
-    at it."""
-    if not _CCXT_OK:
-        return JSONResponse(status_code=503, content={"error": "ccxt not available on this server"})
-    try:
-        ohlcv = _fetch_backtest_ohlcv(symbol, timeframe, days)
-    except Exception as e:
-        return JSONResponse(status_code=502, content={"error": f"Failed to fetch historical data: {e}"})
-    if len(ohlcv) < 250:
-        return JSONResponse(status_code=502, content={"error": "Not enough historical data returned"})
-
-    results = []
-    for strategy in _ALL_CRYPTO_STRATEGIES:
-        try:
-            results.append(_run_backtest_strategy(strategy, ohlcv, symbol, timeframe))
-        except Exception as e:
-            results.append({"strategy": strategy, "error": str(e)[:200]})
-
-    results.sort(key=lambda r: r.get("net_pnl", -1e18) if "error" not in r else -1e18, reverse=True)
-
-    return {
-        "symbol": symbol,
-        "timeframe": timeframe,
-        "days": days,
-        "bars": len(ohlcv),
-        "data_from": datetime.utcfromtimestamp(ohlcv[0][0] / 1000).strftime("%Y-%m-%d"),
-        "data_to":   datetime.utcfromtimestamp(ohlcv[-1][0] / 1000).strftime("%Y-%m-%d"),
-        "results": results,
-    }
 
 
 # ── COIN SCREENER — finds high-volume coins, then re-validates every
@@ -4283,99 +4706,502 @@ _SCREENER_VALIDATION_OVERRIDES = {
 _screener_result_cache: dict = {}   # {"result": {...}, "fetched_at": float, "limit": int}
 
 
-def _screener_top_coins(limit: int = 12) -> list:
-    """Top USDT-margined perpetual futures by 24h quote volume — excludes
-    BTC/ETH (already have dedicated bots) and non-crypto commodity perps
-    Binance also lists alongside them."""
-    ex = _ccxt.binanceusdm()
-    tickers = ex.fetch_tickers()
-    rows = []
-    for sym, t in tickers.items():
-        if not sym.endswith("/USDT:USDT"):
-            continue
-        base = sym.split("/")[0]
-        if base in ("BTC", "ETH") or base in _SCREENER_EXCLUDE_BASES:
-            continue
-        vol = t.get("quoteVolume") or 0
-        if vol > 0:
-            rows.append({"symbol": sym, "base": base, "volume_24h": round(vol, 0),
-                         "change_24h": t.get("percentage")})
-    rows.sort(key=lambda x: x["volume_24h"], reverse=True)
-    return rows[:limit]
+
+# ── STRATEGY LAB ─────────────────────────────────────────────────────────────
+# Tests a strategy exactly the way the bots trade it: closed candles, stop loss
+# on every trade, stop-based 1% sizing, 0.05% fee + 0.03% slippage per side.
+# Each coin's history is split: first 2/3 = TRAIN, last 1/3 = TEST (the part
+# the settings never saw). An edge only counts when it holds in both.
+_CUSTOM_FILE = "custom_strategies.json"
+_custom_lock = threading.Lock()
+LAB_COINS = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "LINK", "SUI"]
+LAB_MIN_TRAIN_TRADES = 8
+LAB_MIN_TEST_TRADES = 4
+LAB_PASS_SHARE = 0.6
 
 
-def _screener_validate_coin(symbol: str, days: int = 60) -> dict:
-    """Re-run validated strategies against this coin's own recent history
-    (train/validation split). PF > 1.1 on both halves + min trade counts."""
-    results = {}
-    for strategy, (tf, params) in _SCREENER_STRATEGIES.items():
-        override       = _SCREENER_VALIDATION_OVERRIDES.get(strategy, {})
-        strat_days     = override.get("days", days)
-        min_train      = override.get("min_train_trades", 10)
-        min_val        = override.get("min_val_trades", 5)
-        try:
-            ohlcv = _fetch_backtest_ohlcv(symbol, tf, strat_days)
-            if len(ohlcv) < 300:
-                results[strategy] = {"status": "insufficient_data"}
-                continue
-            half = len(ohlcv) // 2
-            train, val = ohlcv[:half], ohlcv[half:]
-            train_r = _run_backtest_strategy(strategy, train, symbol, tf, param_overrides=params)
-            val_r   = _run_backtest_strategy(strategy, val, symbol, tf, param_overrides=params)
-            passed = (train_r["total_trades"] >= min_train and val_r["total_trades"] >= min_val and
-                      (train_r["profit_factor"] or 0) > 1.1 and (val_r["profit_factor"] or 0) > 1.1)
-            results[strategy] = {
-                "status": "pass" if passed else "fail",
-                "timeframe": tf,
-                "train_pf": train_r["profit_factor"], "val_pf": val_r["profit_factor"],
-                "train_trades": train_r["total_trades"], "val_trades": val_r["total_trades"],
-                "val_net_pnl": val_r["net_pnl"],
-            }
-        except Exception as e:
-            results[strategy] = {"status": "error", "error": str(e)[:150]}
-    return results
-
-
-@app.get("/api/crypto/screener/scan")
-def crypto_screener_scan(limit: int = 8, days: int = 60, force: bool = False,
-                          current_user: dict = Depends(_get_current_user)):
-    """Screen top-volume coins and re-validate the 6 core strategies against
-    each coin's own history. Results cached 4 hours — pass force=true to bypass."""
-    if not _CCXT_OK:
-        return JSONResponse(status_code=503, content={"error": "ccxt not available on this server"})
-
-    # Return cached result if fresh and same params
-    cached = _screener_result_cache.get("result")
-    cache_age = _time.time() - _screener_result_cache.get("fetched_at", 0)
-    if not force and cached and cache_age < 14400 and _screener_result_cache.get("limit") == limit:
-        return {**cached, "cached": True, "cache_age_min": int(cache_age / 60)}
-
+def _custom_all() -> dict:
     try:
-        coins = _screener_top_coins(limit)
-    except Exception as e:
-        return JSONResponse(status_code=502, content={"error": f"Failed to fetch market list: {e}"})
+        with open(_CUSTOM_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
-    # Validate all coins in parallel (max 4 workers to avoid Binance rate limits)
-    from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
-    report = []
+
+def _custom_save_all(data: dict):
+    with _custom_lock:
+        tmp = _CUSTOM_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=1)
+        os.replace(tmp, _CUSTOM_FILE)
+
+
+def _custom_get(strategy_or_id: str):
+    sid = str(strategy_or_id).split("custom:", 1)[-1]
+    return _custom_all().get(sid)
+
+
+def _lab_exits(strategy: str, sl_atr=None, reward_r=None, custom_def=None) -> dict:
+    """Stop/target used for a lab run: the tested profile (or the custom
+    strategy's own), unless the user overrides them to experiment."""
+    prof = _autopilot_mod.APPROVED_PROFILES.get(strategy)
+    ex = dict(prof["params"]) if prof else {"sl_atr": 2.0, "reward_r": 2.0, "tp_atr": 0.0, "trailing_atr": 0.0}
+    if custom_def:
+        ex.update({"sl_atr": custom_def["sl_atr"], "reward_r": custom_def["reward_r"], "custom_def": custom_def})
+    if sl_atr:
+        ex["sl_atr"] = min(6.0, max(0.5, float(sl_atr)))
+        if custom_def:
+            ex["custom_def"] = {**custom_def, "sl_atr": ex["sl_atr"]}
+    if reward_r:
+        ex["reward_r"] = min(10.0, max(0.5, float(reward_r)))
+        if custom_def:
+            ex["custom_def"] = {**ex["custom_def"], "reward_r": ex["reward_r"]}
+    return ex
+
+
+def _lab_one_coin(strategy, symbol, tf, days, params) -> dict:
+    rows = _fetch_backtest_ohlcv(symbol, tf, days)
+    if len(rows) < 300:
+        return {"symbol": symbol, "error": f"only {len(rows)} candles of history"}
+    window = _bot_lookback_bars(_strategy_bot_template(strategy, symbol, tf, params))
+    cut = int(len(rows) * 2 / 3)
+    out = {"symbol": symbol, "bars": len(rows),
+           "from": datetime.utcfromtimestamp(rows[0][0] / 1000).strftime("%Y-%m-%d"),
+           "split": datetime.utcfromtimestamp(rows[cut][0] / 1000).strftime("%Y-%m-%d"),
+           "to": datetime.utcfromtimestamp(rows[-1][0] / 1000).strftime("%Y-%m-%d")}
+    for name, part in (("train", rows[:cut]), ("test", rows[max(0, cut - window):])):
+        r = _run_backtest_strategy(strategy, part, symbol, tf, param_overrides=params)
+        out[name] = {k: r.get(k) for k in ("total_trades", "win_rate", "profit_factor", "net_pnl_pct",
+                                            "max_drawdown_pct", "avg_r", "signal_errors")}
+        if name == "test":
+            out["test_curve"] = [round(p.get("equity", 0), 2) for p in (r.get("equity_curve") or [])][-120:]
+    tr, te = out["train"], out["test"]
+    out["pass"] = bool(tr["total_trades"] >= LAB_MIN_TRAIN_TRADES and te["total_trades"] >= LAB_MIN_TEST_TRADES
+                       and (tr["avg_r"] or 0) > 0 and (te["avg_r"] or 0) > 0)
+    return out
+
+
+def _lab_run(strategy, tf, coins, days, params) -> dict:
+    from concurrent.futures import ThreadPoolExecutor
+    syms = [f"{c}/USDT:USDT" for c in coins]
     with ThreadPoolExecutor(max_workers=4) as pool:
-        future_map = {pool.submit(_screener_validate_coin, c["symbol"], days): c for c in coins}
-        for fut in _as_completed(future_map):
-            coin = future_map[fut]
-            try:
-                validation = fut.result()
-            except Exception as e:
-                validation = {}
-                print(f"screener error {coin['symbol']}: {e}")
-            approved = [s for s, r in validation.items() if r.get("status") == "pass"]
-            report.append({**coin, "validation": validation, "approved_strategies": approved})
+        rows = list(pool.map(lambda s: _safe_lab(strategy, s, tf, days, params), syms))
+    ok = [r for r in rows if "error" not in r]
 
-    report.sort(key=lambda c: len(c["approved_strategies"]), reverse=True)
-    result = {"scanned": len(report), "days": days, "coins": report, "cached": False, "cache_age_min": 0}
-    _screener_result_cache["result"] = result
-    _screener_result_cache["fetched_at"] = _time.time()
-    _screener_result_cache["limit"] = limit
-    return result
+    def pooled(half):
+        trades = sum(r[half]["total_trades"] for r in ok)
+        if not trades:
+            return {"trades": 0, "avg_r": None, "win_rate": None, "net_pct_avg": None, "worst_dd": None}
+        return {
+            "trades": trades,
+            "avg_r": round(sum((r[half]["avg_r"] or 0) * r[half]["total_trades"] for r in ok) / trades, 3),
+            "win_rate": round(sum((r[half]["win_rate"] or 0) * r[half]["total_trades"] for r in ok) / trades, 1),
+            "net_pct_avg": round(sum(r[half]["net_pnl_pct"] or 0 for r in ok) / len(ok), 2),
+            "worst_dd": max(r[half]["max_drawdown_pct"] or 0 for r in ok),
+        }
+    train, test = pooled("train"), pooled("test")
+    passed = sum(1 for r in ok if r["pass"])
+    if not ok:
+        verdict, why = "error", "No coin could be tested."
+    elif (test["avg_r"] or 0) > 0 and (train["avg_r"] or 0) > 0 and passed >= LAB_PASS_SHARE * len(ok):
+        verdict, why = "pass", (f"Made money in BOTH halves on {passed}/{len(ok)} coins "
+                                f"(test {test['avg_r']:+.2f}R per trade). Run it in demo before trusting it.")
+    elif (test["avg_r"] or 0) > 0:
+        verdict, why = "weak", (f"Positive on the unseen test half ({test['avg_r']:+.2f}R) but only {passed}/{len(ok)} "
+                                f"coins held up in both halves — could be luck. Demo only.")
+    else:
+        verdict, why = "fail", (f"Lost money on the unseen test half ({(test['avg_r'] or 0):+.2f}R per trade, "
+                                f"{passed}/{len(ok)} coins passed). Fees + stop losses eat this edge.")
+    return {"strategy": strategy, "timeframe": tf, "days": days, "coins": rows, "train": train, "test": test,
+            "coins_passed": passed, "coins_tested": len(ok), "verdict": verdict, "why": why,
+            "exits": {k: v for k, v in params.items() if k != "custom_def"},
+            "rules": {"min_train_trades": LAB_MIN_TRAIN_TRADES, "min_test_trades": LAB_MIN_TEST_TRADES,
+                      "pass_share": LAB_PASS_SHARE, "fees": "0.05%/side + 0.03% slippage", "risk": "1% per trade",
+                      "split": "first 2/3 train, last 1/3 test"}}
+
+
+def _safe_lab(strategy, symbol, tf, days, params):
+    try:
+        return _lab_one_coin(strategy, symbol, tf, days, params)
+    except Exception as e:
+        return {"symbol": symbol, "error": str(e)[:160]}
+
+
+def _lab_resolve(strategy: str, uname: str, custom_def=None):
+    """(strategy key, cleaned custom definition or None) — raises ValueError."""
+    if strategy == "custom:new":
+        if not custom_def:
+            raise ValueError("Build the strategy first")
+        return strategy, _custom.validate(custom_def)
+    if strategy.startswith("custom:"):
+        c = _custom_get(strategy)
+        if not c or c.get("owner") != uname:
+            raise ValueError("Custom strategy not found")
+        return strategy, c["def"]
+    if strategy not in _ALL_CRYPTO_STRATEGIES:
+        raise ValueError(f"Unknown strategy '{strategy}'")
+    return strategy, None
+
+
+class LabTestReq(BaseModel):
+    strategy: str
+    timeframe: str = "4h"
+    days: int = 365
+    coins: list = []
+    sl_atr: Optional[float] = None
+    reward_r: Optional[float] = None
+    custom_def: Optional[dict] = None
+
+
+@app.post("/api/lab/test")
+def lab_test(req: LabTestReq, current_user: dict = Depends(_get_current_user)):
+    if req.timeframe not in ("15m", "1h", "4h", "1d"):
+        return JSONResponse(status_code=400, content={"error": "Timeframe must be 15m, 1h, 4h or 1d"})
+    days = max(90, min(int(req.days or 365), 730))
+    coins = [c for c in (req.coins or LAB_COINS[:6]) if c in LAB_COINS][:10] or LAB_COINS[:6]
+    try:
+        key, defn = _lab_resolve(req.strategy, current_user["username"], req.custom_def)
+    except (ValueError, _custom.InvalidStrategy) as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    params = _lab_exits(key, req.sl_atr, req.reward_r, defn)
+    out = _lab_run(key, req.timeframe, coins, days, params)
+    if defn:
+        out["description"] = _custom.describe(params.get("custom_def") or defn)
+    if key.startswith("custom:") and key != "custom:new":
+        data = _custom_all()
+        sid = key.split(":", 1)[1]
+        if sid in data:
+            data[sid]["last_test"] = {"verdict": out["verdict"], "test_r": out["test"]["avg_r"],
+                                      "tf": req.timeframe, "time": datetime.now().strftime("%Y-%m-%d %H:%M")}
+            _custom_save_all(data)
+    return out
+
+
+class LabCompareReq(BaseModel):
+    coin: str = "BTC"
+    timeframe: str = "4h"
+    days: int = 365
+
+
+@app.post("/api/lab/compare")
+def lab_compare(req: LabCompareReq, current_user: dict = Depends(_get_current_user)):
+    """Every built-in strategy on one coin, train vs test — the honest version
+    of the old 'backtest all'."""
+    if req.coin not in LAB_COINS or req.timeframe not in ("15m", "1h", "4h", "1d"):
+        return JSONResponse(status_code=400, content={"error": "Pick a listed coin and timeframe"})
+    days = max(90, min(int(req.days or 365), 730))
+    sym = f"{req.coin}/USDT:USDT"
+    rows = []
+    for st in _ALL_CRYPTO_STRATEGIES:
+        if st == "funding_rate":
+            continue                      # needs live funding data, cannot be replayed
+        r = _safe_lab(st, sym, req.timeframe, days, _lab_exits(st))
+        r["strategy"] = st
+        r["tested_profile"] = (_autopilot_mod.APPROVED_PROFILES.get(st) or {}).get("tf") == req.timeframe
+        rows.append(r)
+    rows.sort(key=lambda r: -((r.get("test") or {}).get("avg_r") or -9) - ((r.get("train") or {}).get("avg_r") or -9))
+    return {"coin": req.coin, "timeframe": req.timeframe, "days": days, "results": rows}
+
+
+class LabCoinsReq(BaseModel):
+    strategy: str
+    timeframe: str = "4h"
+    candidates: int = 10
+    custom_def: Optional[dict] = None
+
+
+@app.post("/api/lab/coins")
+def lab_coins(req: LabCoinsReq, current_user: dict = Depends(_get_current_user)):
+    """Coin Finder: which of today's top-momentum crypto coins this strategy
+    works on (last 45-365 days depending on timeframe) — the same ranking the
+    AI uses to pick a bot's coin."""
+    try:
+        key, defn = _lab_resolve(req.strategy, current_user["username"], req.custom_def)
+    except (ValueError, _custom.InvalidStrategy) as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    params = _lab_exits(key, custom_def=defn)
+    try:
+        rows = _autopilot.rank_for_strategy(key, req.timeframe, params,
+                                            candidates=max(4, min(int(req.candidates or 10), 15)))
+    except Exception as e:
+        return JSONResponse(status_code=502, content={"error": f"Market data unavailable: {str(e)[:150]}"})
+    return {"strategy": key, "timeframe": req.timeframe,
+            "days": _autopilot.PICK_DAYS.get(req.timeframe, 180), "coins": rows}
+
+
+@app.get("/api/lab/strategies")
+def lab_strategies(current_user: dict = Depends(_get_current_user)):
+    mine = [{"id": f"custom:{sid}", "name": c["name"], "description": _custom.describe(c["def"]),
+             "def": c["def"], "created": c.get("created"), "last_test": c.get("last_test")}
+            for sid, c in _custom_all().items() if c.get("owner") == current_user["username"]]
+    return {
+        "builtin": [{"id": st, "tested_tf": (_autopilot_mod.APPROVED_PROFILES.get(st) or {}).get("tf"),
+                     "evidence": (_autopilot_mod.APPROVED_PROFILES.get(st) or {}).get("evidence")}
+                    for st in _ALL_CRYPTO_STRATEGIES if st != "funding_rate"],
+        "custom": sorted(mine, key=lambda x: x.get("created") or "", reverse=True),
+        "coins": LAB_COINS,
+        "indicators": {k: {"label": v[0], "period": v[1], "default": v[2]} for k, v in _custom.INDICATORS.items()},
+        "ops": _custom.OPS,
+        "templates": _custom.TEMPLATES,
+    }
+
+
+class CustomSaveReq(BaseModel):
+    id: Optional[str] = None
+    name: str
+    definition: dict
+
+
+@app.post("/api/lab/custom")
+def lab_custom_save(req: CustomSaveReq, current_user: dict = Depends(_get_current_user)):
+    uname = current_user["username"]
+    name = (req.name or "").strip()[:60]
+    if not name:
+        return JSONResponse(status_code=400, content={"error": "Give the strategy a name"})
+    try:
+        defn = _custom.validate(req.definition)
+    except _custom.InvalidStrategy as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    data = _custom_all()
+    sid = (req.id or "").split("custom:", 1)[-1]
+    if sid and sid in data and data[sid].get("owner") != uname:
+        return JSONResponse(status_code=403, content={"error": "Not your strategy"})
+    if not sid or sid not in data:
+        if sum(1 for c in data.values() if c.get("owner") == uname) >= 30:
+            return JSONResponse(status_code=400, content={"error": "Limit: 30 custom strategies"})
+        sid = str(_uuid.uuid4())[:8]
+        data[sid] = {"owner": uname, "created": datetime.now().strftime("%Y-%m-%d %H:%M")}
+    data[sid].update({"name": name, "def": defn, "last_test": None})
+    _custom_save_all(data)
+    return {"success": True, "id": f"custom:{sid}", "description": _custom.describe(defn)}
+
+
+@app.delete("/api/lab/custom/{sid}")
+def lab_custom_delete(sid: str, current_user: dict = Depends(_get_current_user)):
+    sid = sid.split("custom:", 1)[-1]
+    data = _custom_all()
+    c = data.get(sid)
+    if not c or c.get("owner") != current_user["username"]:
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    if any(b.get("strategy") == f"custom:{sid}" and b.get("status") == "active" for b in _crypto_bots.values()):
+        return JSONResponse(status_code=400, content={"error": "A running bot uses this strategy — stop it first"})
+    data.pop(sid)
+    _custom_save_all(data)
+    return {"success": True}
+
+
+# ── REPORTS (one place for every trade: bots, autopilot, manual, Telegram) ────
+def _ledger_backfill():
+    """Copy closed trades that bots still hold into the ledger (idempotent)."""
+    added = 0
+    for bid, b in list(_crypto_bots.items()):
+        for t in b.get("trades", []):
+            if t.get("status") != "closed":
+                continue
+            rid = t.get("ledger_id") or f"{bid}-{t.get('time')}-{t.get('price')}"
+            exit_time = t.get("exit_time") or t.get("time")
+            if _ledger.add_closed(rid, account=b.get("username", "admin"),
+                                  source="autopilot" if b.get("autopilot") else "bot", mode=t.get("mode") or b.get("mode", "live"),
+                                  bot_id=bid, strategy=b.get("custom_name") or b.get("strategy"), timeframe=b.get("timeframe"),
+                                  symbol=b.get("symbol"), side=t.get("signal"), qty=t.get("amount"), entry=t.get("price"),
+                                  exit=t.get("exit_price"), sl=t.get("sl"), tp=t.get("tp"), risk_usd=t.get("risk_usd"),
+                                  pnl=round(float(t.get("pnl") or 0), 4), exit_reason=t.get("exit_reason"),
+                                  open_time=f"{t.get('time')}:00" if t.get("time") and len(t["time"]) == 16 else t.get("time"),
+                                  close_time=f"{exit_time}:00" if exit_time and len(exit_time) == 16 else exit_time):
+                added += 1
+    if added:
+        _ledger.flush()
+        print(f"[ledger] {added} past bot trade(s) imported")
+
+
+def _ledger_track_once():
+    """Close ledger records of hand-placed live trades once Binance shows the
+    position gone (stop, target or closed in the app)."""
+    for rec in _ledger.open_records(mode="live"):
+        if rec.get("source") not in ("manual", "telegram"):
+            continue
+        ex = _active_ex.get(rec.get("account", "admin"), {}).get("binance")
+        if not ex:
+            continue
+        try:
+            if _live_position(ex, rec["symbol"]):
+                continue
+            pos = {"symbol": rec["symbol"], "open_time_ms": rec.get("open_ms") or 0,
+                   "open_side": "BUY" if rec.get("side") == "LONG" else "SELL"}
+            avg, qty, realized, fees = _live_fills_since(ex, pos, "sell" if rec.get("side") == "LONG" else "buy")
+            _cancel_protective(ex, pos)        # leftover stop / target of a closed position
+            reason = "closed"
+            if avg and rec.get("sl") and abs(avg - float(rec["sl"])) <= abs(float(rec["entry"]) - float(rec["sl"])) * 0.25:
+                reason = "stop_loss"
+            elif avg and rec.get("tp") and abs(avg - float(rec["tp"])) <= abs(float(rec["tp"]) - float(rec["entry"])) * 0.25:
+                reason = "take_profit"
+            _ledger.close(rec["id"], avg or rec.get("entry"), realized - fees, reason, fees=fees)
+        except Exception as e:
+            print(f"[ledger] track {rec.get('id')}: {e}")
+
+
+def _ledger_tracker_loop():
+    _time.sleep(30)
+    while True:
+        try:
+            _ledger_track_once()
+        except Exception as e:
+            print(f"[ledger] tracker: {e}")
+        _time.sleep(60)
+
+
+def _telegram_demo_records():
+    """Telegram demo (paper) trades, mapped to ledger shape — owner account."""
+    try:
+        st = _load_tg_demo_state()
+    except Exception:
+        return []
+    out = []
+    for i, t in enumerate(st.get("trades", [])):
+        if t.get("status") not in ("closed", "partial_close"):
+            continue
+        ts = t.get("time")
+        out.append({"id": f"tgdemo-{i}", "account": "admin", "source": "telegram", "mode": "demo", "status": "closed",
+                    "strategy": "telegram signal", "symbol": t.get("symbol"),
+                    "side": "LONG" if t.get("side") in ("buy", "long", "BUY") else "SHORT",
+                    "qty": t.get("amount"), "entry": t.get("entry"), "exit": t.get("exit"),
+                    "pnl": round(float(t.get("pnl") or 0), 4), "exit_reason": t.get("reason"),
+                    "open_time": None, "close_time": f"{ts}:00" if ts and len(ts) == 16 else ts, "r": None})
+    return out
+
+
+def _report_period(period, date_from, date_to):
+    now = datetime.now(timezone.utc)
+    if period == "custom":
+        return (date_from or "0000-00-00") + " 00:00:00", (date_to or "9999-12-31") + " 23:59:59"
+    days = {"today": 0, "7d": 7, "30d": 30, "90d": 90, "180d": 180, "365d": 365}.get(period)
+    if period == "today":
+        return now.strftime("%Y-%m-%d") + " 00:00:00", "9999-12-31 23:59:59"
+    if period == "ytd":
+        return now.strftime("%Y") + "-01-01 00:00:00", "9999-12-31 23:59:59"
+    if days:
+        return (now - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S"), "9999-12-31 23:59:59"
+    return "0000-00-00 00:00:00", "9999-12-31 23:59:59"
+
+
+def _report_accounts(current_user, account):
+    """Accounts this user may see: their own; the admin may also pick a client or all."""
+    me = current_user["username"]
+    if current_user.get("role") != "admin":
+        return {me}
+    if account in (None, "", "me"):
+        return {me}
+    if account == "all":
+        return None                            # no filter
+    return {account}
+
+
+@app.get("/api/reports")
+def reports(period: str = "30d", mode: str = "all", source: str = "all", account: str = "me",
+            date_from: str = "", date_to: str = "", current_user: dict = Depends(_get_current_user)):
+    accounts = _report_accounts(current_user, account)
+    start, end = _report_period(period, date_from, date_to)
+    rows = _ledger.all() + _telegram_demo_records()
+
+    def keep(r):
+        if accounts is not None and r.get("account", "admin") not in accounts:
+            return False
+        if mode != "all" and r.get("mode") != mode:
+            return False
+        if source != "all" and r.get("source") != source:
+            return False
+        return True
+    rows = [r for r in rows if keep(r)]
+    closed = [r for r in rows if r.get("status") == "closed" and start <= (r.get("close_time") or "") <= end]
+    out = _trade_ledger.analyse(closed)
+
+    # open positions with live P/L where we know it
+    bots_by_id = {b.get("id"): b for b in _crypto_bots.values()}
+    open_rows = []
+    for r in rows:
+        if r.get("status") != "open":
+            continue
+        b = bots_by_id.get(r.get("bot_id"))
+        if r.get("bot_id") and (not b or not b.get("open_side")):
+            continue                           # stale record of a deleted / already closed bot
+        upnl, price = None, None
+        if b:
+            price = b.get("last_price")
+            if b.get("open_entry_price") and price:
+                upnl = round(_engine.trade_pnl(b["open_side"], b["open_entry_price"], price, b.get("open_amount", 0)), 4)
+        open_rows.append({**r, "price": price, "upnl": upnl})
+    out["open_positions"] = sorted(open_rows, key=lambda r: r.get("open_time") or "", reverse=True)
+    out["trades"] = sorted(closed, key=lambda r: r.get("close_time") or "", reverse=True)[:3000]
+    out["filters"] = {"period": period, "mode": mode, "source": source, "account": account,
+                      "from": start[:10] if not start.startswith("0000") else None, "to": end[:10] if not end.startswith("9999") else None}
+    if current_user.get("role") == "admin":
+        try:
+            users = [u["username"] for u in _load_users().get("users", [])]
+        except Exception:
+            users = []
+        out["accounts"] = ["me", "all"] + [u for u in users if u != current_user["username"]]
+    return out
+
+
+@app.get("/api/reports/exchange")
+def reports_exchange(days: int = 30, current_user: dict = Depends(_get_current_user)):
+    """Binance USDT-M statement straight from the exchange (income history):
+    realized P/L, trading fees, funding, transfers — the numbers Binance shows."""
+    uname = current_user["username"]
+    ex = _active_ex.get(uname, {}).get("binance")
+    if not ex:
+        return JSONResponse(status_code=400, content={"error": "Connect Binance to see the exchange statement"})
+    days = max(1, min(int(days or 30), 90))           # Binance keeps 3 months of income history
+    end_ms = int(_time.time() * 1000)
+    start_ms = end_ms - days * 86400 * 1000
+    rows, cursor = [], start_ms
+    try:
+        while cursor < end_ms:
+            win_end = min(cursor + 7 * 86400 * 1000, end_ms)
+            batch = ex.fapiPrivateGetIncome({"startTime": cursor, "endTime": win_end, "limit": 1000}) or []
+            rows += batch
+            if len(batch) >= 1000:
+                cursor = int(batch[-1]["time"]) + 1
+            else:
+                cursor = win_end + 1
+            if len(rows) > 20000:
+                break
+    except Exception as e:
+        return JSONResponse(status_code=502, content={"error": f"Binance income history failed: {str(e)[:160]}"})
+    totals, by_symbol, daily = {}, {}, {}
+    for r in rows:
+        typ, amt = r.get("incomeType"), float(r.get("income") or 0)
+        totals[typ] = totals.get(typ, 0.0) + amt
+        sym = r.get("symbol") or "—"
+        if typ in ("REALIZED_PNL", "COMMISSION", "FUNDING_FEE"):
+            s = by_symbol.setdefault(sym, {"symbol": sym, "realized": 0.0, "fees": 0.0, "funding": 0.0})
+            s[{"REALIZED_PNL": "realized", "COMMISSION": "fees", "FUNDING_FEE": "funding"}[typ]] += amt
+            d = datetime.fromtimestamp(int(r["time"]) / 1000, timezone.utc).strftime("%Y-%m-%d")
+            daily[d] = daily.get(d, 0.0) + amt
+    sym_rows = [{**v, "net": round(v["realized"] + v["fees"] + v["funding"], 4),
+                 "realized": round(v["realized"], 4), "fees": round(v["fees"], 4), "funding": round(v["funding"], 4)}
+                for v in by_symbol.values()]
+    sym_rows.sort(key=lambda x: -x["net"])
+    realized = totals.get("REALIZED_PNL", 0.0)
+    fees = totals.get("COMMISSION", 0.0)
+    funding = totals.get("FUNDING_FEE", 0.0)
+    try:
+        equity = _live_equity(ex, uname)
+    except Exception:
+        equity = None
+    recent = sorted(rows, key=lambda r: -int(r.get("time") or 0))[:500]
+    return {
+        "days": days, "equity": equity,
+        "realized_pnl": round(realized, 4), "fees": round(fees, 4), "funding": round(funding, 4),
+        "net_pnl": round(realized + fees + funding, 4),
+        "transfers": round(totals.get("TRANSFER", 0.0), 4),
+        "other": {k: round(v, 4) for k, v in totals.items() if k not in ("REALIZED_PNL", "COMMISSION", "FUNDING_FEE", "TRANSFER")},
+        "by_symbol": sym_rows,
+        "daily": [{"date": d, "net": round(v, 4)} for d, v in sorted(daily.items())],
+        "rows": [{"time": datetime.fromtimestamp(int(r["time"]) / 1000, timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                  "type": r.get("incomeType"), "symbol": r.get("symbol") or "", "amount": round(float(r.get("income") or 0), 6),
+                  "asset": r.get("asset"), "info": r.get("info") or ""} for r in recent],
+    }
 
 
 @app.get("/api/crypto/algo/list")
@@ -4649,87 +5475,6 @@ def _tg_notify(message: str):
 
 
 
-# ── Capital Protection: Buffer/Ratchet system ───────────────────────────
-# Inspired by how prop-fund managers treat allocated capital: never risk
-# the core capital itself — only a small "buffer" above a hard floor.
-# Hit the buffer target -> bank it, ratchet the floor up. Hit the floor
-# from below -> hard-stop everything and force a cool-off period.
-_CAP_PROT_FILE = "capital_protection.json"
-_CAP_PROT_DEF = {
-    "enabled":          False,
-    "starting_capital":  0.0,
-    "buffer_amount":     0.0,
-    "liquidation_line":  0.0,   # hard floor — breach stops all strategies
-    "target_line":       0.0,  # liquidation_line + buffer_amount
-    "status":            "inactive",   # inactive | active | liquidated
-    "liquidated_at":      0.0,         # unix timestamp
-    "break_days":         7,
-}
-
-def _load_cap_prot() -> dict:
-    try:
-        with open(_CAP_PROT_FILE) as f:
-            cfg = json.load(f)
-        for k, v in _CAP_PROT_DEF.items():
-            cfg.setdefault(k, v)
-        return cfg
-    except Exception:
-        return dict(_CAP_PROT_DEF)
-
-def _save_cap_prot(cfg: dict):
-    with open(_CAP_PROT_FILE, "w") as f:
-        json.dump(cfg, f, indent=2)
-
-
-
-class CapProtectionReq(BaseModel):
-    enabled:           bool
-    starting_capital:  float
-    buffer_amount:      float
-    break_days:        int = 7
-
-@app.post("/api/capital-protection/config")
-def cap_protection_save(req: CapProtectionReq):
-    cfg = _load_cap_prot()
-    capital_changed = (cfg.get("starting_capital") != req.starting_capital or
-                        cfg.get("buffer_amount") != req.buffer_amount)
-    cfg["enabled"]          = req.enabled
-    cfg["break_days"]       = req.break_days
-    cfg["starting_capital"] = req.starting_capital
-    cfg["buffer_amount"]    = req.buffer_amount
-    if capital_changed or cfg.get("status") in ("inactive", None):
-        cfg["liquidation_line"] = req.starting_capital
-        cfg["target_line"]      = req.starting_capital + req.buffer_amount
-    if req.enabled:
-        if cfg.get("status") != "liquidated":
-            cfg["status"] = "active"
-    else:
-        cfg["status"] = "inactive"
-    _save_cap_prot(cfg)
-    return {"success": True, **cfg}
-
-@app.get("/api/capital-protection/status")
-def cap_protection_status():
-    cfg = _load_cap_prot()
-    days_left = 0
-    if cfg.get("status") == "liquidated":
-        elapsed   = _time.time() - cfg.get("liquidated_at", 0)
-        remaining = cfg.get("break_days", 7) * 86400 - elapsed
-        days_left = max(0, round(remaining / 86400, 1))
-    return {**cfg, "equity": None, "break_days_left": days_left}
-
-@app.post("/api/capital-protection/reset")
-def cap_protection_reset():
-    """Manually resume after the cool-off break, or start a fresh cycle."""
-    cfg = _load_cap_prot()
-    cfg["liquidation_line"] = cfg.get("starting_capital", 0.0)
-    cfg["target_line"]      = cfg.get("starting_capital", 0.0) + cfg.get("buffer_amount", 0.0)
-    cfg["status"]           = "active" if cfg.get("enabled") else "inactive"
-    cfg["liquidated_at"]    = 0.0
-    _save_cap_prot(cfg)
-    return {"success": True, **cfg}
-
-
 def _normalise_symbol(raw: str) -> str:
     """Convert 'BTC', 'BTCUSDT', 'BTC/USDT', 'BTC-USDT' → 'BTC/USDT:USDT'"""
     raw = raw.upper().replace("-", "/").replace("_", "/")
@@ -4882,37 +5627,32 @@ def _parse_tg_signal(text: str) -> dict | None:
 
 
 def _tg_execute_signal(sig: dict, cfg: dict) -> list:
-    """Place orders on all configured exchanges. Returns list of results."""
-    results = []
-    for exname in cfg.get("exchanges", []):
-        ex = _active_ex.get("admin", {}).get(exname.lower())
-        if not ex:
-            results.append({"exchange": exname, "ok": False, "error": "not connected"})
-            continue
-        try:
-            lev = sig.get("leverage") or cfg.get("leverage", 10)
-            amt = cfg.get("amount", 0.01)
-            try:
-                ex.set_leverage(lev, sig["symbol"])
-            except Exception:
-                pass
-            _set_margin_mode_safe(ex, sig["symbol"])
-            order = ex.create_order(
-                symbol=sig["symbol"],
-                type="market",
-                side=sig["side"],
-                amount=amt,
-            )
-            results.append({
-                "exchange": exname,
-                "ok":       True,
-                "order_id": order.get("id"),
-                "side":     sig["side"],
-                "amount":   amt,
-            })
-        except Exception as e:
-            results.append({"exchange": exname, "ok": False, "error": str(e)[:150]})
-    return results
+    """LIVE: place the signal on Binance through the risk manager — sized from
+    the signal's stop loss, protected by a Binance stop, refused without one."""
+    owner = "admin"
+    try:
+        ex = _binance_for(owner, "binance")
+    except _Skip as e:
+        return [{"exchange": "binance", "ok": False, "error": str(e)}]
+    if not sig.get("sl"):
+        return [{"exchange": "binance", "ok": False,
+                 "error": "Signal has no stop loss — live signals are only taken with a stop"}]
+    tps = sig.get("tps") or ([sig["tp"]] if sig.get("tp") else [])
+    lev = min(int(sig.get("leverage") or cfg.get("leverage", 10)), int(_rm.config["max_leverage"]))
+    if not _manual_lock.acquire(timeout=20):
+        return [{"exchange": "binance", "ok": False, "error": "Another order is being placed"}]
+    try:
+        plan = _manual_order_plan(ex, owner, sig["symbol"], sig["side"], sig["sl"],
+                                  tps[0] if tps else None, lev, 0.0)
+        r = _manual_order_execute(ex, owner, plan, "TELEGRAM")
+        return [{"exchange": "binance", "ok": True, "order_id": r.get("order_id"), "side": sig["side"],
+                 "amount": r.get("amount"), "risk_usd": r.get("risk_usd"), "warning": r.get("warning")}]
+    except _Skip as e:
+        return [{"exchange": "binance", "ok": False, "error": str(e)}]
+    except Exception as e:
+        return [{"exchange": "binance", "ok": False, "error": str(e)[:150]}]
+    finally:
+        _manual_lock.release()
 
 
 def _tg_execute_signal_demo(sig: dict, cfg: dict) -> list:
@@ -5217,7 +5957,7 @@ def _tg_build_report(mode="all") -> str:
             lines.append(f"{icon} {o['strategy']} | {o['symbol']} | uPnL: {upnl_icon} {o['upnl']:+.4f}")
         lines.append("")
     else:
-        lines.append("✅ কোনো open trade নেই\n")
+        lines.append("✅ No open trades\n")
 
     # ── Strategy breakdown (sorted by PnL) ──
     if strategy_rows:
@@ -5250,9 +5990,9 @@ def _tg_handle_command(token: str, chat_id: str, text: str):
         reply = (
             "<b>FarhanFX Algo Bot — Commands</b>\n\n"
             "/report — Full A-to-Z performance report\n"
-            "/pnl — শুধু PnL summary\n"
-            "/running — এখন open trades\n"
-            "/help — এই list\n"
+            "/pnl — PnL summary only\n"
+            "/running — trades open now\n"
+            "/help — this list\n"
         )
 
     elif cmd == "/pnl":
@@ -5288,7 +6028,7 @@ def _tg_handle_command(token: str, chat_id: str, text: str):
         if open_list:
             reply = f"<b>⚡ Open Trades ({len(open_list)})</b>\n\n" + "\n".join(open_list)
         else:
-            reply = "✅ এখন কোনো open trade নেই"
+            reply = "✅ No open trades right now"
 
     elif cmd == "/report":
         reply = _tg_build_report()
@@ -5355,7 +6095,7 @@ class TgConfigReq(BaseModel):
 
 
 @app.post("/api/telegram/config")
-def tg_config_save(req: TgConfigReq):
+def tg_config_save(req: TgConfigReq, current_user: dict = Depends(_require_admin)):
     cfg = req.model_dump()
     if not cfg.get("token"):
         # Token is never sent back to the browser (tg_config_get strips it),
@@ -5374,7 +6114,7 @@ def tg_config_save(req: TgConfigReq):
 
 
 @app.get("/api/telegram/config")
-def tg_config_get():
+def tg_config_get(current_user: dict = Depends(_require_admin)):
     cfg = _load_tg_cfg()
     cfg.pop("token", None)   # don't expose token via GET
     cfg["running"] = _TG_RUNNING
@@ -5382,7 +6122,7 @@ def tg_config_get():
 
 
 @app.get("/api/telegram/status")
-def tg_status():
+def tg_status(current_user: dict = Depends(_require_admin)):
     cfg = _load_tg_cfg()
     return {
         "running":      _TG_RUNNING,
@@ -5399,12 +6139,12 @@ def tg_status():
 
 
 @app.get("/api/telegram/signals")
-def tg_signals_list():
+def tg_signals_list(current_user: dict = Depends(_require_admin)):
     return _TG_SIGNALS[:50]
 
 
 @app.post("/api/telegram/test")
-def tg_test(req: TgConfigReq):
+def tg_test(req: TgConfigReq, current_user: dict = Depends(_require_admin)):
     """Verify the bot token is valid."""
     r = _tg_api(req.token, "getMe")
     if r.get("ok"):
@@ -5413,7 +6153,7 @@ def tg_test(req: TgConfigReq):
 
 
 @app.post("/api/telegram/execute/{idx}")
-def tg_execute_manual(idx: int):
+def tg_execute_manual(idx: int, current_user: dict = Depends(_require_admin)):
     """Manually execute a received signal by index."""
     if idx < 0 or idx >= len(_TG_SIGNALS):
         return JSONResponse(status_code=404, content={"error": "Signal not found"})
@@ -5423,6 +6163,10 @@ def tg_execute_manual(idx: int):
         "symbol":   rec["symbol"],
         "side":     rec["side"],
         "leverage": rec.get("leverage", 10),
+        "sl":       rec.get("sl"),
+        "tp":       rec.get("tp"),
+        "tps":      rec.get("tps") or [],
+        "entry":    rec.get("entry"),
     }
     is_demo = cfg.get("mode", "demo") == "demo"
     results = _tg_execute_signal_demo(sig, cfg) if is_demo else _tg_execute_signal(sig, cfg)
@@ -5437,7 +6181,7 @@ _UB_AUTH_PHONE  = ""
 
 
 @app.post("/api/telegram/userbot/send_code")
-async def ub_send_code(request: Request):
+async def ub_send_code(request: Request, current_user: dict = Depends(_require_admin)):
     req = await request.json()
     global _UB_AUTH_CLIENT, _UB_AUTH_PHONE
     if not _TELETHON_OK:
@@ -5482,7 +6226,7 @@ async def ub_send_code(request: Request):
 
 
 @app.post("/api/telegram/userbot/verify_code")
-async def ub_verify_code(request: Request):
+async def ub_verify_code(request: Request, current_user: dict = Depends(_require_admin)):
     req = await request.json()
     global _UB_AUTH_CLIENT, _UB_AUTH_PHONE
     if not _UB_AUTH_CLIENT:
@@ -5513,7 +6257,7 @@ async def ub_verify_code(request: Request):
 
 
 @app.get("/api/telegram/demo_stats")
-def tg_demo_stats():
+def tg_demo_stats(current_user: dict = Depends(_require_admin)):
     st = _load_tg_demo_state()
     closed = st.get("trades", [])
     stats = _bot_stats(closed)
@@ -5526,7 +6270,7 @@ def tg_demo_stats():
 
 
 @app.get("/api/telegram/demo_trades")
-def tg_demo_trades():
+def tg_demo_trades(current_user: dict = Depends(_require_admin)):
     """Return full closed trade list from demo state — newest first."""
     st = _load_tg_demo_state()
     trades = st.get("trades", [])
@@ -5534,7 +6278,7 @@ def tg_demo_trades():
 
 
 @app.get("/api/telegram/open_positions")
-def tg_open_positions():
+def tg_open_positions(current_user: dict = Depends(_require_admin)):
     """Return open TG demo positions with live unrealized PnL."""
     st   = _load_tg_demo_state()
     pm   = _get_pub_mkt()

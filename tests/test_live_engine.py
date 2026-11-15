@@ -3,6 +3,9 @@ Live-engine tests against a fake Binance — no network, no real orders.
 
     python tests/test_live_engine.py
 
+Also: AI Market Guard rules, untested strategies blocked from live, Trade-tab
+and Telegram orders going through the risk manager, admin-only Telegram API.
+
 Covers: stop loss + take profit placed on the exchange at entry, stop-based
 sizing at the risk manager's risk %, stop-out booking, take-profit booking,
 stop placement failure → position flattened, signal flip, max positions,
@@ -22,6 +25,8 @@ os.chdir(WORK)                       # keep bots.json / risk files out of the re
 import server        # noqa: E402
 import engine        # noqa: E402
 import risk_manager  # noqa: E402
+import market_guard  # noqa: E402
+import trade_ledger  # noqa: E402
 
 TF = "4h"
 TF_MS = 4 * 3600 * 1000
@@ -87,6 +92,9 @@ class FakeBinance:
 
     def load_markets(self):
         return {}
+
+    def fetch_ticker(self, sym):
+        return {"last": self.mkt.price, "close": self.mkt.price}
 
     def market(self, sym):
         return {"limits": {"amount": {"min": 0.001}, "cost": {"min": 5}}}
@@ -172,6 +180,7 @@ CLOCK = {"offset": 0.0}
 _real_time = time.time
 server._time = types.SimpleNamespace(time=lambda: _real_time() + CLOCK["offset"], sleep=lambda s: None)
 SIGNAL = {"v": None}
+_REAL_SIGNAL = server._get_bot_signal
 server._get_bot_signal = lambda bot, ohlcv: SIGNAL["v"]
 server._tg_notify = lambda *a, **k: None
 server._schedule_tick = lambda *a, **k: None          # we drive ticks by hand
@@ -188,6 +197,11 @@ def fresh(equity=1000.0, mode="live"):
     server._rm = risk_manager.RiskManager(os.path.join(WORK, f"rm_{time.time_ns()}.json"))
     server._active_ex.clear()
     server._active_ex["admin"] = {"binance": ex}
+    server._pos_cache.clear()
+    server._ledger = trade_ledger.TradeLedger(os.path.join(WORK, f"ledger_{time.time_ns()}.json"))
+    server._guard = market_guard.MarketGuard({"btc_ohlcv": lambda: None, "fear_greed": lambda: None,
+                                              "funding": lambda: {}},
+                                             path=os.path.join(WORK, f"guard_{time.time_ns()}.json"))
     return mkt, ex
 
 
@@ -383,6 +397,426 @@ def test_ccxt_builds_algo_orders():
         pass
     check("target type TAKE_PROFIT_MARKET", (sent.get("algo") or {}).get("type") == "TAKE_PROFIT_MARKET", sent)
 
+
+
+# ── AI Market Guard ───────────────────────────────────────────────────────────
+def _guard(btc=None, fg=None, funding=None, now=None):
+    clock = {"t": now or _real_time()}
+    g = market_guard.MarketGuard({
+        "btc_ohlcv": lambda: btc, "fear_greed": lambda: fg, "funding": lambda: funding or {},
+        "now": lambda: clock["t"],
+    }, path=os.path.join(WORK, f"guard_{time.time_ns()}.json"))
+    return g, clock
+
+
+def _btc_series(last_move_pct=0.0, hours=1):
+    rows = [[i, 100, 100, 100, 100.0, 1] for i in range(30)]
+    rows[-1][4] = 100.0 * (1 + last_move_pct / 100)
+    if hours > 1:
+        for k in range(1, hours):
+            rows[-1 - k][4] = 100.0
+    return rows
+
+
+def test_guard_rules():
+    g, clock = _guard(btc=_btc_series(0.5), fg={"score": 50, "label": "Neutral"})
+    g.refresh()
+    check("guard: calm market allows entries at full risk", g.entry_check("BTC/USDT:USDT", "BUY") == {"ok": True, "risk_mult": 1.0, "reason": ""})
+    g, clock = _guard(btc=_btc_series(-5.0), fg={"score": 50, "label": "Neutral"})
+    g.refresh()
+    r = g.entry_check("ETH/USDT:USDT", "SELL")
+    check("guard: BTC -5% in 1h pauses new entries", not r["ok"] and "paused" in r["reason"], r)
+    clock["t"] += 2 * 3600 + 60
+    g.h["btc_ohlcv"] = lambda: _btc_series(0.1)
+    g.refresh()
+    check("guard: pause ends 2h after the shock", g.entry_check("ETH/USDT:USDT", "SELL")["ok"])
+    g, _ = _guard(btc=_btc_series(0.1), fg={"score": 6, "label": "Extreme Fear"})
+    g.refresh()
+    check("guard: extreme fear halves risk", g.entry_check("SOL/USDT:USDT", "BUY")["risk_mult"] == 0.5)
+    g, _ = _guard(btc=_btc_series(0.1), fg={"score": 50, "label": "Neutral"}, funding={"DOGE": 0.15, "XRP": -0.2})
+    g.refresh()
+    check("guard: crowded longs skip a LONG", not g.entry_check("DOGE/USDT:USDT", "BUY")["ok"])
+    check("guard: crowded longs still allow a SHORT", g.entry_check("DOGE/USDT:USDT", "SELL")["ok"])
+    check("guard: crowded shorts skip a SHORT", not g.entry_check("XRP/USDT:USDT", "SELL")["ok"])
+    g.apply_llm({"risk_multiplier": 3.0, "avoid_symbols": ["ADA/USDT:USDT", "sol"]})
+    check("guard: AI advice can never raise risk", g.entry_check("BTC/USDT:USDT", "BUY")["risk_mult"] == 1.0)
+    check("guard: AI avoid list blocks the coin", not g.entry_check("ADA/USDT:USDT", "BUY")["ok"] and not g.entry_check("SOL/USDT:USDT", "SELL")["ok"])
+    g.apply_llm({"risk_multiplier": 0.1})
+    check("guard: AI risk floor is x0.5", g.entry_check("BTC/USDT:USDT", "BUY")["risk_mult"] == 0.5)
+    g, clock = _guard(btc=None, fg=None)
+    g.refresh()
+    check("guard: no data = no opinion (never blocks)", g.entry_check("BTC/USDT:USDT", "BUY")["ok"])
+
+
+def test_bot_obeys_guard():
+    mkt, ex = fresh()
+    bot = add_bot()
+    server._guard, _ = _guard(btc=_btc_series(-8.0, hours=4), fg={"score": 50, "label": "Neutral"})
+    server._guard.refresh()
+    SIGNAL["v"] = "BUY"; mkt.new_candle(100.0); tick()
+    check("bot: shock pause blocks the entry", bot["open_side"] is None and (bot.get("last_error") or "").startswith("⚡"), bot.get("last_error"))
+    mkt, ex = fresh()
+    bot = add_bot()
+    server._guard, _ = _guard(btc=_btc_series(0.1), fg={"score": 95, "label": "Extreme Greed"})
+    server._guard.refresh()
+    SIGNAL["v"] = "BUY"; mkt.new_candle(100.0); tick()
+    sl = [o for o in ex.orders if o["kind"] == "sl"][0]["trigger"]
+    loss = (100 - sl) * ex.position["contracts"]
+    check("bot: extreme greed halves the size (≈0.5% risk)", 3.5 <= loss <= 5.0, loss)
+
+
+def test_untested_strategy_blocked_live():
+    mkt, ex = fresh()
+    bot = add_bot()
+    bot["strategy"], bot["timeframe"] = "rsi", "1h"
+    SIGNAL["v"] = "BUY"; mkt.new_candle(100.0); tick()
+    check("live: untested strategy cannot open", bot["open_side"] is None and "Live entries blocked" in (bot.get("last_error") or ""), bot.get("last_error"))
+    check("live: tested profile allowed", server._live_profile_error("trend_breakout", "4h") is None)
+    check("live: tested strategy on the wrong timeframe refused", server._live_profile_error("trend_breakout", "15m") is not None)
+    demo = add_bot("d1", mode="demo", sym="D1/USDT:USDT")
+    demo["strategy"], demo["timeframe"] = "rsi", "1h"
+    tick("d1")
+    check("demo: untested strategy still runs", demo["open_side"] == "BUY", demo.get("last_error"))
+
+
+# ── Manual (Trade tab) orders through the risk manager ────────────────────────
+def _plan(ex, side="buy", sl=98.0, tp=None, amount=0.0, sym="TEST/USDT:USDT", lev=10):
+    return server._manual_order_plan(ex, "admin", sym, side, sl, tp, lev, amount)
+
+
+def test_manual_order_rules():
+    mkt, ex = fresh()
+    mkt.price = 100.0
+    for args, why in ((dict(sl=None), "required"), (dict(sl=101.0), "BELOW"), (dict(side="sell", sl=99.0), "ABOVE"),
+                      (dict(sl=98.0, tp=99.0), "Take profit")):
+        try:
+            _plan(ex, **args)
+            check(f"manual: refused ({why})", False)
+        except server._Skip as e:
+            check(f"manual: refused ({why})", why in str(e), str(e))
+    p = _plan(ex, sl=98.0, tp=106.0)
+    check("manual: size from the stop ≈ 1% risk", 8.0 <= p["risk_usd"] <= 10.01 and p["qty"] == p["max_qty"], p)
+    check("manual: reward shown in R", abs(p["rr"] - 3.0) < 0.01, p["rr"])
+    try:
+        _plan(ex, sl=98.0, amount=p["max_qty"] * 3)
+        check("manual: oversize refused", False)
+    except server._Skip as e:
+        check("manual: oversize refused", "Too big" in str(e), str(e))
+    server._rm.set_manual_halt(True)
+    try:
+        _plan(ex)
+        check("manual: kill switch blocks", False)
+    except server._Skip as e:
+        check("manual: kill switch blocks", "Kill switch" in str(e))
+    server._rm.set_manual_halt(False)
+
+
+def test_manual_order_places_protection():
+    mkt, ex = fresh()
+    mkt.price = 100.0
+    p = _plan(ex, sl=98.0, tp=106.0)
+    r = server._manual_order_execute(ex, "admin", p, "MANUAL")
+    kinds = sorted(o["kind"] for o in ex.orders)
+    check("manual: position + stop + target on Binance", ex.position and kinds == ["sl", "tp"], kinds)
+    check("manual: counted by the risk manager", server._open_positions("live", ex, "admin") == 1)
+    try:
+        _plan(ex, sl=98.0)
+        check("manual: second order on the same coin refused", False)
+    except server._Skip as e:
+        check("manual: second order on the same coin refused", "already have" in str(e), str(e))
+    bot = add_bot()
+    SIGNAL["v"] = "BUY"; mkt.new_candle(100.0); tick()
+    check("bot: will not trade a coin held by hand", bot["open_side"] is None, bot.get("last_error"))
+    mkt2, ex2 = fresh()
+    mkt2.price = 100.0
+    ex2.fail_stop = True
+    try:
+        server._manual_order_execute(ex2, "admin", _plan(ex2, sl=98.0), "MANUAL")
+        check("manual: stop failure flattens", False)
+    except RuntimeError as e:
+        check("manual: stop failure flattens", ex2.position is None and "closed for safety" in str(e), str(e))
+
+
+def test_manual_counts_toward_bot_limit():
+    mkt, ex = fresh()
+    mkt.price = 100.0
+    server._rm.update_config({"max_positions": 1})
+    server._manual_order_execute(ex, "admin", _plan(ex, sl=98.0), "MANUAL")
+    bot = add_bot("b9", sym="OTHER/USDT:USDT")
+    SIGNAL["v"] = "BUY"; mkt.new_candle(100.0); tick("b9")
+    check("bot: hand-placed position uses up the slot", bot["open_side"] is None and "1/1 positions" in (bot.get("last_error") or ""), bot.get("last_error"))
+
+
+def test_telegram_live_needs_stop_and_admin():
+    mkt, ex = fresh()
+    mkt.price = 100.0
+    r = server._tg_execute_signal({"symbol": "TEST/USDT:USDT", "side": "buy", "sl": None, "leverage": 50}, {})
+    check("telegram: live signal without stop refused", not r[0]["ok"] and "no stop" in r[0]["error"], r)
+    r = server._tg_execute_signal({"symbol": "TEST/USDT:USDT", "side": "buy", "sl": 97.0, "tps": [103.0], "leverage": 50}, {})
+    check("telegram: live signal sized by risk manager + protected", r[0]["ok"] and sorted(o["kind"] for o in ex.orders) == ["sl", "tp"], r)
+    check("telegram: leverage capped at risk manager max", ex.leverage == 10, ex.leverage)
+    open_routes = []
+    for route in server.app.routes:
+        path = getattr(route, "path", "")
+        if path.startswith("/api/telegram"):
+            deps = [d.call for d in route.dependant.dependencies]
+            if server._require_admin not in deps:
+                open_routes.append(path)
+    check("telegram: every endpoint needs an admin login", not open_routes, open_routes)
+    check("capital-protection endpoints removed", not any("capital-protection" in getattr(r, "path", "") for r in server.app.routes))
+
+
+def test_accounts_have_separate_risk():
+    mkt, ex = fresh()
+    server._rm_users.clear()
+    server._rm.update_config({"max_positions": 1})
+    client_bot = add_bot("c1", mode="demo", sym="CL/USDT:USDT")
+    client_bot["username"] = "client1"
+    SIGNAL["v"] = "BUY"; mkt.new_candle(100.0); tick("c1")
+    check("accounts: client bot trades from its own wallet", client_bot["open_side"] == "BUY", client_bot.get("last_error"))
+    check("accounts: client position not counted for the owner", server._open_positions("demo", None, "admin") == 0)
+    owner = add_bot("o1", mode="demo", sym="OW/USDT:USDT")
+    tick("o1")
+    check("accounts: owner can still open with max_positions=1", owner["open_side"] == "BUY", owner.get("last_error"))
+    server._rm_for("client1").set_manual_halt(True)
+    check("accounts: client kill switch leaves the owner alone", not server._rm.state["manual_halt"])
+    check("accounts: owner wallet untouched by client trade", server._rm.state["demo_wallet"] == server._rm.config["demo_capital"])
+
+
+# ── ALGO BOTS: AI picks the coin, user sets balance; SL/TP automatic ─────────
+def test_bot_sizes_from_its_balance():
+    mkt, ex = fresh()
+    bot = add_bot(mode="demo")
+    bot["capital_usd"] = 200.0
+    SIGNAL["v"] = "BUY"; mkt.new_candle(100.0); tick()
+    loss = (100 - bot["sl"]) * bot["open_amount"]
+    check("balance: risk ≈ 1% of the bot's $200, not the $1000 wallet", 1.5 <= loss <= 2.0, loss)
+
+
+def test_start_bot_ai_pair_and_auto_exits():
+    mkt, ex = fresh()
+    calls = []
+    def fake_pick(strategy, tf, params, exclude=(), keep=None):
+        calls.append((strategy, tf, params, set(exclude)))
+        return {"symbol": "PICK/USDT:USDT", "why": "momentum 80", "edge": True}
+    server._autopilot.pick_for_strategy = fake_pick
+    req = server.CryptoBotReq(strategy="trend_breakout", timeframe="4h", leverage=50, capital_usd=150,
+                              mode="demo", sl_atr=9.0, reward_r=9.0)
+    r = server.crypto_algo_start(req, {"username": "admin"})
+    bot = server._crypto_bots[r["bot_id"]]
+    check("start: AI picked the coin", bot["symbol"] == "PICK/USDT:USDT" and bot["ai_pair"], bot["symbol"])
+    check("start: tested stop/target forced (2 ATR, 3R)", bot["sl_atr"] == 2.0 and bot["reward_r"] == 3.0, (bot["sl_atr"], bot["reward_r"]))
+    check("start: leverage capped by risk manager", bot["leverage"] == 10, bot["leverage"])
+    check("start: balance stored", bot["capital_usd"] == 150)
+    r2 = server.crypto_algo_start(server.CryptoBotReq(strategy="rsi", timeframe="1h", capital_usd=100, mode="demo"), {"username": "admin"})
+    check("start: picker skips coins other bots hold", "PICK/USDT:USDT" in calls[-1][3])
+    b2 = server._crypto_bots[r2["bot_id"]]
+    check("start: untested strategy gets 2 ATR / 2R", b2["sl_atr"] == 2.0 and b2["reward_r"] == 2.0)
+    bad = server.crypto_algo_start(server.CryptoBotReq(strategy="rsi", timeframe="1h", capital_usd=5000, mode="demo"), {"username": "admin"})
+    check("start: balance above the wallet refused", getattr(bad, "status_code", 200) == 400)
+    bad = server.crypto_algo_start(server.CryptoBotReq(strategy="rsi", timeframe="1h", capital_usd=0, mode="demo"), {"username": "admin"})
+    check("start: balance required", getattr(bad, "status_code", 200) == 400)
+
+
+def test_ai_repick_only_when_flat():
+    mkt, ex = fresh()
+    bot = add_bot(mode="demo", sym="OLD/USDT:USDT")
+    bot["ai_pair"] = True
+    server._autopilot.pick_for_strategy = lambda *a, **k: {"symbol": "NEW/USDT:USDT", "why": "better momentum"}
+    bot["open_side"] = "BUY"
+    server._ai_pair_repick(bot)
+    check("repick: never moves a bot with an open position", bot["symbol"] == "OLD/USDT:USDT")
+    bot["open_side"] = None
+    msg = server._ai_pair_repick(bot)
+    check("repick: flat bot follows the AI pick", bot["symbol"] == "NEW/USDT:USDT" and msg, msg)
+
+
+def test_picker_ranks_and_keeps():
+    import autopilot as apm
+    edge = {"AAA/USDT:USDT": 0.4, "BBB/USDT:USDT": -0.2, "CCC/USDT:USDT": 0.1}
+    def ohlcv(sym, tf, limit):
+        rows, p = [], 100.0
+        step = {"AAA/USDT:USDT": 1.004, "BBB/USDT:USDT": 1.006, "CCC/USDT:USDT": 1.002}[sym]
+        for i in range(limit):
+            p *= step
+            rows.append([i, p, p * 1.01, p * 0.99, p, 1000 + i])
+        return rows
+    ap = apm.Autopilot({
+        "tickers": lambda: {s: {"quoteVolume": 1e9} for s in edge},
+        "ohlcv": ohlcv, "history": lambda s, tf, d: [],
+        "backtest": lambda st, rows, s, tf, params: {"avg_r": edge[s], "total_trades": 20, "profit_factor": 1.3},
+    }, path=os.path.join(WORK, "ap_pick.json"))
+    pick = ap.pick_for_strategy("trend_breakout", "4h", {})
+    check("picker: coin with the best backtest edge wins over pure momentum", pick["symbol"] == "AAA/USDT:USDT", pick)
+    pick = ap.pick_for_strategy("trend_breakout", "4h", {}, exclude={"AAA/USDT:USDT"})
+    check("picker: excluded coin skipped", pick["symbol"] == "CCC/USDT:USDT", pick["symbol"])
+    pick = ap.pick_for_strategy("trend_breakout", "4h", {}, keep="CCC/USDT:USDT")
+    check("picker: keeps the current coin while it still has an edge", pick["symbol"] == "CCC/USDT:USDT" and pick["kept"])
+
+
+def test_bot_balances_split_the_wallet():
+    mkt, ex = fresh()
+    server._autopilot.pick_for_strategy = lambda *a, **k: {"symbol": f"P{time.time_ns()}/USDT:USDT", "why": "x"}
+    start = lambda cap, mode="demo": server.crypto_algo_start(
+        server.CryptoBotReq(strategy="trend_breakout", timeframe="4h", capital_usd=cap, mode=mode), {"username": "admin"})
+    a = start(600)
+    check("split: first bot takes $600 of the $1000 demo wallet", isinstance(a, dict) and a.get("success"))
+    b = start(500)
+    check("split: $500 more refused (only $400 free)", getattr(b, "status_code", 200) == 400 and "free $400" in b.body.decode())
+    c = start(400)
+    check("split: exactly the free $400 allowed", isinstance(c, dict) and c.get("success"))
+    check("split: allocated = wallet", server._allocated("admin", "demo") == 1000.0)
+    server._crypto_bots[a["bot_id"]]["status"] = "stopped"
+    check("split: a stopped bot frees its share", server._allocated("admin", "demo") == 400.0)
+    d = start(500)
+    check("split: freed share can be reused", isinstance(d, dict) and d.get("success"))
+    r = server.crypto_algo_resume(a["bot_id"], {"username": "admin"})
+    check("split: resuming is refused when its share is gone", getattr(r, "status_code", 200) == 400)
+    check("split: live wallet counted separately", server._allocation_error("admin", "live", 900) is None)
+
+
+def test_picker_only_real_crypto():
+    import autopilot as apm
+    syms = ["TSLA/USDT:USDT", "XAU/USDT:USDT", "ETH/USDT:USDT", "PAXG/USDT:USDT"]
+    kinds = {"TSLA/USDT:USDT": ("EQUITY", ["TradFi"]), "XAU/USDT:USDT": ("COMMODITY", ["TradFi"]),
+             "ETH/USDT:USDT": ("COIN", ["Layer-1", "Crypto"]), "PAXG/USDT:USDT": ("COIN", ["RWA", "Crypto"])}
+    def ohlcv(sym, tf, limit):
+        p, rows = 100.0, []
+        for i in range(limit):
+            p *= 1.003
+            rows.append([i, p, p * 1.01, p * 0.99, p, 1000])
+        return rows
+    ap = apm.Autopilot({
+        "tickers": lambda: {s: {"quoteVolume": 1e9} for s in syms},
+        "markets": lambda: {s: {"info": {"underlyingType": k[0], "underlyingSubType": k[1]}} for s, k in kinds.items()},
+        "ohlcv": ohlcv, "history": lambda s, tf, d: [],
+        "backtest": lambda st, rows, s, tf, params: {"avg_r": 0.9 if s != "ETH/USDT:USDT" else 0.1, "total_trades": 20},
+    }, path=os.path.join(WORK, "ap_crypto.json"))
+    universe = [s for s, _ in ap._universe(ap.config)]
+    check("universe: stock / gold / RWA perps excluded", universe == ["ETH/USDT:USDT"], universe)
+    check("picker: picks real crypto even if a stock backtests better", ap.pick_for_strategy("trend_breakout", "4h", {})["symbol"] == "ETH/USDT:USDT")
+
+
+# ── Strategy Lab: custom (no-code) strategies ─────────────────────────────────
+def test_custom_strategy_rules():
+    import custom_strategy as cs
+    for bad, why in (({}, "at least one"), ({"long": [{"left": {"type": "value", "value": 1}, "op": ">", "right": {"type": "close"}}]}, "left side"),
+                     ({"long": [{"left": {"type": "ema", "period": 1}, "op": ">", "right": {"type": "close"}}]}, "period"),
+                     ({"long": [{"left": {"type": "close"}, "op": "==", "right": {"type": "close"}}]}, "comparison"),
+                     ({"long": [{"left": {"type": "evil"}, "op": ">", "right": {"type": "close"}}]}, "unknown indicator")):
+        try:
+            cs.validate(bad)
+            check(f"custom: rejects bad definition ({why})", False)
+        except cs.InvalidStrategy as e:
+            check(f"custom: rejects bad definition ({why})", why in str(e), str(e))
+    d = cs.validate({"long": [{"left": {"type": "close"}, "op": "crosses_above", "right": {"type": "donchian_high", "period": 5}}],
+                     "short": [], "sl_atr": 99, "reward_r": 0.1})
+    check("custom: stop/target clamped to safe ranges", d["sl_atr"] == 6.0 and d["reward_r"] == 0.5)
+    flat = [[i, 100, 101, 99, 100, 10] for i in range(40)]
+    check("custom: no signal in a flat market", cs.signal(d, flat) is None)
+    brk = flat + [[40, 100, 106, 100, 105, 10]]
+    check("custom: breakout above the previous 5-bar high → BUY", cs.signal(d, brk) == "BUY")
+    check("custom: no repeat signal on the next bar (cross already happened)", cs.signal(d, brk + [[41, 105, 107, 104, 106, 10]]) is None)
+    rsi_d = cs.validate({"short": [{"left": {"type": "rsi", "period": 14}, "op": ">", "right": {"type": "value", "value": 70}}]})
+    up = [[i, 100 + i, 101 + i, 99 + i, 100 + i, 10] for i in range(60)]
+    check("custom: RSI > 70 in a steady rally → SELL", cs.signal(rsi_d, up) == "SELL")
+    for k, tpl in cs.TEMPLATES.items():
+        cs.validate(tpl)
+    check("custom: every template is valid", True)
+
+
+def test_custom_strategy_runs_in_demo_only():
+    import custom_strategy as cs
+    mkt, ex = fresh()
+    data = {"abc123": {"owner": "admin", "name": "Breakout", "def": cs.validate(cs.TEMPLATES["donchian_breakout"])}}
+    server._custom_save_all(data)
+    server._autopilot.pick_for_strategy = lambda *a, **k: {"symbol": "CUS/USDT:USDT", "why": "x"}
+    r = server.crypto_algo_start(server.CryptoBotReq(strategy="custom:abc123", timeframe="4h", capital_usd=100, mode="demo"), {"username": "admin"})
+    bot = server._crypto_bots[r["bot_id"]]
+    check("custom: demo bot carries its rules and stop/target", bot["custom_def"]["sl_atr"] == 2.0 and bot["reward_r"] == 3.0, bot.get("reward_r"))
+    flat = [[i, 100, 101, 99, 100, 10] for i in range(200)]
+    check("custom: bot signal comes from the custom rules", _REAL_SIGNAL(bot, flat) is None
+          and _REAL_SIGNAL(bot, flat + [[200, 100, 110, 100, 109, 10]]) == "BUY")
+    live = server.crypto_algo_start(server.CryptoBotReq(strategy="custom:abc123", timeframe="4h", capital_usd=100, mode="live"), {"username": "admin"})
+    check("custom: live refused", getattr(live, "status_code", 200) == 400 and "demo only" in live.body.decode())
+    other = server.crypto_algo_start(server.CryptoBotReq(strategy="custom:abc123", timeframe="4h", capital_usd=50, mode="demo"), {"username": "someone"})
+    check("custom: another user cannot use my strategy", getattr(other, "status_code", 200) == 400)
+
+
+# ── Reports: one ledger for every trade ───────────────────────────────────────
+def test_ledger_records_bot_trades():
+    mkt, ex, bot, sl = test_open_places_stop_and_target()
+    recs = server._ledger.all()
+    check("ledger: bot entry recorded as open", len(recs) == 1 and recs[0]["status"] == "open" and recs[0]["side"] == "LONG", recs)
+    SIGNAL["v"] = None
+    mkt.move(sl - 0.5, low=sl - 0.5); ex.trigger_orders(); tick()
+    r = server._ledger.all()[0]
+    check("ledger: close booked with net P/L", r["status"] == "closed" and r["pnl"] < 0 and r["exit_reason"] == "stop_loss", r)
+    check("ledger: R multiple ≈ -1", r["r"] is not None and -1.3 <= r["r"] <= -0.8, r["r"])
+    check("ledger: source and account kept", r["source"] == "bot" and r["account"] == "admin" and r["mode"] == "live")
+
+
+def test_ledger_tracks_manual_trades():
+    mkt, ex = fresh()
+    mkt.price = 100.0
+    server._manual_order_execute(ex, "admin", server._manual_order_plan(ex, "admin", "TEST/USDT:USDT", "buy", 98.0, 106.0, 10), "MANUAL")
+    check("ledger: manual order recorded", server._ledger.open_records(source="manual"))
+    server._ledger_track_once()
+    check("ledger: still open while Binance holds it", server._ledger.open_records(source="manual"))
+    mkt.move(97.5, low=97.5); ex.trigger_orders()
+    server._pos_cache.clear()
+    server._ledger_track_once()
+    r = [x for x in server._ledger.all() if x["source"] == "manual"][0]
+    check("ledger: manual trade closed after the exchange stop fired", r["status"] == "closed" and r["exit_reason"] == "stop_loss", r)
+    check("ledger: manual loss ≈ 1% incl. fees", -11.5 <= r["pnl"] <= -8.0, r["pnl"])
+    check("ledger: leftover take profit cancelled", ex.orders == [])
+
+
+def test_report_statistics():
+    rows = []
+    for i, (p, side) in enumerate([(10, "LONG"), (-5, "LONG"), (20, "SHORT"), (-5, "SHORT"), (-5, "LONG")]):
+        rows.append({"id": str(i), "status": "closed", "pnl": p, "side": side, "r": p / 5, "symbol": "BTC/USDT:USDT",
+                     "strategy": "x", "source": "bot", "mode": "demo", "open_time": f"2026-11-0{i+1} 10:00:00",
+                     "close_time": f"2026-11-0{i+1} 14:00:00"})
+    a = trade_ledger.analyse(rows)["summary"]
+    check("report: net / win rate / PF", a["net_pnl"] == 15 and a["win_rate"] == 40.0 and a["profit_factor"] == 2.0, a)
+    check("report: payoff, expectancy, avg R", a["payoff"] == 3.0 and a["expectancy"] == 3.0 and a["avg_r"] == 0.6, a)
+    check("report: max drawdown from the P/L curve", a["max_drawdown"] == 10, a["max_drawdown"])
+    check("report: long/short split", a["long"]["trades"] == 3 and a["short"]["pnl"] == 15, (a["long"], a["short"]))
+    check("report: streaks and duration", a["max_loss_streak"] == 2 and a["avg_duration_min"] == 240.0, a)
+
+
+def test_report_access_and_filters():
+    mkt, ex = fresh()
+    L = server._ledger
+    L.add_closed("a1", account="admin", source="autopilot", mode="demo", symbol="BTC/USDT:USDT", side="LONG",
+                 pnl=5, close_time=trade_ledger.now_utc())
+    L.add_closed("c1", account="client1", source="bot", mode="live", symbol="ETH/USDT:USDT", side="SHORT",
+                 pnl=-3, close_time=trade_ledger.now_utc())
+    L.add_closed("old", account="admin", source="bot", mode="demo", symbol="SOL/USDT:USDT", side="LONG",
+                 pnl=9, close_time="2020-01-01 00:00:00")
+    server._telegram_demo_records = lambda: []
+    admin = {"username": "admin", "role": "admin"}
+    client = {"username": "client1", "role": "client"}
+    r = server.reports(period="30d", account="me", current_user=admin)
+    check("report: admin sees own trades in the period", r["summary"]["trades"] == 1 and r["summary"]["net_pnl"] == 5)
+    r = server.reports(period="all", account="all", current_user=admin)
+    check("report: admin 'all accounts' sees everyone, all time", r["summary"]["trades"] == 3)
+    r = server.reports(period="all", account="all", current_user=client)
+    check("report: a client only ever sees their own", r["summary"]["trades"] == 1 and r["trades"][0]["account"] == "client1")
+    r = server.reports(period="all", source="autopilot", account="all", current_user=admin)
+    check("report: source filter", r["summary"]["trades"] == 1 and r["trades"][0]["source"] == "autopilot")
+
+
+def test_ledger_backfill_once():
+    mkt, ex = fresh()
+    b = add_bot(mode="demo")
+    b["trades"] = [{"time": "2026-11-10 08:00", "mode": "demo", "signal": "BUY", "price": 100, "amount": 1,
+                    "sl": 98, "tp": 106, "risk_usd": 2, "pnl": 6, "status": "closed", "exit_reason": "take_profit",
+                    "exit_price": 106, "exit_time": "2026-11-10 20:00"}]
+    server._ledger_backfill(); server._ledger_backfill()
+    rows = server._ledger.all()
+    check("backfill: past bot trades imported once", len(rows) == 1 and rows[0]["r"] == 3.0 and rows[0]["duration_min"] == 720.0, rows)
 
 if __name__ == "__main__":
     for name, fn in list(globals().items()):

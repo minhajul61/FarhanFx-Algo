@@ -123,6 +123,30 @@ def _save_state(state):
 # server a moment later, and must never touch live or autopilot bots.
 BOTS_PROVIDER = None
 
+# Set by server.py: (get_context, apply_view). get_context() returns the live
+# autopilot picks, risk manager and AI Market Guard state; apply_view(dict)
+# hands the model's guard view to the Market Guard, which can only LOWER risk
+# (risk x0.5-1.0) or skip coins for 8h — never raise risk or open trades.
+GUARD_PROVIDER = None
+
+
+def _guard_section() -> str:
+    if not GUARD_PROVIDER:
+        return ""
+    try:
+        ctx = GUARD_PROVIDER[0]()
+    except Exception:
+        return ""
+    return ("════════════════════════════════════════════\n"
+            "LIVE AUTOPILOT + RISK MANAGER + AI MARKET GUARD (you advise the guard)\n"
+            "════════════════════════════════════════════\n"
+            + json.dumps(ctx, default=str)[:2500] +
+            "\nGUARD ADVICE RULES: you can only make trading SAFER. Return \"guard\" with "
+            "risk_multiplier between 0.5 and 1.0 (1.0 = normal risk) and avoid_symbols = up to 5 coin "
+            "bases (e.g. \"DOGE\") to skip new entries for 8 hours. Lower risk or avoid a coin ONLY for "
+            "a concrete, current reason (extreme funding, crash/pump, exchange or news risk). Otherwise "
+            "return 1.0 and []. Do not repeat the strategy backtest — the strategies are already tested.\n\n")
+
 
 def _load_bots():
     if BOTS_PROVIDER:
@@ -1131,7 +1155,7 @@ def _build_prompt(metrics, state, tg_trades, tg_stats, web_research="", market_c
     scan_section = _format_strategy_scan(scan_results) if scan_results else "[SCAN] Market scan not available this run."
     intel_section = intelligence if intelligence else "[INTEL] Not available."
 
-    return f"""You are FarhanFX AI Trading Brain v5 — expert self-learning algorithmic trading analyst with full market intelligence.
+    return _guard_section() + f"""You are FarhanFX AI Trading Brain v5 — expert self-learning algorithmic trading analyst with full market intelligence.
 Your mission: deeply analyze ALL trade data + live market intel (fear/greed, whale signals, momentum), find patterns, learn, and auto-implement smart fixes.
 Your mission: deeply analyze ALL trade data + live market intel, find patterns, learn, and auto-implement smart fixes.
 
@@ -1271,7 +1295,8 @@ Respond ONLY with valid JSON:
   "top_performers": ["strategy1"],
   "underperformers": ["strategy2"],
   "key_learnings": ["learning1", "learning2", "learning3"],
-  "next_check_focus": "Specific thing to monitor in next 4h check"
+  "next_check_focus": "Specific thing to monitor in next 4h check",
+  "guard": {{"risk_multiplier": 1.0, "avoid_symbols": [], "reason": "why — or 'market normal'"}}
 }}"""
 
 
@@ -1474,9 +1499,7 @@ def run_analysis():
     with _brain_lock:
         try:
             state      = _load_state()
-            bots       = _load_bots()
-            if not bots:
-                return {"error": "No bots found in bots.json"}
+            bots       = _load_bots() or {}
 
             metrics    = calculate_metrics(bots)
             tg_trades, tg_stats = _load_telegram_trades()
@@ -1514,7 +1537,8 @@ def run_analysis():
             _JSON_REMINDER = (
                 "\n\n[data trimmed for brevity]\n\n"
                 "IMPORTANT: Respond ONLY with a valid JSON object, no extra text:\n"
-                '{"overall_assessment":"...","market_insight":"...","research_insights":[],"decisions":[]}'
+                '{"overall_assessment":"...","market_insight":"...","research_insights":[],"decisions":[],'
+                '"guard":{"risk_multiplier":1.0,"avoid_symbols":[],"reason":"..."}}'
             )
             if len(prompt) > MAX_PROMPT_CHARS:
                 print(f"[Brain] Prompt trimmed {len(prompt)}→{MAX_PROMPT_CHARS} chars", flush=True)
@@ -1552,8 +1576,15 @@ def run_analysis():
             analysis = json.loads(json_match.group())
 
             now       = datetime.now().strftime("%Y-%m-%d %H:%M")
-            decisions = _execute(analysis, bots, state, now)
-            _save_bots(bots)
+            decisions = _execute(analysis, bots, state, now) if bots else []
+            if bots:
+                _save_bots(bots)
+            guard_view = None
+            if GUARD_PROVIDER and isinstance(analysis.get("guard"), dict):
+                try:
+                    guard_view = GUARD_PROVIDER[1](analysis["guard"])
+                except Exception as e:
+                    print(f"[Brain] guard advice not applied: {e}")
 
             state["last_run"]       = now
             state["total_analyses"] = state.get("total_analyses", 0) + 1
@@ -1569,6 +1600,7 @@ def run_analysis():
                 "decisions_count":  len(decisions),
                 "next_focus":       analysis.get("next_check_focus", ""),
                 "insight_summary":  analysis.get("overall_assessment", ""),
+                "guard":            guard_view,
             }])[-60:]
 
             for strat, m in metrics.items():
@@ -1595,6 +1627,7 @@ def run_analysis():
                 "research_insights": analysis.get("research_insights", []),
                 "decisions":         decisions,
                 "next_focus":        analysis.get("next_check_focus", ""),
+                "guard":             guard_view,
             }
 
         except Exception as e:

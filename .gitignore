@@ -30,4 +30,8 @@ Trading Meterial/
 .bt_cache/
 .venv/
 risk_manager.json
+risk_manager_*.json
+market_guard.json
 autopilot_state.json
+custom_strategies.json
+trade_ledger.json

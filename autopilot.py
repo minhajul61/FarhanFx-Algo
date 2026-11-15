@@ -326,14 +326,94 @@ class Autopilot:
                 self.state["scanning"] = False
                 self.save()
 
+    # ── coin picker for one strategy (ALGO BOTS "AI picks the pair") ─────────
+    PICK_DAYS = {"15m": 45, "1h": 120, "4h": 180, "1d": 365}
+
+    def _board(self, max_age=1800):
+        """Momentum leaderboard of the liquid universe, cached 30 min."""
+        cache = getattr(self, "_board_cache", None)
+        if cache and time.time() - cache[0] < max_age:
+            return cache[1]
+        board = []
+        for sym, vol in self._universe(self.config):
+            try:
+                m = momentum_score(self.hooks["ohlcv"](sym, "4h", 120))
+            except Exception:
+                m = None
+            if m:
+                board.append({"symbol": sym, "volume_24h": round(vol), **m})
+        board.sort(key=lambda x: -x["score"])
+        self._board_cache = (time.time(), board)
+        return board
+
+    def pick_for_strategy(self, strategy, tf, params, exclude=(), keep=None):
+        """Best coin for this strategy right now: the top-momentum coins are
+        each backtested with this strategy/timeframe/stop settings, ranked by
+        momentum + backtest edge. `keep` (the bot's current coin) is kept while
+        it is still one of the coins with an edge, so bots do not churn."""
+        results = self.rank_for_strategy(strategy, tf, params, exclude, keep)
+        if not results:
+            return None
+        kept = next((x for x in results if x["symbol"] == keep and x["edge"]), None)
+        best = kept or results[0]
+        return {**best, "kept": bool(kept), "tested": len(results),
+                "alternatives": [x["symbol"] for x in results[1:4]]}
+
+    def rank_for_strategy(self, strategy, tf, params, exclude=(), keep=None, candidates=None):
+        """Every candidate coin with its momentum and this strategy's backtest, best first."""
+        cfg = dict(self.config)
+        if candidates:
+            cfg["candidates"] = candidates
+        board = [c for c in self._board() if c["symbol"] not in set(exclude) or c["symbol"] == keep]
+        candidates = board[:cfg["candidates"]]
+        if keep and keep not in [c["symbol"] for c in candidates]:
+            candidates += [c for c in board if c["symbol"] == keep][:1]
+        days = self.PICK_DAYS.get(tf, 180)
+        results = []
+        for coin in candidates:
+            try:
+                hist = self.hooks["history"](coin["symbol"], tf, days)
+                r = self.hooks["backtest"](strategy, hist, coin["symbol"], tf, params)
+            except Exception:
+                continue
+            avg_r = r.get("avg_r") or 0
+            trades = r.get("total_trades") or 0
+            edge = trades >= cfg["min_trades"] and avg_r > 0
+            fit = max(-1.0, min(1.0, avg_r / 0.5))
+            results.append({
+                "symbol": coin["symbol"], "momentum": coin["score"], "direction": coin["direction"],
+                "trades": trades, "avg_r": avg_r, "pf": r.get("profit_factor"), "edge": edge,
+                "roc_7d": coin.get("roc_7d"), "volume_24h": coin.get("volume_24h"),
+                "win_rate": r.get("win_rate"), "net_pct": r.get("net_pnl_pct"), "max_dd": r.get("max_drawdown_pct"),
+                "rank": round(0.6 * coin["score"] + 40 * fit + (25 if edge else 0), 1),
+                "why": (f"momentum {coin['score']:.0f} ({coin['direction']}, 7d {coin['roc_7d']:+.1f}%); "
+                        f"{strategy} {tf} on this coin, last {days}d: {trades} trades, {avg_r:+.2f}R avg"
+                        + ("" if edge else " — no clear edge")),
+            })
+        results.sort(key=lambda x: -x["rank"])
+        return results
+
     def _universe(self, cfg):
         tickers = self.hooks["tickers"]()
+        # Binance tags every contract: COIN = crypto; EQUITY / COMMODITY /
+        # PREMARKET / FX / INDEX are stock, gold, pre-IPO... perps — not ours.
+        markets = {}
+        if self.hooks.get("markets"):
+            try:
+                markets = self.hooks["markets"]() or {}
+            except Exception:
+                markets = {}
         rows = []
         for sym, t in tickers.items():
             if not sym.endswith("/USDT:USDT"):
                 continue
             base = sym.split("/")[0]
             if base in EXCLUDE_BASES or base.startswith("1000000"):
+                continue
+            info = (markets.get(sym) or {}).get("info") or {}
+            if info.get("underlyingType") and info["underlyingType"] != "COIN":
+                continue
+            if "RWA" in (info.get("underlyingSubType") or []):
                 continue
             vol = float(t.get("quoteVolume") or 0)
             if vol >= cfg["min_volume_usd"]:
