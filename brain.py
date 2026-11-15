@@ -118,7 +118,15 @@ def _save_state(state):
         json.dump(state, f, indent=2, ensure_ascii=False)
 
 
+# Set by server.py: (get_bots, apply_bots). The server owns the live bot
+# state in memory — writing bots.json directly would be overwritten by the
+# server a moment later, and must never touch live or autopilot bots.
+BOTS_PROVIDER = None
+
+
 def _load_bots():
+    if BOTS_PROVIDER:
+        return BOTS_PROVIDER[0]()
     if Path(BOTS_FILE).exists():
         with open(BOTS_FILE, encoding="utf-8") as f:
             return json.load(f)
@@ -126,6 +134,9 @@ def _load_bots():
 
 
 def _save_bots(bots):
+    if BOTS_PROVIDER:
+        BOTS_PROVIDER[1](bots)
+        return
     with open(BOTS_FILE, "w", encoding="utf-8") as f:
         json.dump(bots, f, indent=2, default=str)
 

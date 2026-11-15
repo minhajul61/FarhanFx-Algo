@@ -107,6 +107,93 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
 .nav-item i{font-size:16px}
 .content{flex:1;padding:20px;overflow-y:auto}
 
+/* ── AI AUTOPILOT ─────────────────────────────────────────────────────────── */
+.ap-hero{position:relative;overflow:hidden;display:grid;grid-template-columns:auto 1fr auto;gap:24px;align-items:center;padding:22px 26px;border-radius:18px;margin-bottom:16px;
+  background:radial-gradient(120% 140% at 0% 0%,rgba(139,92,246,0.22),transparent 55%),radial-gradient(120% 140% at 100% 100%,rgba(34,211,238,0.14),transparent 55%),var(--card);
+  border:1px solid rgba(139,92,246,0.35);box-shadow:0 0 0 1px rgba(34,211,238,0.06) inset,0 18px 50px rgba(0,0,0,0.45)}
+.ap-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.04),transparent);transform:translateX(-100%);animation:apSheen 6s ease-in-out infinite;pointer-events:none}
+@keyframes apSheen{0%,60%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+.ap-core{position:relative;width:104px;height:104px;flex-shrink:0}
+.ap-core .ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,var(--accent),var(--cyan),transparent 70%,var(--accent));
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));animation:apSpin 4s linear infinite}
+.ap-core .ring.r2{inset:12px;animation-duration:7s;animation-direction:reverse;opacity:.7}
+.ap-core .orb{position:absolute;inset:26px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#e9d5ff,var(--accent) 45%,#3b0764 100%);box-shadow:0 0 30px rgba(139,92,246,.8),0 0 60px rgba(34,211,238,.25);display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff}
+.ap-core.off .ring{animation-play-state:paused;opacity:.25}.ap-core.off .orb{filter:grayscale(.85) brightness(.6);box-shadow:none}
+.ap-core.live .orb{background:radial-gradient(circle at 35% 30%,#d1fae5,var(--green) 45%,#064e3b 100%);box-shadow:0 0 30px rgba(16,185,129,.8),0 0 70px rgba(16,185,129,.3)}
+.ap-core.busy .orb{animation:apPulse 1.1s ease-in-out infinite}
+@keyframes apSpin{to{transform:rotate(360deg)}}
+@keyframes apPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.09)}}
+.ap-title{font-size:20px;font-weight:800;letter-spacing:2.5px;background:linear-gradient(90deg,#fff,#c4b5fd 40%,var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+.ap-sub{font-size:11px;color:var(--text2);margin-top:4px;letter-spacing:.5px}
+.ap-think{margin-top:10px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#c4b5fd;min-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ap-think::before{content:"› ";color:var(--cyan)}
+.ap-think .cur{display:inline-block;width:7px;height:13px;background:var(--cyan);vertical-align:-2px;margin-left:2px;animation:apBlink 1s steps(1) infinite}
+@keyframes apBlink{50%{opacity:0}}
+.ap-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:1.2px;border:1px solid}
+.ap-chip .dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+.ap-chip.on{color:var(--cyan);border-color:rgba(34,211,238,.4);background:rgba(34,211,238,.08)}
+.ap-chip.live{color:var(--green);border-color:rgba(16,185,129,.45);background:rgba(16,185,129,.1)}
+.ap-chip.off{color:var(--text3);border-color:var(--border2);background:var(--bg2)}
+.ap-chip.halt{color:var(--red);border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.1)}
+.ap-actions{display:flex;flex-direction:column;gap:8px;min-width:170px}
+.ap-btn{padding:9px 14px;border-radius:9px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px}
+.ap-btn:hover{border-color:var(--accent);transform:translateY(-1px)}
+.ap-btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;color:#fff;box-shadow:0 6px 18px rgba(139,92,246,.35)}
+.ap-btn.live{background:linear-gradient(135deg,#059669,#047857);border-color:transparent;color:#fff;box-shadow:0 6px 18px rgba(16,185,129,.3)}
+.ap-btn.danger{color:var(--red);border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.07)}
+.ap-btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.ap-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.ap-stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;position:relative;overflow:hidden}
+.ap-stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(var(--accent),var(--cyan))}
+.ap-stat .k{font-size:9.5px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase}
+.ap-stat .v{font-size:22px;font-weight:800;margin-top:6px}
+.ap-stat .s{font-size:10.5px;color:var(--text2);margin-top:3px}
+.ap-meter{height:6px;border-radius:99px;background:var(--bg2);margin-top:8px;overflow:hidden}
+.ap-meter i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--green),var(--amber),var(--red));transition:width .6s}
+.ap-cols{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;margin-bottom:16px}
+.ap-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px}
+.ap-card h3{font-size:11px;letter-spacing:2px;color:var(--text2);font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px;text-transform:uppercase}
+.ap-card h3 i{color:var(--accent);font-size:15px}
+.ap-pick{display:grid;grid-template-columns:52px 1fr auto;gap:12px;align-items:center;padding:12px;border-radius:12px;border:1px solid var(--border2);background:linear-gradient(135deg,rgba(139,92,246,.07),transparent);margin-bottom:10px}
+.ap-score{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;
+  background:conic-gradient(var(--cyan) calc(var(--p)*1%),var(--bg2) 0);position:relative}
+.ap-score::before{content:"";position:absolute;inset:5px;border-radius:50%;background:var(--card)}
+.ap-score span{position:relative}
+.ap-pick .sym{font-weight:800;font-size:14px;letter-spacing:.5px}
+.ap-pick .st{font-size:10.5px;color:#c4b5fd;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-top:2px}
+.ap-pick .why{font-size:11px;color:var(--text2);margin-top:5px;line-height:1.45}
+.ap-dir{font-size:10px;font-weight:800;padding:3px 8px;border-radius:6px}
+.ap-dir.UP{color:var(--green);background:rgba(16,185,129,.12)}.ap-dir.DOWN{color:var(--red);background:rgba(239,68,68,.12)}
+.ap-table{width:100%;border-collapse:collapse;font-size:11.5px}
+.ap-table th{font-size:9.5px;letter-spacing:1.2px;color:var(--text3);text-align:left;padding:6px 6px;border-bottom:1px solid var(--border);font-weight:700}
+.ap-table td{padding:7px 6px;border-bottom:1px solid rgba(255,255,255,.035)}
+.ap-bar{height:5px;border-radius:9px;background:var(--bg2);width:70px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:6px}
+.ap-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--cyan))}
+.ap-bot{display:grid;grid-template-columns:12px 1fr auto;gap:12px;align-items:start;padding:11px 12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;background:var(--bg2)}
+.ap-led{width:10px;height:10px;border-radius:50%;margin-top:4px}
+.ap-led.ok{background:var(--green);box-shadow:0 0 10px var(--green)}.ap-led.waiting{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.ap-led.error{background:var(--red);box-shadow:0 0 10px var(--red);animation:apPulse 1s infinite}.ap-led.stopped{background:var(--text3)}
+.ap-bot .t{font-weight:700;font-size:12.5px}.ap-bot .n{font-size:11px;color:var(--text2);margin-top:3px}
+.ap-pos{font-size:11px;margin-top:6px;font-family:ui-monospace,Menlo,monospace;color:var(--text2)}
+.ap-tag{font-size:9px;font-weight:800;letter-spacing:1px;padding:2px 6px;border-radius:5px;margin-left:6px;vertical-align:1px}
+.ap-tag.live{background:rgba(16,185,129,.15);color:var(--green)}.ap-tag.demo{background:rgba(34,211,238,.12);color:var(--cyan)}.ap-tag.ai{background:rgba(139,92,246,.18);color:#c4b5fd}
+.ap-log{max-height:260px;overflow:auto;font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.6}
+.ap-log div{padding:3px 0;border-bottom:1px dashed rgba(255,255,255,.04);color:var(--text2)}
+.ap-log b{color:var(--text3);font-weight:500;margin-right:8px}
+.ap-form{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.ap-form label{font-size:9.5px;letter-spacing:1px;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px}
+.ap-form input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:var(--font);font-size:13px}
+.ap-empty{font-size:12px;color:var(--text3);padding:14px;text-align:center;border:1px dashed var(--border2);border-radius:12px}
+.ap-modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:100;padding:16px}
+.ap-modal .box{background:var(--card);border:1px solid rgba(16,185,129,.4);border-radius:16px;max-width:460px;width:100%;padding:22px}
+.ap-banner{display:flex;align-items:center;gap:14px;padding:12px 16px;border-radius:14px;margin-bottom:14px;cursor:pointer;
+  background:linear-gradient(110deg,rgba(139,92,246,.16),rgba(34,211,238,.07));border:1px solid rgba(139,92,246,.3);transition:border-color .2s}
+.ap-banner:hover{border-color:var(--cyan)}
+.ap-banner .mini{width:34px;height:34px;flex-shrink:0}.ap-banner .mini .orb{inset:8px}
+.ap-hero>*,.ap-cols>*,.ap-grid>*{min-width:0}
+@media (max-width:1100px){.ap-hero{grid-template-columns:auto 1fr}.ap-actions{grid-column:1/-1;flex-direction:row;flex-wrap:wrap;min-width:0}.ap-actions .ap-btn{flex:1 1 140px}.ap-cols{grid-template-columns:1fr}}
+@media (max-width:700px){.ap-hero{grid-template-columns:1fr;text-align:center;padding:18px}.ap-core{margin:0 auto}.ap-title{font-size:16px;letter-spacing:1.5px}.ap-grid{grid-template-columns:repeat(2,1fr)}.ap-form{grid-template-columns:repeat(2,1fr)}.ap-stat .v{font-size:18px}}
+
 /* PAGES */
 .page{display:none}
 .page.active{display:block;animation:pageIn .2s ease}
@@ -604,6 +691,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
   <div class="app-body">
     <div class="sidebar">
       <div class="nav-item active" onclick="showPage('dashboard',this)"><i class="ti ti-layout-dashboard"></i> DASHBOARD</div>
+      <div class="nav-item" id="nav-autopilot" onclick="showPage('autopilot',this)"><i class="ti ti-robot"></i> AI AUTOPILOT</div>
       <div class="nav-item" onclick="showPage('crypto',this)"><i class="ti ti-currency-bitcoin"></i> CRYPTO</div>
       <div class="nav-item" onclick="showPage('indian',this)"><i class="ti ti-building-bank"></i> INDIAN MARKET</div>
       <div class="nav-item" onclick="showPage('telegram',this)"><i class="ti ti-brand-telegram"></i> TELEGRAM BOT</div>
@@ -622,6 +710,16 @@ tr:hover td{background:rgba(139,92,246,0.07)}
             <option value="demo">Demo</option>
             <option value="all">All</option>
           </select>
+        </div>
+
+        <!-- AI Autopilot status strip -->
+        <div class="ap-banner" id="ap-banner" onclick="showPage('autopilot', document.getElementById('nav-autopilot'))">
+          <div class="ap-core mini off" id="ap-banner-core"><div class="ring"></div><div class="orb" style="font-size:0"></div></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11px;font-weight:800;letter-spacing:1.5px">AI AUTOPILOT <span class="ap-chip off" id="ap-banner-chip" style="margin-left:8px"><span class="dot"></span><span>OFF</span></span></div>
+            <div style="font-size:11px;color:var(--text2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="ap-banner-txt">Open the autopilot to scan momentum coins.</div>
+          </div>
+          <i class="ti ti-chevron-right" style="color:var(--text3)"></i>
         </div>
 
         <div id="dr-status-line" style="font-size:11px;color:var(--text3);margin-bottom:14px;padding:8px 12px;background:var(--bg2);border-radius:8px"></div>
@@ -707,6 +805,92 @@ tr:hover td{background:rgba(139,92,246,0.07)}
             <div class="kpi" style="margin:0;padding:10px"><div class="kpi-label">SIGNALS</div><div class="kpi-value" id="dash-tg-signals">—</div></div>
             <div class="kpi" style="margin:0;padding:10px"><div class="kpi-label">WIN RATE</div><div class="kpi-value cyan" id="dash-tg-wr">—</div></div>
             <div class="kpi" style="margin:0;padding:10px"><div class="kpi-label">NET P&amp;L</div><div class="kpi-value" id="dash-tg-pnl">—</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI AUTOPILOT PAGE -->
+      <div class="page" id="page-autopilot">
+        <div class="ap-hero">
+          <div class="ap-core off" id="ap-core"><div class="ring"></div><div class="ring r2"></div><div class="orb"><i class="ti ti-brain"></i></div></div>
+          <div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <div class="ap-title">FARHANFX AI AUTOPILOT</div>
+              <span class="ap-chip off" id="ap-chip"><span class="dot"></span><span id="ap-chip-txt">OFF</span></span>
+            </div>
+            <div class="ap-sub" id="ap-sub">Scans momentum across Binance futures, tests each strategy on the coin's own history, and runs the best 3 under the risk manager.</div>
+            <div class="ap-think" id="ap-think">waiting for data<span class="cur"></span></div>
+          </div>
+          <div class="ap-actions">
+            <button class="ap-btn primary" id="ap-btn-demo" onclick="apToggle(true,'demo')"><i class="ti ti-player-play"></i> START DEMO</button>
+            <button class="ap-btn live" id="ap-btn-live" onclick="apAskLive()"><i class="ti ti-bolt"></i> GO LIVE</button>
+            <button class="ap-btn" id="ap-btn-stop" onclick="apToggle(false)"><i class="ti ti-player-pause"></i> PAUSE AUTOPILOT</button>
+            <button class="ap-btn" onclick="apScan()"><i class="ti ti-radar-2"></i> SCAN NOW</button>
+          </div>
+        </div>
+
+        <div class="ap-grid">
+          <div class="ap-stat"><div class="k" id="ap-cap-k">Capital (risk manager)</div><div class="v" id="ap-cap">—</div><div class="s" id="ap-cap-s">—</div></div>
+          <div class="ap-stat"><div class="k">Today P/L</div><div class="v" id="ap-day">—</div><div class="s" id="ap-day-s">—</div><div class="ap-meter"><i id="ap-day-bar" style="width:0%"></i></div></div>
+          <div class="ap-stat"><div class="k">Open positions</div><div class="v" id="ap-pos">—</div><div class="s" id="ap-pos-s">—</div></div>
+          <div class="ap-stat"><div class="k">Risk per trade</div><div class="v" id="ap-risk">—</div><div class="s" id="ap-risk-s">—</div></div>
+        </div>
+
+        <div class="ap-cols">
+          <div class="ap-card">
+            <h3><i class="ti ti-sparkles"></i> AI picks — coin + strategy <span style="margin-left:auto;font-size:10px;color:var(--text3);letter-spacing:.5px;text-transform:none" id="ap-scan-time"></span></h3>
+            <div id="ap-picks"><div class="ap-empty">No scan yet — press SCAN NOW to preview.</div></div>
+          </div>
+          <div class="ap-card">
+            <h3><i class="ti ti-heartbeat"></i> Bot health</h3>
+            <div id="ap-bots"><div class="ap-empty">No bots yet.</div></div>
+          </div>
+        </div>
+
+        <div class="ap-cols">
+          <div class="ap-card">
+            <h3><i class="ti ti-trending-up"></i> Momentum leaderboard (4h)</h3>
+            <div style="overflow-x:auto"><table class="ap-table"><thead><tr><th>#</th><th>COIN</th><th>SCORE</th><th>DIR</th><th>24H</th><th>7D</th><th>ADX</th><th>VOL×</th></tr></thead><tbody id="ap-board"><tr><td colspan="8" style="color:var(--text3)">—</td></tr></tbody></table></div>
+          </div>
+          <div class="ap-card">
+            <h3><i class="ti ti-shield-lock"></i> Risk manager rules</h3>
+            <div class="ap-form">
+              <div><label>Risk / trade %</label><input id="rm-risk_pct" type="number" step="0.1"></div>
+              <div><label>Daily stop %</label><input id="rm-daily_loss_pct" type="number" step="0.5"></div>
+              <div><label>Max positions</label><input id="rm-max_positions" type="number" step="1"></div>
+              <div><label>Max leverage</label><input id="rm-max_leverage" type="number" step="1"></div>
+              <div><label>Capital cap $ (0=all)</label><input id="rm-capital_cap_usd" type="number" step="10"></div>
+              <div><label>Demo capital $</label><input id="rm-demo_capital" type="number" step="100"></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+              <button class="ap-btn primary" onclick="apSaveRisk()"><i class="ti ti-device-floppy"></i> SAVE RULES</button>
+              <button class="ap-btn danger" id="ap-kill" onclick="apKill()"><i class="ti ti-hand-stop"></i> KILL SWITCH</button>
+              <button class="ap-btn" onclick="apResetDemo()"><i class="ti ti-refresh"></i> RESET DEMO WALLET</button>
+            </div>
+            <div style="font-size:10.5px;color:var(--text3);margin-top:10px;line-height:1.5">Every bot gets its balance from here. Each trade risks the % above of the whole capital, sized from its stop loss; a stop and take profit sit on Binance from the first second.</div>
+          </div>
+        </div>
+
+        <div class="ap-cols">
+          <div class="ap-card">
+            <h3><i class="ti ti-terminal-2"></i> AI decision log</h3>
+            <div class="ap-log" id="ap-log"></div>
+          </div>
+          <div class="ap-card">
+            <h3><i class="ti ti-certificate"></i> Approved strategies (1-year backtest)</h3>
+            <div id="ap-profiles" style="font-size:11.5px;line-height:1.6;color:var(--text2)"></div>
+          </div>
+        </div>
+
+        <div class="ap-modal" id="ap-live-modal">
+          <div class="box">
+            <div style="font-weight:800;font-size:16px;color:var(--green);margin-bottom:10px"><i class="ti ti-bolt"></i> Go LIVE with real money?</div>
+            <div style="font-size:12.5px;color:var(--text2);line-height:1.6" id="ap-live-text"></div>
+            <label style="display:flex;gap:8px;align-items:flex-start;margin-top:14px;font-size:12px;cursor:pointer"><input type="checkbox" id="ap-live-ok" style="margin-top:2px"> I understand these bots place real orders on my Binance Futures account and can lose money.</label>
+            <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+              <button class="ap-btn" onclick="document.getElementById('ap-live-modal').style.display='none'">CANCEL</button>
+              <button class="ap-btn live" onclick="apGoLive()"><i class="ti ti-bolt"></i> START LIVE</button>
+            </div>
           </div>
         </div>
       </div>
@@ -3403,6 +3587,208 @@ async function disconnectMT5Only() {
   // MT5 removed — no-op stub kept for any lingering references
 }
 
+
+// ── AI AUTOPILOT ────────────────────────────────────────────────────────────
+let _apTimer = null, _apData = null, _apThinkTimer = null;
+const _apEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const _apMoney = v => v == null ? '—' : (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString(undefined, {maximumFractionDigits: 2});
+const _apCoin = s => String(s || '').split('/')[0];
+const _apNum = (v, d = 4) => v == null ? '—' : (+v).toPrecision(d);
+
+function apInit() {
+  apLoad();
+  clearInterval(_apTimer);
+  _apTimer = setInterval(apLoad, 15000);
+}
+function apStop() { clearInterval(_apTimer); _apTimer = null; }
+
+async function apLoad() {
+  const d = await apiFetch('/api/autopilot/status');
+  if (!d || d.error) { const t = document.getElementById('ap-think'); if (t) t.textContent = 'error: ' + (d && d.error || 'no response'); return; }
+  _apData = d;
+  apRender(d);
+  apBannerRender(d);
+}
+
+function _apStatus(d) {
+  const c = d.autopilot.config, st = d.autopilot.state, r = d.risk;
+  if (r.manual_halt) return {cls: 'halt', txt: 'KILL SWITCH ON'};
+  if (!c.enabled) return {cls: 'off', txt: 'OFF'};
+  if (r.modes[c.mode] && r.modes[c.mode].halted) return {cls: 'halt', txt: c.mode.toUpperCase() + ' · DAILY STOP'};
+  return {cls: c.mode === 'live' ? 'live' : 'on', txt: (st.scanning ? 'SCANNING · ' : '') + (c.mode === 'live' ? 'LIVE' : 'DEMO')};
+}
+
+function apRender(d) {
+  const c = d.autopilot.config, st = d.autopilot.state, r = d.risk;
+  const mode = c.enabled ? c.mode : (d.binance_connected ? 'live' : 'demo');
+  const m = r.modes[mode] || r.modes.demo;
+  const s = _apStatus(d);
+  const core = document.getElementById('ap-core');
+  core.className = 'ap-core ' + (!c.enabled || s.cls === 'halt' ? 'off' : (c.mode === 'live' ? 'live' : '')) + (st.scanning ? ' busy' : '');
+  const chip = document.getElementById('ap-chip'); chip.className = 'ap-chip ' + s.cls;
+  document.getElementById('ap-chip-txt').textContent = s.txt;
+  document.getElementById('ap-btn-demo').disabled = c.enabled && c.mode === 'demo';
+  document.getElementById('ap-btn-live').disabled = c.enabled && c.mode === 'live';
+  document.getElementById('ap-btn-stop').disabled = !c.enabled;
+  document.getElementById('ap-sub').textContent = c.enabled
+    ? `Running in ${c.mode.toUpperCase()} · ${r.config.max_positions} slots · rescans every ${c.scan_hours}h · next ${st.next_scan || 'soon'}`
+    : 'Scans momentum across Binance futures, tests each strategy on the coin\'s own history, and runs the best ' + r.config.max_positions + ' under the risk manager.';
+  const lastLog = (st.log || []).slice(-1)[0];
+  _apType(st.scanning ? 'scanning market · scoring momentum · backtesting strategies per coin…' : (lastLog ? lastLog.msg : 'idle — press SCAN NOW for a preview'));
+
+  // stats
+  document.getElementById('ap-cap-k').textContent = `Capital (${mode})`;
+  document.getElementById('ap-cap').textContent = _apMoney(m.capital);
+  document.getElementById('ap-cap-s').textContent = mode === 'live'
+    ? (d.binance_connected ? `Binance margin balance ${_apMoney(m.equity)}` : 'Binance not connected')
+    : `Demo wallet · started ${_apMoney(r.config.demo_capital)}`;
+  const day = document.getElementById('ap-day');
+  day.textContent = (m.day_pnl_pct >= 0 ? '+' : '') + (m.day_pnl_pct || 0).toFixed(2) + '%';
+  day.style.color = m.day_pnl_pct >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('ap-day-s').textContent = m.halted ? m.halt_reason : `Realized ${_apMoney(m.realized_today)} · ${m.trades_today} trades · stop at -${r.config.daily_loss_pct}%`;
+  document.getElementById('ap-day-bar').style.width = Math.min(100, m.loss_budget_used_pct || 0) + '%';
+  const openN = d.open_positions[mode] || 0;
+  document.getElementById('ap-pos').textContent = `${openN} / ${r.config.max_positions}`;
+  document.getElementById('ap-pos-s').textContent = `Live ${d.open_positions.live} · Demo ${d.open_positions.demo}`;
+  document.getElementById('ap-risk').textContent = r.config.risk_pct + '%';
+  document.getElementById('ap-risk-s').textContent = `≈ ${_apMoney(m.capital * r.config.risk_pct / 100)} per stop-out · max ${r.config.max_leverage}x`;
+
+  // risk form (do not clobber while typing)
+  for (const k of Object.keys(r.config)) {
+    const el = document.getElementById('rm-' + k);
+    if (el && document.activeElement !== el) el.value = r.config[k];
+  }
+  const kill = document.getElementById('ap-kill');
+  kill.innerHTML = r.manual_halt ? '<i class="ti ti-player-play"></i> RELEASE KILL SWITCH' : '<i class="ti ti-hand-stop"></i> KILL SWITCH';
+
+  // picks
+  const picks = st.picks || [];
+  document.getElementById('ap-scan-time').textContent = st.last_scan ? `last scan ${st.last_scan}${st.scan_seconds ? ' · ' + st.scan_seconds + 's' : ''}` : '';
+  document.getElementById('ap-picks').innerHTML = picks.length ? picks.map((p, i) => `
+    <div class="ap-pick">
+      <div class="ap-score" style="--p:${Math.round(p.momentum)}"><span>${Math.round(p.momentum)}</span></div>
+      <div style="min-width:0">
+        <div class="sym">${i + 1}. ${_apEsc(_apCoin(p.symbol))} <span class="ap-dir ${_apEsc(p.direction)}">${p.direction === 'UP' ? '▲' : '▼'} ${_apEsc(p.direction)}</span></div>
+        <div class="st">${_apEsc(p.strategy.replace(/_/g, ' '))} · ${_apEsc(p.tf)}</div>
+        <div class="why">${_apEsc(p.why)}</div>
+      </div>
+      <div style="text-align:right;font-size:11px;color:var(--text2)">rank<br><b style="font-size:16px;color:var(--text)">${p.rank}</b></div>
+    </div>`).join('') : `<div class="ap-empty">${st.last_scan ? 'Last scan found no coin where an approved strategy is currently profitable — the AI is staying out.' : 'No scan yet — press SCAN NOW to preview.'}</div>`;
+
+  // leaderboard
+  const board = st.leaderboard || [];
+  document.getElementById('ap-board').innerHTML = board.length ? board.slice(0, 15).map((x, i) => `
+    <tr><td style="color:var(--text3)">${i + 1}</td><td style="font-weight:700">${_apEsc(_apCoin(x.symbol))}</td>
+    <td><span class="ap-bar"><i style="width:${Math.min(100, x.score)}%"></i></span>${x.score}</td>
+    <td><span class="ap-dir ${_apEsc(x.direction)}">${x.direction === 'UP' ? '▲' : '▼'}</span></td>
+    <td style="color:${x.roc_24h >= 0 ? 'var(--green)' : 'var(--red)'}">${x.roc_24h > 0 ? '+' : ''}${x.roc_24h}%</td>
+    <td style="color:${x.roc_7d >= 0 ? 'var(--green)' : 'var(--red)'}">${x.roc_7d > 0 ? '+' : ''}${x.roc_7d}%</td>
+    <td>${x.adx}</td><td>${x.vol_ratio}</td></tr>`).join('') : '<tr><td colspan="8" style="color:var(--text3)">No scan yet</td></tr>';
+
+  // bots
+  const bots = d.bots || [];
+  document.getElementById('ap-bots').innerHTML = bots.length ? bots.map(b => {
+    const p = b.position;
+    const pos = p ? `<div class="ap-pos">${p.side === 'BUY' ? '🟢 LONG' : '🔴 SHORT'} ${_apNum(p.qty)} @ ${_apNum(p.entry, 6)} · SL ${_apNum(p.sl, 6)} · TP ${_apNum(p.tp, 6)}<br>
+      uPnL <span style="color:${(p.upnl || 0) >= 0 ? 'var(--green)' : 'var(--red)'}">${_apMoney(p.upnl)}</span> · risk ${_apMoney(p.risk_usd)}${b.mode === 'live' ? (p.sl_on_exchange ? ' · <span style="color:var(--green)">SL on Binance ✓</span>' : ' · <span style="color:var(--red)">SL not on Binance</span>') : ''}</div>` : '';
+    return `<div class="ap-bot"><div class="ap-led ${_apEsc(b.health)}"></div>
+      <div style="min-width:0"><div class="t">${_apEsc(_apCoin(b.symbol))} · ${_apEsc((b.strategy || '').replace(/_/g, ' '))} · ${_apEsc(b.tf)}
+        <span class="ap-tag ${b.mode === 'live' ? 'live' : 'demo'}">${_apEsc((b.mode || '').toUpperCase())}</span>${b.autopilot ? '<span class="ap-tag ai">AI</span>' : ''}</div>
+        <div class="n">${_apEsc(b.note || (b.status === 'active' ? 'Watching — no signal on the last candle' : 'Stopped'))}</div>${pos}</div>
+      <div style="text-align:right;font-size:11px;color:var(--text2);white-space:nowrap">${b.trades} trades<br><b style="color:${b.pnl >= 0 ? 'var(--green)' : 'var(--red)'}">${_apMoney(b.pnl)}</b><br><span style="color:var(--text3)">${_apEsc(b.last_run || '')}</span></div></div>`;
+  }).join('') : '<div class="ap-empty">No bots yet — start the autopilot.</div>';
+
+  // log (autopilot + risk manager, newest first)
+  const logs = [...(st.log || []).map(x => ({t: x.time, m: '🤖 ' + x.msg})), ...(r.events || []).map(x => ({t: x.time.slice(0, 16), m: '🛡 ' + x.msg}))]
+    .sort((a, b) => a.t < b.t ? 1 : -1).slice(0, 60);
+  document.getElementById('ap-log').innerHTML = logs.length ? logs.map(x => `<div><b>${_apEsc(x.t)}</b>${_apEsc(x.m)}</div>`).join('') : '<div>No events yet.</div>';
+
+  const prof = d.autopilot.profiles || {};
+  document.getElementById('ap-profiles').innerHTML = Object.entries(prof).map(([k, v]) =>
+    `<div style="padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04)"><b style="color:var(--text)">${_apEsc(k.replace(/_/g, ' '))}</b> <span class="ap-tag ai">${_apEsc(v.tf)}</span>
+     <span style="color:var(--text3)">SL ${v.params.sl_atr} ATR · TP ${v.params.reward_r}R</span><br>${_apEsc(v.evidence)}</div>`).join('') +
+    '<div style="margin-top:8px;color:var(--text3);font-size:10.5px">Fees 0.05%/side + 0.03% slippage included. 15m and 1h versions of every strategy lost money and are not used.</div>';
+}
+
+function _apType(text) {
+  const el = document.getElementById('ap-think');
+  if (!el || el.dataset.full === text) return;
+  el.dataset.full = text;
+  clearInterval(_apThinkTimer);
+  let i = 0;
+  _apThinkTimer = setInterval(() => {
+    i += 2;
+    el.innerHTML = _apEsc(text.slice(0, i)) + '<span class="cur"></span>';
+    if (i >= text.length) clearInterval(_apThinkTimer);
+  }, 18);
+}
+
+function apBannerRender(d) {
+  if (!document.getElementById('ap-banner')) return;
+  const s = _apStatus(d), st = d.autopilot.state;
+  document.getElementById('ap-banner-core').className = 'ap-core mini ' + (s.cls === 'off' || s.cls === 'halt' ? 'off' : (s.cls === 'live' ? 'live' : ''));
+  const chip = document.getElementById('ap-banner-chip'); chip.className = 'ap-chip ' + s.cls;
+  chip.lastElementChild.textContent = s.txt;
+  const picks = (st.picks || []).map(p => `${_apCoin(p.symbol)}→${p.strategy.replace(/_/g, ' ')}`).join(' · ');
+  const bad = (d.bots || []).filter(b => b.health === 'error').length;
+  document.getElementById('ap-banner-txt').textContent =
+    (bad ? `⚠ ${bad} bot(s) need attention · ` : '') + (picks ? 'Picks: ' + picks : (st.last_scan ? 'No coin passed the strategy test on the last scan' : 'No scan yet'));
+}
+async function apBannerLoad() { const d = await apiFetch('/api/autopilot/status'); if (d && !d.error) apBannerRender(d); }
+
+async function apToggle(on, mode) {
+  const r = await apiFetch('/api/autopilot/toggle', {method: 'POST', body: JSON.stringify({enabled: on, mode: mode || (_apData ? _apData.autopilot.config.mode : 'demo'), confirm_live: mode === 'live'})});
+  if (r.error) { toastErr(r.error); return; }
+  toast(on ? `Autopilot ON (${(mode || '').toUpperCase()}) — scanning…` : 'Autopilot paused — open positions keep their stop & target', true);
+  setTimeout(apLoad, 400);
+}
+function apAskLive() {
+  const r = _apData ? _apData.risk : null;
+  const c = r ? r.config : {};
+  document.getElementById('ap-live-text').innerHTML =
+    `The autopilot will trade your <b>Binance USDT-M Futures</b> account.<br><br>` +
+    `• Up to <b>${c.max_positions}</b> positions, each risking <b>${c.risk_pct}%</b> of ${c.capital_cap_usd > 0 ? 'at most $' + c.capital_cap_usd : 'your whole futures balance'}<br>` +
+    `• New trades stop for the day at <b>-${c.daily_loss_pct}%</b><br>• Max leverage <b>${c.max_leverage}x</b>, isolated margin, One-way mode required<br>` +
+    `• Every position gets a stop loss and take profit on Binance immediately<br><br>` +
+    `<span style="color:var(--amber)">The backtested edge is small (+0.1 to +0.3R per trade). Start with a capital cap you can afford to lose.</span>`;
+  document.getElementById('ap-live-ok').checked = false;
+  document.getElementById('ap-live-modal').style.display = 'flex';
+}
+async function apGoLive() {
+  if (!document.getElementById('ap-live-ok').checked) { toastErr('Tick the box to confirm'); return; }
+  document.getElementById('ap-live-modal').style.display = 'none';
+  apToggle(true, 'live');
+}
+async function apScan() {
+  const r = await apiFetch('/api/autopilot/scan', {method: 'POST'});
+  if (r.error) { toastErr(r.error); return; }
+  toast(r.note || 'Scan started — results in about a minute', true);
+  setTimeout(apLoad, 1500);
+}
+async function apSaveRisk() {
+  const body = {};
+  for (const k of ['risk_pct', 'daily_loss_pct', 'max_positions', 'max_leverage', 'capital_cap_usd', 'demo_capital']) {
+    const v = parseFloat(document.getElementById('rm-' + k).value);
+    if (!isNaN(v)) body[k] = v;
+  }
+  const r = await apiFetch('/api/risk/config', {method: 'POST', body: JSON.stringify(body)});
+  if (r.error) { toastErr(r.error); return; }
+  toast('Risk rules saved', true); apLoad();
+}
+async function apKill() {
+  const on = !(_apData && _apData.risk.manual_halt);
+  if (on && !confirm('Kill switch: block ALL new trades now? (Open positions keep their stop & take profit. Use Kill All on the Crypto page to also close them.)')) return;
+  const r = await apiFetch('/api/risk/kill_switch', {method: 'POST', body: JSON.stringify({on})});
+  if (r.error) { toastErr(r.error); return; }
+  toast(on ? 'Kill switch ON — no new trades' : 'Kill switch released', !on); apLoad();
+}
+async function apResetDemo() {
+  if (!confirm('Reset the demo wallet to the demo capital?')) return;
+  const r = await apiFetch('/api/risk/reset_demo', {method: 'POST'});
+  if (r.error) { toastErr(r.error); return; }
+  toast('Demo wallet reset', true); apLoad();
+}
+
 // ── NAVIGATION ─────────────────────────────────────────────────────────────────
 function showPage(id, el) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -3417,7 +3803,8 @@ function showPage(id, el) {
 
   if (id === 'journal')     { jInit(); }
   if (id === 'crypto')      { cryptoInit(); }
-  if (id === 'dashboard')   { loadDashboardReport(); }
+  if (id === 'dashboard')   { loadDashboardReport(); apBannerLoad(); }
+  if (id === 'autopilot')   { apInit(); } else { apStop(); }
   if (id === 'settings')    { applySettingsToUI(loadSettings()); applyStrategyParamsToUI(loadStrategyParams()); if (_getAuthRole() === 'admin') { document.getElementById('admin-clients-panel').style.display = 'block'; document.getElementById('admin-payments-panel').style.display = 'block'; loadAdminClients(); loadAdminPaymentRequests(); } }
   if (id === 'telegram')   { telegramInit(); } else { clearInterval(_tgRefTimer); }
   if (id === 'indian')     { indianInit(); }
@@ -10537,36 +10924,14 @@ async function algoBotPromote(id) {
 }
 
 async function algoBotResume(id) {
-  const r = await apiFetch('/api/crypto/algo/stop/' + id, { method: 'POST' });
-  // Re-activate
-  const bots = await apiFetch('/api/crypto/algo/list');
-  const bot  = (bots||[]).find(b => b.id === id);
-  if (!bot) return;
-  // Restart by re-posting same config
-  const body = {
-    exchange: bot.exchange, symbol: bot.symbol, strategy: bot.strategy,
-    timeframe: bot.timeframe, risk_pct: bot.risk_pct, leverage: bot.leverage,
-    fixed_amount: bot.fixed_amount || 0, fixed_usd: bot.fixed_usd || 0,
-    fast_ema: bot.fast_ema, slow_ema: bot.slow_ema, rsi_period: bot.rsi_period,
-    rsi_ob: bot.rsi_ob, rsi_os: bot.rsi_os, macd_fast: bot.macd_fast,
-    macd_slow: bot.macd_slow, macd_signal: bot.macd_signal, bb_period: bot.bb_period,
-    bb_std: bot.bb_std, atr_period: bot.atr_period, st_multiplier: bot.st_multiplier,
-    ai_min_score: bot.ai_min_score, trailing_atr: bot.trailing_atr, tp_atr: bot.tp_atr,
-    bo_lookback: bot.bo_lookback || 20, dc_period: bot.dc_period || 55, dc_ema: bot.dc_ema || 150,
-    vwap_period: bot.vwap_period || 14, vwap_std: bot.vwap_std || 2.5,
-    adx_min: bot.adx_min, max_open_trades: bot.max_open_trades || 2,
-    margin_mode: bot.margin_mode || 'isolated', mode: bot.mode || 'demo',
-    demo_balance: bot.demo_equity ?? bot.demo_balance ?? 1000,
-  };
-  await apiFetch('/api/crypto/algo/' + id, { method: 'DELETE' });
-  const rr = await apiFetch('/api/crypto/algo/start', { method: 'POST', body: JSON.stringify(body) });
-  toast(rr.error ? rr.error : 'Bot resumed', !rr.error); algoLoadBots();
+  const r = await apiFetch('/api/crypto/algo/' + id + '/resume', { method: 'POST' });
+  toast(r.error ? r.error : 'Bot resumed', !r.error); algoLoadBots();
 }
 
 async function algoBotDelete(id) {
   if (!confirm('Delete this bot and its history?')) return;
-  await apiFetch('/api/crypto/algo/' + id, { method: 'DELETE' });
-  toast('Bot deleted', true); algoLoadBots();
+  const r = await apiFetch('/api/crypto/algo/' + id, { method: 'DELETE' });
+  toast(r.error ? r.error : 'Bot deleted', !r.error); algoLoadBots();
 }
 
 async function algoGroupAction(groupId, action) {

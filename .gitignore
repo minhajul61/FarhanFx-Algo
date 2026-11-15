@@ -27,3 +27,7 @@ kotak_neo_cfg.json
 brain_config.json
 Trading Meterial/
 .gstack/
+.bt_cache/
+.venv/
+risk_manager.json
+autopilot_state.json
