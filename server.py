@@ -49,7 +49,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_CLIENT_ALLOWED_PREFIXES = ("/api/auth/", "/api/crypto/", "/api/payment/", "/api/lab/", "/api/reports")
+_CLIENT_ALLOWED_PREFIXES = ("/api/auth/", "/api/crypto/", "/api/payment/", "/api/lab/", "/api/reports", "/api/account/")
 
 @app.middleware("http")
 async def _role_gate(request: Request, call_next):
@@ -233,6 +233,8 @@ def auth_register(req: AuthRegisterRequest):
         "expiry": expiry,
         "contact": req.contact.strip(),
         "risk_accepted_at": datetime.now().isoformat(),
+        "created": datetime.now().isoformat(),
+        "permissions": {},
     })
     _save_users(data)
     token = _make_session(username, display_name, "client")
@@ -271,11 +273,19 @@ def auth_change_password(req: AuthChangePasswordRequest, authorization: str = He
     data  = _load_users()
     user  = next((u for u in data.get("users", []) if u["username"] == sess["username"]), None)
     if not user or _hash_pw(req.old_password, user["salt"]) != user["password_hash"]:
-        return JSONResponse({"error": "Old password incorrect"}, status_code=400)
+        return JSONResponse({"error": "Current password is incorrect"}, status_code=400)
+    if len(req.new_password) < 8:
+        return JSONResponse({"error": "New password must be at least 8 characters"}, status_code=400)
+    if req.new_password == req.old_password:
+        return JSONResponse({"error": "New password must be different"}, status_code=400)
     user["salt"]          = secrets.token_hex(16)
     user["password_hash"] = _hash_pw(req.new_password, user["salt"])
     _save_users(data)
-    return {"ok": True}
+    others = [t for t, s in _auth_sessions.items() if s.get("username") == user["username"] and t != token]
+    for t in others:                     # a changed password signs out every other device
+        _auth_sessions.pop(t, None)
+    _save_auth_sessions()
+    return {"ok": True, "signed_out": len(others)}
 
 def _get_current_user(authorization: str = Header(default=None)) -> dict:
     token = (authorization or "").replace("Bearer ", "").strip()
@@ -422,7 +432,11 @@ def admin_approve_payment(request_id: str, admin: dict = Depends(_require_admin)
     user = next((u for u in users.get("users", []) if u["username"] == req["username"]), None)
     if not user:
         return JSONResponse({"error": "Client account no longer exists"}, status_code=404)
-    expiry = (datetime.now() + timedelta(days=req["days_requested"])).isoformat()
+    try:
+        base = max(datetime.now(), datetime.fromisoformat(user.get("expiry") or ""))
+    except Exception:
+        base = datetime.now()
+    expiry = (base + timedelta(days=req["days_requested"])).isoformat()
     user["expiry"] = expiry
     _save_users(users)
     req["status"]      = "approved"
@@ -439,6 +453,164 @@ def admin_reject_payment(request_id: str, admin: dict = Depends(_require_admin))
     req["status"]     = "rejected"
     req["resolved_at"] = datetime.now().isoformat()
     _save_payment_requests(data)
+    return {"success": True}
+
+
+# ── ACCOUNT / PROFILE + PERMISSIONS ─────────────────────────────────────────
+# What each client account may use. The admin control panel (coming next)
+# edits user["permissions"]; until then every client gets these defaults.
+PERMISSION_DEFAULTS = {
+    "algo_bots": True,       # create demo bots
+    "live_trading": True,    # live bots, Trade tab orders on Binance
+    "strategy_lab": True,
+    "reports": True,
+    "max_bots": 5,           # running bots at once
+}
+PERMISSION_LABELS = {
+    "algo_bots": "Algo bots", "live_trading": "Live trading (real money)",
+    "strategy_lab": "Strategy Lab", "reports": "Reports", "max_bots": "Max running bots",
+}
+
+
+def _user_record(username):
+    return next((u for u in _load_users().get("users", []) if u["username"] == username), None)
+
+
+def _perms(username) -> dict:
+    """Effective permissions — the owner (admin) can always do everything."""
+    user = _user_record(username) or {}
+    if user.get("role", "admin") != "client":
+        return {**{k: True for k in PERMISSION_DEFAULTS}, "max_bots": 100}
+    p = dict(PERMISSION_DEFAULTS)
+    p.update({k: v for k, v in (user.get("permissions") or {}).items() if k in PERMISSION_DEFAULTS})
+    return p
+
+
+def _perm_error(current_user, perm):
+    """None if allowed, else a 403 response."""
+    if not _perms(current_user["username"]).get(perm):
+        return JSONResponse(status_code=403, content={
+            "error": f"{PERMISSION_LABELS.get(perm, perm)} is not enabled for your account — ask the admin"})
+    return None
+
+
+def _account_status(user) -> str:
+    if user.get("role", "admin") != "client":
+        return "owner"
+    if _is_client_expired(user):
+        return "expired"
+    try:
+        joined = datetime.fromisoformat(user.get("created") or user.get("risk_accepted_at") or "")
+        if (datetime.fromisoformat(user["expiry"]) - joined).days <= _CLIENT_TRIAL_DAYS:
+            return "trial"
+    except Exception:
+        pass
+    return "active"
+
+
+@app.get("/api/account/me")
+def account_me(authorization: str = Header(default=None), current_user: dict = Depends(_get_current_user)):
+    uname = current_user["username"]
+    user = _user_record(uname) or {"username": uname, "role": current_user.get("role", "admin")}
+    token = (authorization or "").replace("Bearer ", "").strip()
+    sessions = [t for t, s in _auth_sessions.items() if s.get("username") == uname]
+    ex = _active_ex.get(uname, {}).get("binance")
+    bots = [b for b in _crypto_bots.values() if b.get("username") == uname]
+    try:
+        last30 = _trade_ledger.analyse([r for r in _ledger.all() if r.get("account", "admin") == uname
+                                        and r.get("status") == "closed"
+                                        and (r.get("close_time") or "") >= (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")])["summary"]
+    except Exception:
+        last30 = {}
+    return {
+        "username": uname,
+        "display_name": user.get("display_name", uname),
+        "role": user.get("role", "admin"),
+        "contact": user.get("contact", ""),
+        "member_since": (user.get("created") or user.get("risk_accepted_at") or "")[:10] or None,
+        "risk_accepted_at": (user.get("risk_accepted_at") or "")[:16] or None,
+        "status": _account_status(user),
+        "expiry": user.get("expiry"),
+        "days_left": _days_left(user),
+        "permissions": _perms(uname),
+        "permission_labels": PERMISSION_LABELS,
+        "sessions": len(sessions),
+        "this_session_started": (_auth_sessions.get(token) or {}).get("created", "")[:16],
+        "exchange": {"binance": bool(ex)},
+        "bots": {"running": sum(1 for b in bots if b.get("status") == "active"), "total": len(bots)},
+        "last30": {k: last30.get(k) for k in ("trades", "net_pnl", "win_rate", "profit_factor")},
+    }
+
+
+class AccountProfileReq(BaseModel):
+    display_name: str = ""
+    contact: str = ""
+
+
+@app.post("/api/account/profile")
+def account_profile(req: AccountProfileReq, current_user: dict = Depends(_get_current_user)):
+    name = req.display_name.strip()[:40]
+    contact = req.contact.strip()[:80]
+    if not name:
+        return JSONResponse(status_code=400, content={"error": "Display name cannot be empty"})
+    data = _load_users()
+    user = next((u for u in data.get("users", []) if u["username"] == current_user["username"]), None)
+    if not user:
+        return JSONResponse(status_code=404, content={"error": "Account not found"})
+    if user.get("role") == "client" and not contact:
+        return JSONResponse(status_code=400, content={"error": "A contact (phone, Telegram or email) is required"})
+    user["display_name"] = name
+    user["contact"] = contact
+    _save_users(data)
+    for s in _auth_sessions.values():          # keep the header badge in sync on every device
+        if s.get("username") == user["username"]:
+            s["display_name"] = name
+    _save_auth_sessions()
+    return {"success": True, "display_name": name, "contact": contact}
+
+
+@app.post("/api/account/logout_others")
+def account_logout_others(authorization: str = Header(default=None), current_user: dict = Depends(_get_current_user)):
+    token = (authorization or "").replace("Bearer ", "").strip()
+    gone = [t for t, s in _auth_sessions.items() if s.get("username") == current_user["username"] and t != token]
+    for t in gone:
+        _auth_sessions.pop(t, None)
+    _save_auth_sessions()
+    return {"success": True, "signed_out": len(gone)}
+
+
+@app.get("/api/account/risk")
+def account_risk(current_user: dict = Depends(_get_current_user)):
+    uname = current_user["username"]
+    ex = _active_ex.get(uname, {}).get("binance")
+    eq = None
+    if ex:
+        try:
+            eq = _live_equity(ex, uname)
+        except Exception:
+            eq = None
+    return {"risk": _rm_for(uname).snapshot(eq), "binance_connected": bool(ex)}
+
+
+@app.post("/api/account/risk")
+def account_risk_save(body: dict, current_user: dict = Depends(_get_current_user)):
+    allowed = {k: v for k, v in (body or {}).items() if k in _risk_manager.DEFAULTS}
+    return {"success": True, "config": _rm_for(current_user["username"]).update_config(allowed)}
+
+
+@app.post("/api/account/kill_switch")
+def account_kill_switch(body: dict, current_user: dict = Depends(_get_current_user)):
+    rm = _rm_for(current_user["username"])
+    rm.set_manual_halt(bool((body or {}).get("on")))
+    return {"success": True, "manual_halt": rm.state["manual_halt"]}
+
+
+@app.post("/api/account/reset_demo")
+def account_reset_demo(current_user: dict = Depends(_get_current_user)):
+    uname = current_user["username"]
+    if _open_positions("demo", None, uname):
+        return JSONResponse(status_code=400, content={"error": "Close your demo positions first"})
+    _rm_for(uname).reset_demo_wallet()
     return {"success": True}
 
 
@@ -1269,6 +1441,10 @@ def crypto_order_preview(req: CryptoOrderReq, current_user: dict = Depends(_get_
 @app.post("/api/crypto/order")
 def crypto_order(req: CryptoOrderReq, current_user: dict = Depends(_get_current_user)):
     uname = current_user["username"]
+    if not req.reduce_only:
+        denied = _perm_error(current_user, "live_trading")
+        if denied:
+            return denied
     try:
         ex = _binance_for(uname, req.exchange)
         if req.reduce_only:
@@ -3723,6 +3899,12 @@ def _bot_tick(bot_id):
 @app.post("/api/crypto/algo/start")
 def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_current_user)):
     uname = current_user["username"]
+    denied = _perm_error(current_user, "algo_bots") or (req.mode == "live" and _perm_error(current_user, "live_trading"))
+    if denied:
+        return denied
+    running = sum(1 for b in _crypto_bots.values() if b.get("username") == uname and b.get("status") == "active")
+    if running >= int(_perms(uname).get("max_bots") or 0):
+        return JSONResponse(status_code=400, content={"error": f"Your plan allows {_perms(uname)['max_bots']} running bots — stop one first"})
     custom = None
     if req.strategy.startswith("custom:"):
         custom = _custom_get(req.strategy)
@@ -4855,6 +5037,9 @@ class LabTestReq(BaseModel):
 
 @app.post("/api/lab/test")
 def lab_test(req: LabTestReq, current_user: dict = Depends(_get_current_user)):
+    denied = _perm_error(current_user, "strategy_lab")
+    if denied:
+        return denied
     if req.timeframe not in ("15m", "1h", "4h", "1d"):
         return JSONResponse(status_code=400, content={"error": "Timeframe must be 15m, 1h, 4h or 1d"})
     days = max(90, min(int(req.days or 365), 730))
@@ -4885,6 +5070,9 @@ class LabCompareReq(BaseModel):
 
 @app.post("/api/lab/compare")
 def lab_compare(req: LabCompareReq, current_user: dict = Depends(_get_current_user)):
+    denied = _perm_error(current_user, "strategy_lab")
+    if denied:
+        return denied
     """Every built-in strategy on one coin, train vs test — the honest version
     of the old 'backtest all'."""
     if req.coin not in LAB_COINS or req.timeframe not in ("15m", "1h", "4h", "1d"):
@@ -4912,6 +5100,9 @@ class LabCoinsReq(BaseModel):
 
 @app.post("/api/lab/coins")
 def lab_coins(req: LabCoinsReq, current_user: dict = Depends(_get_current_user)):
+    denied = _perm_error(current_user, "strategy_lab")
+    if denied:
+        return denied
     """Coin Finder: which of today's top-momentum crypto coins this strategy
     works on (last 45-365 days depending on timeframe) — the same ranking the
     AI uses to pick a bot's coin."""
@@ -4954,6 +5145,9 @@ class CustomSaveReq(BaseModel):
 
 @app.post("/api/lab/custom")
 def lab_custom_save(req: CustomSaveReq, current_user: dict = Depends(_get_current_user)):
+    denied = _perm_error(current_user, "strategy_lab")
+    if denied:
+        return denied
     uname = current_user["username"]
     name = (req.name or "").strip()[:60]
     if not name:
@@ -5099,6 +5293,9 @@ def _report_accounts(current_user, account):
 @app.get("/api/reports")
 def reports(period: str = "30d", mode: str = "all", source: str = "all", account: str = "me",
             date_from: str = "", date_to: str = "", current_user: dict = Depends(_get_current_user)):
+    denied = _perm_error(current_user, "reports")
+    if denied:
+        return denied
     accounts = _report_accounts(current_user, account)
     start, end = _report_period(period, date_from, date_to)
     rows = _ledger.all() + _telegram_demo_records()
@@ -5145,6 +5342,9 @@ def reports(period: str = "30d", mode: str = "all", source: str = "all", account
 
 @app.get("/api/reports/exchange")
 def reports_exchange(days: int = 30, current_user: dict = Depends(_get_current_user)):
+    denied = _perm_error(current_user, "reports")
+    if denied:
+        return denied
     """Binance USDT-M statement straight from the exchange (income history):
     realized P/L, trading fees, funding, transfers — the numbers Binance shows."""
     uname = current_user["username"]

@@ -818,6 +818,73 @@ def test_ledger_backfill_once():
     rows = server._ledger.all()
     check("backfill: past bot trades imported once", len(rows) == 1 and rows[0]["r"] == 3.0 and rows[0]["duration_min"] == 720.0, rows)
 
+
+# ── Profile, security and permissions ─────────────────────────────────────────
+def _mk_users():
+    import secrets as _s
+    from datetime import datetime as _dt, timedelta as _td
+    def u(name, role, pw, **kw):
+        salt = _s.token_hex(8)
+        return {"username": name, "salt": salt, "password_hash": server._hash_pw(pw, salt), "display_name": name,
+                "role": role, **kw}
+    server._save_users({"users": [u("admin", "admin", "adminpass1"),
+                                  u("cli", "client", "clientpass1", contact="t.me/cli",
+                                    expiry=(_dt.now() + _td(days=10)).isoformat(), created=_dt.now().isoformat(),
+                                    permissions={"live_trading": False, "max_bots": 1})]})
+    server._auth_sessions.clear()
+    return server._make_session("cli", "cli", "client"), server._make_session("cli", "cli", "client")
+
+
+def test_profile_and_security():
+    mkt, ex = fresh()
+    tok1, tok2 = _mk_users()
+    cli = server._auth_sessions[tok1]
+    me = server.account_me(authorization="Bearer " + tok1, current_user=cli)
+    check("profile: client sees own account, status and permissions",
+          me["role"] == "client" and me["sessions"] == 2 and me["permissions"]["live_trading"] is False and me["days_left"] in (9, 10), me)
+    bad = server.account_profile(server.AccountProfileReq(display_name="New Name", contact=""), current_user=cli)
+    check("profile: client must keep a contact", getattr(bad, "status_code", 200) == 400)
+    ok = server.account_profile(server.AccountProfileReq(display_name="New Name", contact="+880"), current_user=cli)
+    check("profile: name saved and session badge updated", ok["success"] and server._auth_sessions[tok2]["display_name"] == "New Name")
+    short = server.auth_change_password(server.AuthChangePasswordRequest(old_password="clientpass1", new_password="short"), authorization="Bearer " + tok1)
+    check("security: short new password refused", getattr(short, "status_code", 200) == 400)
+    wrong = server.auth_change_password(server.AuthChangePasswordRequest(old_password="nope", new_password="longenough1"), authorization="Bearer " + tok1)
+    check("security: wrong current password refused", getattr(wrong, "status_code", 200) == 400)
+    r = server.auth_change_password(server.AuthChangePasswordRequest(old_password="clientpass1", new_password="longenough1"), authorization="Bearer " + tok1)
+    check("security: password changed and the other device signed out", r["ok"] and r["signed_out"] == 1 and tok2 not in server._auth_sessions and tok1 in server._auth_sessions)
+    tok3 = server._make_session("cli", "New Name", "client")
+    r = server.account_logout_others(authorization="Bearer " + tok1, current_user=cli)
+    check("security: sign out other devices", r["signed_out"] == 1 and tok3 not in server._auth_sessions)
+
+
+def test_client_permissions_enforced():
+    mkt, ex = fresh()
+    tok, _ = _mk_users()
+    cli = server._auth_sessions[tok]
+    server._autopilot.pick_for_strategy = lambda *a, **k: {"symbol": f"Q{time.time_ns()}/USDT:USDT", "why": "x"}
+    server._active_ex["cli"] = {"binance": ex}
+    live = server.crypto_algo_start(server.CryptoBotReq(strategy="trend_breakout", timeframe="4h", capital_usd=100, mode="live"), cli)
+    check("perms: live bot refused when live trading is off", getattr(live, "status_code", 200) == 403)
+    order = server.crypto_order(server.CryptoOrderReq(exchange="binance", symbol="TEST/USDT:USDT", side="buy", order_type="market", stop_loss=98), cli)
+    check("perms: Trade-tab order refused when live trading is off", getattr(order, "status_code", 200) == 403)
+    a = server.crypto_algo_start(server.CryptoBotReq(strategy="trend_breakout", timeframe="4h", capital_usd=100, mode="demo"), cli)
+    b = server.crypto_algo_start(server.CryptoBotReq(strategy="trend_breakout", timeframe="4h", capital_usd=100, mode="demo"), cli)
+    check("perms: max running bots enforced", isinstance(a, dict) and a.get("success") and getattr(b, "status_code", 200) == 400)
+    rs = server.account_risk_save({"risk_pct": 50, "max_positions": 2}, cli)
+    check("risk: client edits own rules, clamped to limits", rs["config"]["risk_pct"] == 3.0 and server._rm.config["max_positions"] == 3)
+
+
+def test_payment_approval_extends_expiry():
+    from datetime import datetime as _dt
+    mkt, ex = fresh()
+    _mk_users()
+    before = _dt.fromisoformat(server._user_record("cli")["expiry"])
+    server._save_payment_requests({"r1": {"id": "r1", "username": "cli", "days_requested": 30, "status": "pending",
+                                          "submitted_at": _dt.now().isoformat(), "image_file": "x.jpg"}})
+    server.admin_approve_payment("r1", {"username": "admin", "role": "admin"})
+    after = _dt.fromisoformat(server._user_record("cli")["expiry"])
+    check("billing: approval adds days on top of the days left", 29.9 <= (after - before).total_seconds() / 86400 <= 30.1, (before, after))
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

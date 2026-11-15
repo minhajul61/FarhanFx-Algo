@@ -565,6 +565,34 @@ tr:hover td{background:rgba(139,92,246,0.07)}
 .dc-perf-grid span{font-size:9.5px;letter-spacing:1.5px;color:var(--text3)}.dc-perf-grid b{font-size:18px}
 .dc-perf-grid .spark{position:relative;min-height:64px;padding:4px}
 @media(max-width:900px){.dc-perf-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dc-perf-grid .spark{grid-column:1/-1}}
+.pf-hero{grid-template-columns:auto 1fr auto}
+.pf-avatar{width:84px;height:84px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:900;color:#fff;background:conic-gradient(from 210deg,var(--accent),var(--cyan),var(--accent));box-shadow:0 0 30px rgba(139,92,246,.45);border:3px solid rgba(255,255,255,.08)}
+.pf-life{margin-top:12px;max-width:420px}
+.pf-life-top{display:flex;justify-content:space-between;font-size:10.5px;color:var(--text3);letter-spacing:1px;margin-bottom:4px}
+.pf-life-top b{color:var(--text);letter-spacing:0}
+.pf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.pf-grid .ap-card{display:flex;flex-direction:column;gap:10px}
+.pf-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.pf-form.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.pf-form .wide{grid-column:1/-1}
+.pf-form label{font-size:9.5px;letter-spacing:1px;color:var(--text3);text-transform:uppercase;display:block;margin-bottom:4px}
+.pf-form input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:9px 11px;color:var(--text);font-family:var(--font);font-size:12.5px;outline:none}
+.pf-form input:disabled{opacity:.6}
+.pf-form input[type=file]{padding:7px}
+.pf-meta{font-size:11px;color:var(--text3);line-height:1.6}
+.pf-subbox{background:var(--bg2);border-radius:12px;padding:14px;text-align:center}
+.pf-subbox .k{font-size:10px;letter-spacing:1.5px;color:var(--text3)}.pf-subbox .v{font-size:22px;font-weight:800;margin:4px 0}.pf-subbox .s{font-size:11px;color:var(--text2)}
+.pf-ex{display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:var(--bg2)}
+.pf-ex-logo{width:40px;height:40px;border-radius:10px;background:#f0b90b;color:#000;font-weight:900;font-size:20px;display:flex;align-items:center;justify-content:center}
+.pf-ex .s{font-size:11px;color:var(--text3);margin-top:2px}
+.pf-perm{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px}
+.pf-perm b.on{color:var(--green)}.pf-perm b.off{color:var(--red)}
+.pf-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.pf-stats div{background:var(--bg2);border-radius:10px;padding:10px 12px}
+.pf-stats span{display:block;font-size:9.5px;letter-spacing:1.5px;color:var(--text3)}.pf-stats b{font-size:18px}
+.user-badge{cursor:pointer}
+.user-badge:hover{border-color:var(--cyan)}
+@media(max-width:1000px){.pf-grid{grid-template-columns:minmax(0,1fr)}.pf-hero{grid-template-columns:minmax(0,1fr)}.pf-avatar{display:none}.pf-form.three{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .tp-card{background:var(--card);border:1px solid var(--border2);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
 .tp-header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border2)}
 .tp-header-binance{background:linear-gradient(135deg,rgba(240,185,11,0.10),rgba(240,185,11,0.03))}
@@ -815,7 +843,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
       <div class="tb-name">FARHANFX ALGO</div>
     </div>
     <div class="tb-right">
-      <div class="user-badge" id="user-badge">● USER</div>
+      <div class="user-badge" id="user-badge" title="My profile" onclick="showPage('profile', document.getElementById('nav-profile'))">● USER</div>
       <div class="conn-bar" id="conn-bar" style="display:none"><div class="conn-dot" id="conn-dot"></div><span class="conn-label" id="conn-label">CONNECT MT5</span></div>
       <div id="cx-conn-bar" style="display:none;align-items:center;gap:6px;padding:5px 12px;background:var(--card);border:1px solid rgba(34,197,94,0.4);border-radius:8px;font-size:10px;letter-spacing:1px;cursor:pointer" onclick="_goToCrypto()">
         <div style="width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e;animation:pulse 2s infinite"></div>
@@ -827,16 +855,18 @@ tr:hover td{background:rgba(139,92,246,0.07)}
   </div>
   <div class="app-body">
     <div class="sidebar">
-      <div class="nav-item active" onclick="showPage('dashboard',this)"><i class="ti ti-layout-dashboard"></i> DASHBOARD</div>
+      <div class="nav-item active" id="nav-dashboard" onclick="showPage('dashboard',this)"><i class="ti ti-layout-dashboard"></i> DASHBOARD</div>
       <div class="nav-item" id="nav-autopilot" onclick="showPage('autopilot',this)"><i class="ti ti-robot"></i> AI AUTOPILOT</div>
+      <div class="nav-item" id="nav-trade" onclick="openCrypto('trade',this)"><i class="ti ti-chart-candle"></i> TRADE</div>
+      <div class="nav-item" id="nav-algo" onclick="openCrypto('algo',this)"><i class="ti ti-cpu"></i> ALGO BOTS</div>
       <div class="nav-item" id="nav-lab" onclick="showPage('lab',this)"><i class="ti ti-flask-2"></i> STRATEGY LAB</div>
       <div class="nav-item" id="nav-reports" onclick="showPage('reports',this)"><i class="ti ti-report-analytics"></i> REPORTS</div>
-      <div class="nav-item" onclick="showPage('crypto',this)"><i class="ti ti-currency-bitcoin"></i> CRYPTO</div>
-      <div class="nav-item" onclick="showPage('indian',this)"><i class="ti ti-building-bank"></i> INDIAN MARKET</div>
-      <div class="nav-item" onclick="showPage('telegram',this)"><i class="ti ti-brand-telegram"></i> TELEGRAM BOT</div>
+      <div class="nav-item" id="nav-telegram" onclick="showPage('telegram',this)"><i class="ti ti-brand-telegram"></i> TELEGRAM BOT</div>
       <div class="nav-item" id="nav-brain" onclick="showPage('brain',this)"><i class="ti ti-brain"></i> AI BRAIN</div>
-      <div class="nav-item" onclick="showPage('journal',this)"><i class="ti ti-notebook"></i> JOURNAL</div>
-      <div class="nav-item" onclick="showPage('settings',this)"><i class="ti ti-settings"></i> SETTINGS</div>
+      <div class="nav-item" id="nav-indian" onclick="showPage('indian',this)"><i class="ti ti-building-bank"></i> INDIAN MARKET</div>
+      <div class="nav-item" id="nav-journal" onclick="showPage('journal',this)"><i class="ti ti-notebook"></i> JOURNAL</div>
+      <div class="nav-item" id="nav-profile" onclick="showPage('profile',this)"><i class="ti ti-user-circle"></i> PROFILE</div>
+      <div class="nav-item" id="nav-settings" onclick="showPage('settings',this)"><i class="ti ti-settings"></i> SETTINGS</div>
     </div>
     <div class="content">
 
@@ -860,7 +890,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
           </div>
           <div class="ap-actions">
             <button class="ap-btn primary" onclick="showPage('autopilot', document.getElementById('nav-autopilot'))"><i class="ti ti-robot"></i> OPEN AUTOPILOT</button>
-            <button class="ap-btn" onclick="showPage('crypto', document.querySelector('.nav-item[onclick*=crypto]'))"><i class="ti ti-chart-candle"></i> TRADE</button>
+            <button class="ap-btn" onclick="openCrypto('trade')"><i class="ti ti-chart-candle"></i> TRADE</button>
             <button class="ap-btn danger" id="dc-kill" onclick="dcKill()"><i class="ti ti-hand-stop"></i> KILL SWITCH</button>
           </div>
         </div>
@@ -972,20 +1002,12 @@ tr:hover td{background:rgba(139,92,246,0.07)}
           </div>
           <div class="ap-card">
             <h3><i class="ti ti-shield-lock"></i> Risk manager rules</h3>
-            <div class="ap-form">
-              <div><label>Risk / trade %</label><input id="rm-risk_pct" type="number" step="0.1"></div>
-              <div><label>Daily stop %</label><input id="rm-daily_loss_pct" type="number" step="0.5"></div>
-              <div><label>Max positions</label><input id="rm-max_positions" type="number" step="1"></div>
-              <div><label>Max leverage</label><input id="rm-max_leverage" type="number" step="1"></div>
-              <div><label>Capital cap $ (0=all)</label><input id="rm-capital_cap_usd" type="number" step="10"></div>
-              <div><label>Demo capital $</label><input id="rm-demo_capital" type="number" step="100"></div>
-            </div>
+            <div class="pf-stats" id="ap-rules-view"></div>
             <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-              <button class="ap-btn primary" onclick="apSaveRisk()"><i class="ti ti-device-floppy"></i> SAVE RULES</button>
+              <button class="ap-btn primary" onclick="showPage('profile', document.getElementById('nav-profile'))"><i class="ti ti-edit"></i> EDIT IN PROFILE</button>
               <button class="ap-btn danger" id="ap-kill" onclick="apKill()"><i class="ti ti-hand-stop"></i> KILL SWITCH</button>
-              <button class="ap-btn" onclick="apResetDemo()"><i class="ti ti-refresh"></i> RESET DEMO WALLET</button>
             </div>
-            <div style="font-size:10.5px;color:var(--text3);margin-top:10px;line-height:1.5">Every bot gets its balance from here. Each trade risks the % above of the whole capital, sized from its stop loss; a stop and take profit sit on Binance from the first second.</div>
+            <div style="font-size:10.5px;color:var(--text3);margin-top:10px;line-height:1.5">Every bot gets its balance from the Risk Manager. Each trade risks the % above of the capital, sized from its stop loss.</div>
           </div>
         </div>
 
@@ -1222,6 +1244,135 @@ tr:hover td{background:rgba(139,92,246,0.07)}
         </div>
       </div>
 
+      <!-- PROFILE PAGE -->
+      <div class="page" id="page-profile">
+        <div class="ap-hero pf-hero">
+          <div class="pf-avatar" id="pf-avatar">?</div>
+          <div style="min-width:0">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <div class="ap-title" id="pf-name">—</div>
+              <span class="ap-chip off" id="pf-status"><span class="dot"></span><span>—</span></span>
+            </div>
+            <div class="ap-sub" id="pf-sub">—</div>
+            <div class="pf-life" id="pf-life" style="display:none">
+              <div class="pf-life-top"><span id="pf-life-label">Access</span><b id="pf-life-days">—</b></div>
+              <div class="ap-meter"><i id="pf-life-bar" style="width:0%;background:linear-gradient(90deg,var(--accent),var(--cyan))"></i></div>
+            </div>
+          </div>
+          <div class="ap-actions">
+            <button class="ap-btn danger" onclick="doLogout()"><i class="ti ti-logout"></i> SIGN OUT</button>
+          </div>
+        </div>
+
+        <div class="pf-grid">
+          <!-- account -->
+          <div class="ap-card">
+            <h3><i class="ti ti-id-badge-2"></i> Account details</h3>
+            <div class="pf-form">
+              <div><label>Username</label><input id="pf-username" disabled/></div>
+              <div><label>Display name</label><input id="pf-display" maxlength="40"/></div>
+              <div class="wide"><label>Contact (phone, Telegram or email)</label><input id="pf-contact" maxlength="80"/></div>
+            </div>
+            <div class="pf-meta" id="pf-meta"></div>
+            <button class="ap-btn primary" onclick="pfSaveProfile()"><i class="ti ti-device-floppy"></i> SAVE</button>
+          </div>
+
+          <!-- security -->
+          <div class="ap-card">
+            <h3><i class="ti ti-lock"></i> Security</h3>
+            <div class="pf-form">
+              <div class="wide"><label>Current password</label><input id="pf-pw-old" type="password" autocomplete="current-password"/></div>
+              <div><label>New password (8+ characters)</label><input id="pf-pw-new" type="password" autocomplete="new-password"/></div>
+              <div><label>Confirm new password</label><input id="pf-pw-new2" type="password" autocomplete="new-password"/></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="ap-btn primary" onclick="pfChangePassword()"><i class="ti ti-key"></i> CHANGE PASSWORD</button>
+              <button class="ap-btn" onclick="pfLogoutOthers()"><i class="ti ti-devices-off"></i> SIGN OUT OTHER DEVICES</button>
+            </div>
+            <div class="pf-meta" id="pf-sessions"></div>
+          </div>
+
+          <!-- subscription -->
+          <div class="ap-card" id="pf-billing">
+            <h3><i class="ti ti-credit-card"></i> Subscription &amp; billing</h3>
+            <div class="pf-subbox">
+              <div class="k">ACCESS</div>
+              <div id="sub-status-text" class="v">—</div>
+              <div id="sub-status-sub" class="s"></div>
+            </div>
+            <div id="pf-renew">
+              <div class="pf-form">
+                <div><label>Days to add</label><input type="number" id="sub-days" value="30" min="1" max="365"/></div>
+                <div><label>Note (e.g. bKash TXN ID)</label><input type="text" id="sub-note" maxlength="300"/></div>
+                <div class="wide"><label>Payment screenshot</label><input type="file" id="sub-proof-file" accept="image/*"/></div>
+              </div>
+              <button class="ap-btn primary" onclick="submitPaymentProof()"><i class="ti ti-upload"></i> SUBMIT PAYMENT PROOF</button>
+              <div id="sub-submit-err" style="font-size:11px;color:var(--red);margin-top:8px;display:none"></div>
+              <div id="sub-submit-ok" style="font-size:11px;color:var(--green);margin-top:8px;display:none"></div>
+            </div>
+          </div>
+
+          <!-- payment history -->
+          <div class="ap-card" id="pf-payments">
+            <h3><i class="ti ti-receipt"></i> Payment history</h3>
+            <div class="lab-wrap"><table class="lab-table"><thead><tr><th>SUBMITTED</th><th>DAYS</th><th>NOTE</th><th>STATUS</th></tr></thead>
+              <tbody id="payhistory-tbody"><tr><td colspan="4" style="text-align:center;color:var(--text3);padding:16px">Loading...</td></tr></tbody></table></div>
+          </div>
+
+          <!-- exchange -->
+          <div class="ap-card">
+            <h3><i class="ti ti-plug-connected"></i> Exchange connection</h3>
+            <div class="pf-ex" id="pf-ex">
+              <div class="pf-ex-logo">B</div>
+              <div style="flex:1;min-width:0"><b>Binance USDⓈ-M Futures</b><div class="s" id="pf-ex-status">—</div></div>
+              <button class="ap-btn" id="pf-ex-btn" onclick="pfExchangeBtn()">—</button>
+            </div>
+            <ul class="tp-rm-rules" style="padding:0;margin-top:12px">
+              <li><i class="ti ti-check"></i> API key with <b>&nbsp;Futures trading&nbsp;</b> enabled — never enable withdrawals.</li>
+              <li><i class="ti ti-check"></i> Restrict the key to this server's IP address in Binance.</li>
+              <li><i class="ti ti-check"></i> Position mode: One-way (Futures → Preferences).</li>
+              <li><i class="ti ti-check"></i> Keys are stored on this server only and used for your account only.</li>
+            </ul>
+          </div>
+
+          <!-- risk -->
+          <div class="ap-card">
+            <h3><i class="ti ti-shield-lock"></i> My risk rules <span style="flex:1"></span><span class="ap-chip" id="pf-risk-chip"><span class="dot"></span><span>—</span></span></h3>
+            <div class="pf-form three">
+              <div><label>Risk per trade %</label><input id="pf-rm-risk_pct" type="number" step="0.1"/></div>
+              <div><label>Daily stop %</label><input id="pf-rm-daily_loss_pct" type="number" step="0.5"/></div>
+              <div><label>Max positions</label><input id="pf-rm-max_positions" type="number" step="1"/></div>
+              <div><label>Max leverage</label><input id="pf-rm-max_leverage" type="number" step="1"/></div>
+              <div><label>Live capital cap $ (0 = all)</label><input id="pf-rm-capital_cap_usd" type="number" step="10"/></div>
+              <div><label>Demo capital $</label><input id="pf-rm-demo_capital" type="number" step="100"/></div>
+            </div>
+            <div class="pf-meta" id="pf-risk-meta"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="ap-btn primary" onclick="pfSaveRisk()"><i class="ti ti-device-floppy"></i> SAVE RULES</button>
+              <button class="ap-btn danger" id="pf-kill" onclick="pfKill()"><i class="ti ti-hand-stop"></i> KILL SWITCH</button>
+              <button class="ap-btn" onclick="pfResetDemo()"><i class="ti ti-refresh"></i> RESET DEMO WALLET</button>
+            </div>
+          </div>
+
+          <!-- access -->
+          <div class="ap-card">
+            <h3><i class="ti ti-key"></i> Access &amp; permissions</h3>
+            <div id="pf-perms"></div>
+            <div class="dc-note" id="pf-perms-note"></div>
+          </div>
+
+          <!-- activity -->
+          <div class="ap-card">
+            <h3><i class="ti ti-activity"></i> My activity</h3>
+            <div class="pf-stats" id="pf-stats"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+              <button class="ap-btn" onclick="openCrypto('algo')"><i class="ti ti-robot"></i> ALGO BOTS</button>
+              <button class="ap-btn" onclick="showPage('reports', document.getElementById('nav-reports'))"><i class="ti ti-report-analytics"></i> REPORTS</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="page" id="page-journal">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
           <div>
@@ -1443,111 +1594,12 @@ tr:hover td{background:rgba(139,92,246,0.07)}
       <!-- CRYPTO FUTURES PAGE -->
       <div class="page" id="page-crypto">
         <div class="page-title" style="display:flex;justify-content:space-between;align-items:center">
-          Crypto Futures
+          <span id="crypto-title">Trade</span>
           <div style="display:flex;align-items:center;gap:6px">
             <div style="width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 5px var(--green);animation:pulse 2s infinite"></div>
             <span style="font-size:10px;color:var(--text3);letter-spacing:0.5px">AUTO REFRESH 10s</span>
           </div>
         </div>
-
-        <!-- Sub-tab navigation -->
-        <div class="crypto-sub-tabs">
-          <button class="crypto-sub-tab active" id="cst-dashboard"  onclick="showCryptoTab('dashboard',this)">&#128202; DASHBOARD</button>
-          <button class="crypto-sub-tab" id="cst-trade"     onclick="showCryptoTab('trade',this)">TRADE</button>
-          <button class="crypto-sub-tab" id="cst-algo"      onclick="showCryptoTab('algo',this)">ALGO BOTS</button>
-          <button class="crypto-sub-tab" id="cst-subscription" onclick="showCryptoTab('subscription',this)">SUBSCRIPTION</button>
-          <button class="crypto-sub-tab" id="cst-payhistory"   onclick="showCryptoTab('payhistory',this)">PAYMENT HISTORY</button>
-        </div>
-
-        <!-- ═══ DASHBOARD SUB-TAB ════════════════════════════════ -->
-        <div class="crypto-sub-page" id="csp-dashboard">
-          <!-- KPI Tiles -->
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:14px">
-            <div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(0,0,0,0.3));border:1px solid rgba(139,92,246,0.25);border-radius:10px;padding:14px 12px;text-align:center">
-              <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">TOTAL BALANCE</div>
-              <div id="cxd-total-usdt" style="font-size:20px;font-weight:800;color:var(--green)">$—</div>
-              <div style="font-size:9px;color:var(--text3);margin-top:3px">USDT across exchanges</div>
-            </div>
-            <div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(0,0,0,0.3));border:1px solid rgba(139,92,246,0.25);border-radius:10px;padding:14px 12px;text-align:center">
-              <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">UNREALIZED PNL</div>
-              <div id="cxd-open-pnl" style="font-size:20px;font-weight:800;color:var(--text2)">$—</div>
-              <div style="font-size:9px;color:var(--text3);margin-top:3px">Open positions</div>
-            </div>
-            <div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(0,0,0,0.3));border:1px solid rgba(139,92,246,0.25);border-radius:10px;padding:14px 12px;text-align:center">
-              <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">OPEN POSITIONS</div>
-              <div id="cxd-pos-count" style="font-size:20px;font-weight:800;color:var(--amber)">0</div>
-              <div style="font-size:9px;color:var(--text3);margin-top:3px">Across all exchanges</div>
-            </div>
-            <div style="background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(0,0,0,0.3));border:1px solid rgba(139,92,246,0.25);border-radius:10px;padding:14px 12px;text-align:center">
-              <div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">ACTIVE BOTS</div>
-              <div id="cxd-bot-count" style="font-size:20px;font-weight:800;color:var(--cyan)">0</div>
-              <div id="cxd-bot-sub" style="font-size:9px;color:var(--text3);margin-top:3px">Running strategies</div>
-            </div>
-          </div>
-          <!-- Exchange cards -->
-          <div id="cxd-empty-state" style="display:none;text-align:center;padding:30px 20px;background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.15);border-radius:12px;margin-bottom:14px">
-            <div style="font-size:13px;color:var(--text2);margin-bottom:12px">No exchange connected — connect one to see live data.</div>
-            <button onclick="openCxModal()" style="padding:10px 24px;background:var(--cyan);border:none;color:#000;font-weight:700;border-radius:6px;font-family:var(--font);font-size:12px;cursor:pointer">CONNECT EXCHANGE</button>
-          </div>
-          <div id="cxd-cards-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">
-            <div id="cxd-card-binance" style="display:none;background:rgba(0,0,0,0.25);border:1px solid rgba(240,185,11,0.3);border-radius:10px;padding:12px">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-                <span class="cp-dot" id="cxd-dot-binance"></span>
-                <span style="font-size:11px;font-weight:700;color:#f0b90b;letter-spacing:1px">BINANCE</span>
-                <span style="font-size:9px;color:var(--text3)">USDM Futures</span>
-              </div>
-              <div id="cxd-inner-binance" style="font-size:11px;color:var(--text3)">Loading...</div>
-            </div>
-            <div id="cxd-card-bybit" style="display:none;background:rgba(0,0,0,0.25);border:1px solid rgba(255,100,0,0.3);border-radius:10px;padding:12px">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-                <span class="cp-dot" id="cxd-dot-bybit"></span>
-                <span style="font-size:11px;font-weight:700;color:#ff6400;letter-spacing:1px">BYBIT</span>
-                <span style="font-size:9px;color:var(--text3)">Linear Perp</span>
-              </div>
-              <div id="cxd-inner-bybit" style="font-size:11px;color:var(--text3)">Loading...</div>
-            </div>
-            <div id="cxd-card-coinswitch" style="display:none;background:rgba(0,0,0,0.25);border:1px solid rgba(0,200,150,0.3);border-radius:10px;padding:12px">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-                <span class="cp-dot" id="cxd-dot-coinswitch"></span>
-                <span style="font-size:11px;font-weight:700;color:#00c896;letter-spacing:1px">COINSWITCH</span>
-                <span style="font-size:9px;color:var(--text3)">Futures</span>
-              </div>
-              <div id="cxd-inner-coinswitch" style="font-size:11px;color:var(--text3)">Loading...</div>
-            </div>
-          </div>
-          <!-- Open Positions table -->
-          <div class="panel" style="margin-bottom:14px">
-            <div class="panel-title">&#128275; OPEN POSITIONS <span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:8px">Live from exchange · 10s refresh</span></div>
-            <div style="overflow-x:auto;max-height:220px;overflow-y:auto">
-              <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:640px">
-                <thead><tr style="color:var(--text3)">
-                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">EXCHANGE</th>
-                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">SYMBOL</th>
-                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">SIDE</th>
-                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">SIZE</th>
-                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">ENTRY</th>
-                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">MARK</th>
-                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">LEV</th>
-                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">PNL $</th>
-                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">PNL %</th>
-                  <th style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:left">CLOSE</th>
-                </tr></thead>
-                <tbody id="cxd-pos-tbody">
-                  <tr><td colspan="10" style="text-align:center;color:var(--text3);padding:20px">No open positions</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <!-- Bot Signals -->
-          <div class="panel" style="margin-bottom:14px">
-            <div class="panel-title">&#9889; LIVE BOT SIGNALS <span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:8px">Last 2 signals per active bot</span></div>
-            <div id="cxd-signals" style="max-height:200px;overflow-y:auto;padding-top:4px">
-              <span style="color:var(--text3);font-size:12px">No signals yet. Start an Algo Bot to see live signals here.</span>
-            </div>
-          </div>
-          <div class="bot-ai-note" style="margin-top:2px"><i class="ti ti-report-analytics"></i>
-            <div>Trade history, P&amp;L by strategy and the Binance statement are on the <a href="#" onclick="showPage('reports', document.getElementById('nav-reports'));return false">REPORTS</a> page.</div></div>
-        </div><!-- end csp-dashboard -->
 
         <!-- ═══ TRADE SUB-TAB ════════════════════════════════════ -->
         <div class="crypto-sub-page" id="csp-trade" style="display:none">
@@ -1656,7 +1708,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
                 <li><i class="ti ti-check"></i> One position per coin, isolated margin.</li>
               </ul>
               <div style="padding:0 16px 14px;margin-top:auto">
-                <button class="sbtn" onclick="showPage('autopilot', document.getElementById('nav-autopilot'))" style="width:100%;font-size:10px;padding:8px">EDIT RULES ON AI AUTOPILOT →</button>
+                <button class="sbtn" onclick="showPage('profile', document.getElementById('nav-profile'))" style="width:100%;font-size:10px;padding:8px">EDIT MY RISK RULES →</button>
               </div>
             </div>
           </div>
@@ -1989,52 +2041,6 @@ tr:hover td{background:rgba(139,92,246,0.07)}
 
         <!-- ═══ BACKTEST SUB-TAB ═══════════════════════ -->
         <!-- ═══ SUBSCRIPTION SUB-TAB ═══════════════════ -->
-        <div class="crypto-sub-page" id="csp-subscription" style="display:none">
-          <div class="panel" style="max-width:520px;margin:0 auto">
-            <div class="panel-title">📆 Subscription Status</div>
-            <div id="sub-status-box" style="background:var(--bg2);border-radius:10px;padding:16px;margin-bottom:16px;text-align:center">
-              <div style="font-size:11px;color:var(--text3);letter-spacing:1px;margin-bottom:6px">ACCESS</div>
-              <div id="sub-status-text" style="font-size:22px;font-weight:800;color:var(--text3)">—</div>
-              <div id="sub-status-sub" style="font-size:11px;color:var(--text3);margin-top:6px"></div>
-            </div>
-
-            <div class="panel-title" style="margin-top:6px">💳 Renew / Extend Access</div>
-            <div class="field" style="margin-bottom:8px">
-              <label>Days requested</label>
-              <input type="number" id="sub-days" value="30" min="1" max="365" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"/>
-            </div>
-            <div class="field" style="margin-bottom:8px">
-              <label>Payment screenshot</label>
-              <input type="file" id="sub-proof-file" accept="image/*" style="width:100%;font-size:12px;color:var(--text3)"/>
-            </div>
-            <div class="field" style="margin-bottom:10px">
-              <label>Note (optional)</label>
-              <input type="text" id="sub-note" placeholder="e.g. bKash TXN ID" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"/>
-            </div>
-            <button class="sbtn" onclick="submitPaymentProof()" style="width:100%;padding:10px;background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700">SUBMIT FOR APPROVAL</button>
-            <div id="sub-submit-err" style="font-size:11px;color:var(--red);margin-top:8px;display:none"></div>
-            <div id="sub-submit-ok"  style="font-size:11px;color:var(--green);margin-top:8px;display:none"></div>
-          </div>
-        </div>
-
-        <!-- ═══ PAYMENT HISTORY SUB-TAB ════════════════ -->
-        <div class="crypto-sub-page" id="csp-payhistory" style="display:none">
-          <div class="panel">
-            <div class="panel-title">🧾 Payment Request History</div>
-            <table style="width:100%;border-collapse:collapse;font-size:12px">
-              <thead><tr style="color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">
-                <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)">Submitted</th>
-                <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)">Days Requested</th>
-                <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)">Note</th>
-                <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border)">Status</th>
-              </tr></thead>
-              <tbody id="payhistory-tbody">
-                <tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text3)">Loading...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
       </div>
 
       <!-- INDIAN MARKET PAGE (Kotak Neo — NSE/BSE equity, index, F&O) -->
@@ -3037,60 +3043,14 @@ tr:hover td{background:rgba(139,92,246,0.07)}
         <div class="page-title">Settings</div>
         <div class="panel" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
           <div style="flex:1;min-width:220px;font-size:12px;color:var(--text2);line-height:1.6">
-            <b style="color:var(--text)">Risk rules live in the Risk Manager.</b> Risk per trade, daily loss stop, max positions,
-            max leverage and the capital cap are set on the <a href="#" onclick="showPage('autopilot', document.getElementById('nav-autopilot'));return false" style="color:var(--cyan)">AI Autopilot</a> page
-            and apply to every bot, autopilot pick, manual trade and Telegram signal.
+            <b style="color:var(--text)">System.</b> Your account, password, subscription, exchange keys and risk rules are on the
+            <a href="#" onclick="showPage('profile', document.getElementById('nav-profile'));return false" style="color:var(--cyan)">Profile</a> page.
+            Strategies always run with their tested settings — to try other settings, build a strategy in the
+            <a href="#" onclick="showPage('lab', document.getElementById('nav-lab'));return false" style="color:var(--cyan)">Strategy Lab</a>.
           </div>
           <button class="sbtn" id="restart-server-btn" style="padding:10px 20px;font-size:12px;background:rgba(239,68,68,0.15);border-color:var(--red);color:var(--red)" onclick="restartServer()">⚡ RESTART SERVER</button>
         </div>
-        <!-- Strategy Parameter Settings (crypto algo bots) — moved out of
-             the Create New Bot form to keep that form uncluttered. New
-             bots use whatever is saved here instead of asking for these
-             per-bot every time. -->
-        <div class="panel" style="margin-top:16px">
-          <div class="panel-title">📐 Strategy Parameter Settings <span style="color:var(--text3);font-size:10px;font-weight:400">— used by Crypto Algo Bots when creating a new bot</span></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px">
-            <div>
-              <div class="setting-group" style="margin-top:0">
-                <div style="font-size:10px;letter-spacing:1px;color:var(--accent);font-weight:700;margin-bottom:4px">RSI MEAN-REVERSION</div>
-                <div class="setting-row"><div><div class="setting-label">Period</div></div><input class="sinput" id="sp-rsi-period" type="number" value="7" style="width:100px"/></div>
-                <div class="setting-row"><div><div class="setting-label">Overbought</div></div><input class="sinput" id="sp-rsi-ob" type="number" value="75" style="width:100px"/></div>
-                <div class="setting-row"><div><div class="setting-label">Oversold</div></div><input class="sinput" id="sp-rsi-os" type="number" value="25" style="width:100px"/></div>
-              </div>
-              <div class="setting-group">
-                <div style="font-size:10px;letter-spacing:1px;color:var(--accent);font-weight:700;margin-bottom:4px">MACD CROSSOVER</div>
-                <div class="setting-row"><div><div class="setting-label">Fast</div></div><input class="sinput" id="sp-macd-fast" type="number" value="12" style="width:100px"/></div>
-                <div class="setting-row"><div><div class="setting-label">Slow</div></div><input class="sinput" id="sp-macd-slow" type="number" value="17" style="width:100px"/></div>
-                <div class="setting-row"><div><div class="setting-label">Signal</div></div><input class="sinput" id="sp-macd-signal" type="number" value="9" style="width:100px"/></div>
-              </div>
-              <div class="setting-group">
-                <div style="font-size:10px;letter-spacing:1px;color:var(--accent);font-weight:700;margin-bottom:4px">BB SQUEEZE</div>
-                <div class="setting-row"><div><div class="setting-label">Period</div></div><input class="sinput" id="sp-bb-period" type="number" value="30" style="width:100px"/></div>
-                <div class="setting-row"><div><div class="setting-label">Std Dev</div></div><input class="sinput" id="sp-bb-std" type="number" step="0.5" value="2.5" style="width:100px"/></div>
-              </div>
-            </div>
-            <div>
-              <div class="setting-group" style="margin-top:0">
-                <div style="font-size:10px;letter-spacing:1px;color:var(--accent);font-weight:700;margin-bottom:4px">TREND BREAKOUT (DONCHIAN + EMA)</div>
-                <div class="setting-row"><div><div class="setting-label">Donchian Period</div></div><input class="sinput" id="sp-dc-period" type="number" value="55" style="width:100px"/></div>
-                <div class="setting-row"><div><div class="setting-label">EMA Trend Filter</div></div><input class="sinput" id="sp-dc-ema" type="number" value="150" style="width:100px"/></div>
-              </div>
-              <div class="setting-group">
-                <div style="font-size:10px;letter-spacing:1px;color:var(--accent);font-weight:700;margin-bottom:4px">VWAP MEAN-REVERSION BANDS</div>
-                <div class="setting-row"><div><div class="setting-label">VWAP Period</div></div><input class="sinput" id="sp-vwap-period" type="number" value="14" style="width:100px"/></div>
-                <div class="setting-row"><div><div class="setting-label">Std-Dev Bands</div></div><input class="sinput" id="sp-vwap-std" type="number" step="0.1" value="2.5" style="width:100px"/></div>
-              </div>
-              <div style="font-size:10px;color:var(--text3);margin-top:8px;line-height:1.5">False Breakout has no tunable parameters — it's a fixed price-action pattern.</div>
-            </div>
-          </div>
-          <div style="margin-top:14px;display:flex;gap:12px;align-items:center">
-            <button class="sbtn" style="padding:8px 22px;font-size:12px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="saveStrategyParams()">💾 SAVE STRATEGY PARAMETERS</button>
-            <button class="sbtn" style="padding:8px 18px;font-size:12px" onclick="resetStrategyParams()">RESET TO VALIDATED DEFAULTS</button>
-            <span id="sp-save-status" style="font-size:11px;color:var(--text3)"></span>
-          </div>
-        </div>
-
-        <!-- Client Management (admin only — clients can't reach this page at all) -->
+        <div class="dc-note" style="margin:16px 0 4px">ADMIN — clients and payment requests (these move to the Admin Control Panel)</div>
         <div class="panel" id="admin-clients-panel" style="margin-top:16px;display:none">
           <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
             <span>Crypto Bot Clients</span>
@@ -3392,11 +3352,12 @@ function apRender(d) {
   document.getElementById('ap-risk').textContent = r.config.risk_pct + '%';
   document.getElementById('ap-risk-s').textContent = `≈ ${_apMoney(m.capital * r.config.risk_pct / 100)} per stop-out · max ${r.config.max_leverage}x`;
 
-  // risk form (do not clobber while typing)
-  for (const k of Object.keys(r.config)) {
-    const el = document.getElementById('rm-' + k);
-    if (el && document.activeElement !== el) el.value = r.config[k];
-  }
+  // risk rules (read-only here — edited in Profile)
+  const rv = document.getElementById('ap-rules-view');
+  if (rv) rv.innerHTML = [['RISK / TRADE', r.config.risk_pct + '%'], ['DAILY STOP', '-' + r.config.daily_loss_pct + '%'],
+    ['MAX POSITIONS', r.config.max_positions], ['MAX LEVERAGE', r.config.max_leverage + 'x'],
+    ['LIVE CAPITAL CAP', r.config.capital_cap_usd > 0 ? '$' + r.config.capital_cap_usd : 'whole wallet'], ['DEMO CAPITAL', '$' + r.config.demo_capital]]
+    .map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
   const kill = document.getElementById('ap-kill');
   kill.innerHTML = r.manual_halt ? '<i class="ti ti-player-play"></i> RELEASE KILL SWITCH' : '<i class="ti ti-hand-stop"></i> KILL SWITCH';
 
@@ -3504,16 +3465,6 @@ async function apScan() {
   toast(r.note || 'Scan started — results in about a minute', true);
   setTimeout(apLoad, 1500);
 }
-async function apSaveRisk() {
-  const body = {};
-  for (const k of ['risk_pct', 'daily_loss_pct', 'max_positions', 'max_leverage', 'capital_cap_usd', 'demo_capital']) {
-    const v = parseFloat(document.getElementById('rm-' + k).value);
-    if (!isNaN(v)) body[k] = v;
-  }
-  const r = await apiFetch('/api/risk/config', {method: 'POST', body: JSON.stringify(body)});
-  if (r.error) { toastErr(r.error); return; }
-  toast('Risk rules saved', true); apLoad();
-}
 async function apKill() {
   const on = !(_apData && _apData.risk.manual_halt);
   if (on && !confirm('Kill switch: block ALL new trades now? (Open positions keep their stop & take profit. Use Kill All on the Crypto page to also close them.)')) return;
@@ -3521,13 +3472,6 @@ async function apKill() {
   if (r.error) { toastErr(r.error); return; }
   toast(on ? 'Kill switch ON — no new trades' : 'Kill switch released', !on); apLoad();
 }
-async function apResetDemo() {
-  if (!confirm('Reset the demo wallet to the demo capital?')) return;
-  const r = await apiFetch('/api/risk/reset_demo', {method: 'POST'});
-  if (r.error) { toastErr(r.error); return; }
-  toast('Demo wallet reset', true); apLoad();
-}
-
 // ── NAVIGATION ─────────────────────────────────────────────────────────────────
 function showPage(id, el) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -3546,7 +3490,8 @@ function showPage(id, el) {
   if (id === 'autopilot')   { apInit(); } else { apStop(); }
   if (id === 'lab')         { labInit(); }
   if (id === 'reports')     { rpInit(); }
-  if (id === 'settings')    { applySettingsToUI(loadSettings()); applyStrategyParamsToUI(loadStrategyParams()); if (_getAuthRole() === 'admin') { document.getElementById('admin-clients-panel').style.display = 'block'; document.getElementById('admin-payments-panel').style.display = 'block'; loadAdminClients(); loadAdminPaymentRequests(); } }
+  if (id === 'profile')     { pfLoad(); }
+  if (id === 'settings')    { if (_getAuthRole() === 'admin') { document.getElementById('admin-clients-panel').style.display = 'block'; document.getElementById('admin-payments-panel').style.display = 'block'; loadAdminClients(); loadAdminPaymentRequests(); } }
   if (id === 'telegram')   { telegramInit(); } else { clearInterval(_tgRefTimer); }
   if (id === 'indian')     { indianInit(); }
   if (id === 'brain')      { jarvisInit(); } else { _jarvisStopAuto(); }
@@ -4329,12 +4274,11 @@ async function doAuthRegister() {
 // page — every other nav item is hidden, and we skip the MT5 dashboard entirely
 // since those endpoints are blocked server-side for this role anyway.
 function _applyRoleUI(role) {
-  const cryptoNav = document.querySelector('.nav-item[onclick*="\'crypto\'"]');
-  const labNav = document.getElementById('nav-lab');
-  const reportsNav = document.getElementById('nav-reports');
+  const clientNav = ['nav-trade', 'nav-algo', 'nav-lab', 'nav-reports', 'nav-profile'];
   document.querySelectorAll('.nav-item').forEach(n => {
-    n.style.display = (role === 'client' && n !== cryptoNav && n !== labNav && n !== reportsNav) ? 'none' : '';
+    n.style.display = (role === 'client' && !clientNav.includes(n.id)) ? 'none' : '';
   });
+  applyMenuPermissions();
   // Clients never touch MT5 — that badge/button is meaningless (and the
   // underlying endpoints are blocked for them server-side anyway).
   const connBar = document.getElementById('conn-bar');
@@ -4462,7 +4406,7 @@ async function _afterAuthSuccess() {
   if (role === 'client') {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
-    showPage('crypto', document.querySelector('.nav-item[onclick*="\'crypto\'"]'));
+    openCrypto('algo');
     return;
   }
   // Go straight to the dashboard
@@ -5719,8 +5663,7 @@ function setConnStatus(online) {
 }
 
 function _goToCrypto() {
-  const navEl = Array.from(document.querySelectorAll('.nav-item')).find(n => n.textContent.includes('CRYPTO'));
-  if (navEl) showPage('crypto', navEl);
+  openCrypto('trade');
 }
 
 function setCryptoConnStatus(connectedExchanges) {
@@ -8097,9 +8040,12 @@ let _srChart     = null;
 async function cryptoInit() {
   clearInterval(_cxRefTimer);
   _clearCryptoTimers();
+  const tab = _cryptoWanted === 'algo' ? 'algo' : 'trade';
+  const title = document.getElementById('crypto-title');
+  if (title) title.textContent = tab === 'algo' ? 'Algo Bots' : 'Trade';
+  showCryptoTab(tab, null);
   await cryptoCheckStatus();
   cryptoLoadMarkets();   // don't await — markets can load in background
-  showCryptoTab('dashboard', document.getElementById('cst-dashboard'));
 }
 
 // Telegram signal bot is its own top-level page now (was a panel inside
@@ -9289,7 +9235,7 @@ async function labDemoBot(strategy, symbol, tf) {
   const r = await apiFetch('/api/crypto/algo/start', {method: 'POST', body: JSON.stringify({
     strategy, symbol, timeframe: tf, capital_usd: parseFloat(bal), mode: 'demo', leverage: 10})});
   if (r.error) { toast(r.error, false); return; }
-  toast(`Demo bot started — ${_labName(strategy)} on ${symbol.split('/')[0]} (Crypto → ALGO BOTS)`, true);
+  toast(`Demo bot started — ${_labName(strategy)} on ${symbol.split('/')[0]} (see ALGO BOTS)`, true);
 }
 
 // ── builder ──
@@ -9681,6 +9627,176 @@ async function dcPerfLoad() {
   }
 }
 
+// ═══ PROFILE ════════════════════════════════════════════════════════════════
+let _pf = null, _pfRisk = null;
+
+async function pfLoad() {
+  const d = await apiFetch('/api/account/me');
+  if (!d || d.error) { toast('Profile: ' + (d && d.error || 'failed to load'), false); return; }
+  _pf = d;
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.innerHTML = v; };
+  document.getElementById('pf-avatar').textContent = (d.display_name || d.username || '?').trim().charAt(0).toUpperCase();
+  set('pf-name', _apEsc(d.display_name));
+  const chip = document.getElementById('pf-status');
+  const st = {owner: ['live', 'OWNER · ADMIN'], active: ['on', 'ACTIVE'], trial: ['on', 'FREE TRIAL'], expired: ['halt', 'EXPIRED']}[d.status] || ['off', d.status];
+  chip.className = 'ap-chip ' + st[0]; chip.lastElementChild.textContent = st[1];
+  set('pf-sub', `@${_apEsc(d.username)}${d.member_since ? ' · member since ' + _apEsc(d.member_since) : ''} · this session since ${_apEsc((d.this_session_started || '—').replace('T', ' '))}`);
+  const life = document.getElementById('pf-life');
+  if (d.role === 'client' && d.expiry) {
+    life.style.display = '';
+    const left = d.days_left ?? 0;
+    set('pf-life-label', d.status === 'expired' ? 'ACCESS EXPIRED' : 'ACCESS LEFT');
+    set('pf-life-days', `${left} day${left === 1 ? '' : 's'} · until ${_apEsc(d.expiry.slice(0, 10))}`);
+    document.getElementById('pf-life-bar').style.width = Math.min(100, left / 30 * 100) + '%';
+  } else life.style.display = 'none';
+
+  document.getElementById('pf-username').value = d.username;
+  document.getElementById('pf-display').value = d.display_name || '';
+  document.getElementById('pf-contact').value = d.contact || '';
+  set('pf-meta', d.risk_accepted_at ? `Risk disclaimer accepted ${_apEsc(d.risk_accepted_at.replace('T', ' '))}` : '');
+  set('pf-sessions', `Signed in on <b>${d.sessions}</b> device${d.sessions === 1 ? '' : 's'}. Changing the password signs out the others.`);
+
+  const isClient = d.role === 'client';
+  document.getElementById('pf-renew').style.display = isClient ? '' : 'none';
+  document.getElementById('pf-payments').style.display = isClient ? '' : 'none';
+  if (isClient) { loadSubscriptionStatus(); loadPaymentHistory(); }
+  else { set('sub-status-text', '<span style="color:var(--green)">OWNER</span>'); set('sub-status-sub', 'The owner account never expires.'); }
+
+  const on = d.exchange && d.exchange.binance;
+  set('pf-ex-status', on ? '<span style="color:var(--green)">● Connected</span> — bots and the Trade tab can use it' : '● Not connected');
+  const btn = document.getElementById('pf-ex-btn');
+  btn.textContent = on ? 'DISCONNECT' : 'CONNECT';
+  btn.className = 'ap-btn ' + (on ? 'danger' : 'primary');
+
+  const p = d.permissions, lab = d.permission_labels;
+  set('pf-perms', Object.keys(lab).map(k => {
+    const v = p[k];
+    const val = typeof v === 'boolean' ? `<b class="${v ? 'on' : 'off'}">${v ? '✓ Allowed' : '✕ Not allowed'}</b>` : `<b>${_apEsc(v)}</b>`;
+    return `<div class="pf-perm"><span>${_apEsc(lab[k])}</span>${val}</div>`;
+  }).join(''));
+  set('pf-perms-note', isClient ? 'Managed by the admin. Ask the admin if you need more access.' : 'Owner account — full access. Client permissions are set from the admin control panel.');
+
+  const s = d.last30 || {};
+  set('pf-stats', `<div><span>RUNNING BOTS</span><b>${d.bots.running}</b> <small style="color:var(--text3)">/ ${p.max_bots}</small></div>
+    <div><span>TRADES · 30D</span><b>${s.trades ?? 0}</b></div>
+    <div><span>NET P&amp;L · 30D</span><b style="color:${_rpCol(s.net_pnl)}">${_rpMoney(s.net_pnl ?? 0)}</b></div>
+    <div><span>WIN RATE · 30D</span><b>${s.win_rate != null ? s.win_rate + '%' : '—'}</b></div>`);
+  pfLoadRisk();
+}
+
+async function pfLoadRisk() {
+  const r = await apiFetch('/api/account/risk');
+  if (!r || r.error) return;
+  _pfRisk = r.risk;
+  const c = r.risk.config, lim = r.risk.limits || {};
+  for (const k of Object.keys(c)) {
+    const el = document.getElementById('pf-rm-' + k);
+    if (!el) continue;
+    el.value = c[k];
+    if (lim[k]) { el.min = lim[k][0]; el.max = lim[k][1]; }
+  }
+  const halted = r.risk.manual_halt;
+  const chip = document.getElementById('pf-risk-chip');
+  chip.className = 'ap-chip ' + (halted ? 'halt' : 'live');
+  chip.lastElementChild.textContent = halted ? 'KILL SWITCH ON' : 'TRADING ALLOWED';
+  document.getElementById('pf-kill').innerHTML = halted ? '<i class="ti ti-player-play"></i> RELEASE KILL SWITCH' : '<i class="ti ti-hand-stop"></i> KILL SWITCH';
+  const live = r.risk.modes.live, demo = r.risk.modes.demo;
+  document.getElementById('pf-risk-meta').innerHTML =
+    `Every bot, Trade-tab order and Telegram signal of this account is checked against these rules.<br>` +
+    `Live: ${r.binance_connected ? `wallet ${_rpMoney(live.equity).replace('+', '')}, today ${live.day_pnl_pct >= 0 ? '+' : ''}${live.day_pnl_pct}%` : 'Binance not connected'} · ` +
+    `Demo: wallet ${_rpMoney(demo.equity).replace('+', '')}, today ${demo.day_pnl_pct >= 0 ? '+' : ''}${demo.day_pnl_pct}%`;
+}
+
+async function pfSaveProfile() {
+  const body = {display_name: document.getElementById('pf-display').value, contact: document.getElementById('pf-contact').value};
+  const r = await apiFetch('/api/account/profile', {method: 'POST', body: JSON.stringify(body)});
+  if (r.error) { toast(r.error, false); return; }
+  const badge = document.getElementById('user-badge');
+  if (badge) badge.textContent = '● ' + r.display_name;
+  toast('Profile saved', true);
+  pfLoad();
+}
+
+async function pfChangePassword() {
+  const o = document.getElementById('pf-pw-old').value, n = document.getElementById('pf-pw-new').value, n2 = document.getElementById('pf-pw-new2').value;
+  if (!o || !n) { toast('Fill in the current and the new password', false); return; }
+  if (n.length < 8) { toast('New password must be at least 8 characters', false); return; }
+  if (n !== n2) { toast('The new passwords do not match', false); return; }
+  const r = await apiFetch('/api/auth/change_password', {method: 'POST', body: JSON.stringify({old_password: o, new_password: n})});
+  if (r.error) { toast(r.error, false); return; }
+  ['pf-pw-old', 'pf-pw-new', 'pf-pw-new2'].forEach(id => document.getElementById(id).value = '');
+  toast(`Password changed${r.signed_out ? ` — ${r.signed_out} other device(s) signed out` : ''}`, true);
+  pfLoad();
+}
+
+async function pfLogoutOthers() {
+  if (!confirm('Sign out every other device that is logged in to this account?')) return;
+  const r = await apiFetch('/api/account/logout_others', {method: 'POST'});
+  if (r.error) { toast(r.error, false); return; }
+  toast(`${r.signed_out} other device(s) signed out`, true);
+  pfLoad();
+}
+
+function pfExchangeBtn() {
+  if (_pf && _pf.exchange && _pf.exchange.binance) {
+    if (!confirm('Disconnect Binance? Live bots will stop placing trades until you connect again. Open positions keep their stop loss on Binance.')) return;
+    disconnectExchange('binance');
+    setTimeout(pfLoad, 1500);
+  } else {
+    openCxModal('binance');
+  }
+}
+
+async function pfSaveRisk() {
+  const body = {};
+  for (const k of ['risk_pct', 'daily_loss_pct', 'max_positions', 'max_leverage', 'capital_cap_usd', 'demo_capital']) {
+    const v = parseFloat(document.getElementById('pf-rm-' + k).value);
+    if (!isNaN(v)) body[k] = v;
+  }
+  const r = await apiFetch('/api/account/risk', {method: 'POST', body: JSON.stringify(body)});
+  if (r.error) { toast(r.error, false); return; }
+  toast('Risk rules saved', true);
+  pfLoadRisk();
+}
+
+async function pfKill() {
+  const on = !(_pfRisk && _pfRisk.manual_halt);
+  if (on && !confirm('Kill switch: block ALL new trades on this account now?\n(Open positions keep their stop loss and take profit.)')) return;
+  const r = await apiFetch('/api/account/kill_switch', {method: 'POST', body: JSON.stringify({on})});
+  if (r.error) { toast(r.error, false); return; }
+  toast(on ? 'Kill switch ON — no new trades' : 'Kill switch released', !on);
+  pfLoadRisk();
+}
+
+async function pfResetDemo() {
+  if (!confirm('Reset the demo wallet to the demo capital?')) return;
+  const r = await apiFetch('/api/account/reset_demo', {method: 'POST'});
+  if (r.error) { toast(r.error, false); return; }
+  toast('Demo wallet reset', true);
+  pfLoadRisk();
+}
+
+// TRADE and ALGO BOTS are main menu items; both live on the crypto page
+let _cryptoWanted = 'trade';
+function openCrypto(tab, nav) {
+  _cryptoWanted = tab;
+  showPage('crypto', nav || document.getElementById(tab === 'algo' ? 'nav-algo' : 'nav-trade'));
+}
+
+// Menu follows the account's permissions
+async function applyMenuPermissions() {
+  const d = await apiFetch('/api/account/me');
+  if (!d || d.error) return;
+  const p = d.permissions, client = d.role === 'client';
+  const show = (id, on) => { const e = document.getElementById(id); if (e) e.style.display = on ? '' : 'none'; };
+  show('nav-trade', p.live_trading);
+  show('nav-algo', p.algo_bots);
+  show('nav-lab', p.strategy_lab);
+  show('nav-reports', p.reports);
+  show('nav-profile', true);
+  if (client) ['nav-dashboard', 'nav-autopilot', 'nav-telegram', 'nav-brain', 'nav-indian', 'nav-journal', 'nav-settings'].forEach(id => show(id, false));
+}
+
 function showCryptoTab(tab, el) {
   _cxActiveTab = tab;
   document.querySelectorAll('.crypto-sub-page').forEach(p => p.style.display = 'none');
@@ -9689,11 +9805,6 @@ function showCryptoTab(tab, el) {
   if (page) page.style.display = 'block';
   if (el)   el.classList.add('active');
   _clearCryptoTimers();
-  if (tab === 'dashboard') {
-    cryptoDashboardLoad();
-    // Refresh every 10s — live PnL, positions, bot status
-    _dashRefTimer = setInterval(cryptoDashboardLoad, 10000);
-  }
   if (tab === 'brain') {
     loadBrainStatus();
   }
@@ -9710,12 +9821,6 @@ function showCryptoTab(tab, el) {
     algoLoadBots();
     // Refresh bot list every 12s to show live PnL updates
     _algoRefTimer = setInterval(algoLoadBots, 8000);
-  }
-  if (tab === 'subscription') {
-    loadSubscriptionStatus();
-  }
-  if (tab === 'payhistory') {
-    loadPaymentHistory();
   }
 }
 
@@ -10825,7 +10930,6 @@ async function startAlgoBot() {
   const status = document.getElementById('bot-ai-status');
   errEl.style.display = 'none';
   const st = _gv('bot-strategy', 'trend_breakout');
-  const sp = loadStrategyParams();   // Settings → Strategy Parameter Settings
   const body = {
     exchange:       'binance',
     symbol:         'auto',
@@ -10835,18 +10939,6 @@ async function startAlgoBot() {
     capital_usd:    _gv('bot-capital', 0, parseFloat),
     margin_mode:    'isolated',
     mode:           _gv('bot-mode', 'demo'),
-    macd_fast:      sp.macdFast,
-    macd_slow:      sp.macdSlow,
-    macd_signal:    sp.macdSignal,
-    bb_period:      sp.bbPeriod,
-    bb_std:         sp.bbStd,
-    rsi_period:     sp.rsiPeriod,
-    rsi_ob:         sp.rsiOb,
-    rsi_os:         sp.rsiOs,
-    dc_period:      sp.dcPeriod,
-    dc_ema:         sp.dcEma,
-    vwap_period:    sp.vwapPeriod,
-    vwap_std:       sp.vwapStd,
     div_lookback:   _gv('bot-div-lookback', 25, parseInt),
     swing_window:   _gv('bot-swing-window', 5, parseInt),
     vwap_proximity: _gv('bot-vwap-proximity', 0.3, parseFloat),
