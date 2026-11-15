@@ -106,14 +106,6 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
 .nav-item.active{color:var(--accent);border-left:3px solid var(--accent);background:linear-gradient(90deg,rgba(139,92,246,0.18),rgba(139,92,246,0.04));box-shadow:inset 0 0 20px rgba(139,92,246,0.05)}
 .nav-item i{font-size:16px}
 .content{flex:1;padding:20px;overflow-y:auto}
-/* Trading View full-page mode */
-body.tv-mode .topbar{display:none!important}
-body.tv-mode .sidebar{display:none!important}
-body.tv-mode .app-body{height:100vh}
-body.tv-mode .content{padding:0!important;height:100vh;overflow:hidden;display:flex!important;flex-direction:column}
-body.tv-mode #page-tradingview.active{flex:1;display:flex!important;flex-direction:column;overflow:hidden;min-height:0}
-/* Force TradingView iframe to fill container completely — fixes right-click */
-#tv-page-container>div,#tv-page-container iframe{width:100%!important;height:100%!important;display:block!important;border:none!important}
 
 /* PAGES */
 .page{display:none}
@@ -617,9 +609,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
       <div class="nav-item" onclick="showPage('telegram',this)"><i class="ti ti-brand-telegram"></i> TELEGRAM BOT</div>
       <div class="nav-item" id="nav-brain" onclick="showPage('brain',this)"><i class="ti ti-brain"></i> AI BRAIN</div>
       <div class="nav-item" onclick="showPage('journal',this)"><i class="ti ti-notebook"></i> JOURNAL</div>
-      <div class="nav-item" onclick="showPage('risk',this)"><i class="ti ti-shield-check"></i> RISK CALC</div>
       <div class="nav-item" onclick="showPage('settings',this)"><i class="ti ti-settings"></i> SETTINGS</div>
-      <div class="nav-item" onclick="showPage('tradingview',this)"><i class="ti ti-chart-candle"></i> TRADING VIEW</div>
     </div>
     <div class="content">
 
@@ -719,17 +709,6 @@ tr:hover td{background:rgba(139,92,246,0.07)}
             <div class="kpi" style="margin:0;padding:10px"><div class="kpi-label">NET P&amp;L</div><div class="kpi-value" id="dash-tg-pnl">—</div></div>
           </div>
         </div>
-      </div>
-
-      <!-- TRADING VIEW PAGE (full-screen flex layout) -->
-      <div class="page" id="page-tradingview">
-        <!-- Minimal control bar — only BACK button, everything else is TradingView's own UI -->
-        <div style="display:flex;align-items:center;gap:10px;padding:5px 10px;background:#0a0a10;border-bottom:1px solid rgba(139,92,246,0.3);flex-shrink:0">
-          <button onclick="tvExitFullPage()" style="padding:4px 12px;background:rgba(139,92,246,0.15);border:1px solid var(--accent);border-radius:6px;color:var(--accent);font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer;letter-spacing:0.5px;white-space:nowrap">← BACK</button>
-          <span style="font-size:9px;color:var(--text3)">ESC</span>
-        </div>
-        <!-- Chart fills all remaining height — iframe gets exact correct size -->
-        <div id="tv-page-container" style="flex:1;min-height:0;width:100%;overflow:hidden"></div>
       </div>
 
       <!-- REPORTS PAGE -->
@@ -946,222 +925,6 @@ tr:hover td{background:rgba(139,92,246,0.07)}
             <div style="display:flex;gap:10px">
               <button onclick="jSaveTrade()" style="flex:1;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:8px;padding:13px;color:#fff;font-family:var(--font);font-size:13px;font-weight:700;letter-spacing:2px;cursor:pointer;box-shadow:0 4px 16px var(--accent-glow)">SAVE TRADE</button>
               <button onclick="jCloseModal()" style="background:transparent;border:1px solid var(--border);border-radius:8px;padding:13px 24px;color:var(--text2);font-family:var(--font);font-size:13px;cursor:pointer">Cancel</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- RISK CALCULATOR PAGE -->
-      <div class="page" id="page-risk">
-        <div class="page-title">Risk Calculator</div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-
-          <!-- Position Size Calculator -->
-          <div class="panel">
-            <div class="panel-title">Position Size Calculator</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-              <div class="field"><label>Account Balance ($)</label><input type="number" id="rc-balance" value="10000" oninput="rcCalcPos()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
-              <div class="field"><label>Risk % per Trade</label><input type="number" id="rc-risk-pct" value="1" step="0.1" oninput="rcCalcPos()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
-              <div class="field"><label>Stop Loss (pips)</label><input type="number" id="rc-sl-pips" value="20" oninput="rcCalcPos()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
-              <div class="field"><label>Pip Value ($)</label>
-                <select id="rc-pip-val" oninput="rcCalcPos()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%">
-                  <option value="10">$10 (EURUSD, GBPUSD)</option>
-                  <option value="10">$10 (AUDUSD, NZDUSD)</option>
-                  <option value="7.3">$7.30 (USDCHF ~)</option>
-                  <option value="0.1">$0.10 (XAUUSDc / Gold)</option>
-                  <option value="1">$1 (NAS100 / indices)</option>
-                </select>
-              </div>
-            </div>
-            <div style="background:var(--bg2);border:1px solid var(--accent);border-radius:10px;padding:16px;text-align:center">
-              <div style="font-size:10px;color:var(--text2);letter-spacing:2px;margin-bottom:8px">OPTIMAL LOT SIZE</div>
-              <div style="font-size:36px;font-weight:700;color:var(--accent)" id="rc-lot-result">0.50</div>
-              <div style="font-size:11px;color:var(--text2);margin-top:6px" id="rc-lot-sub">Risk: $100 | SL: 20 pips</div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px">
-              <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
-                <div style="font-size:9px;color:var(--text2);letter-spacing:1px">$ AT RISK</div>
-                <div style="font-size:16px;font-weight:700;color:var(--red);margin-top:4px" id="rc-dollar-risk">—</div>
-              </div>
-              <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
-                <div style="font-size:9px;color:var(--text2);letter-spacing:1px">TP 1:2</div>
-                <div style="font-size:16px;font-weight:700;color:var(--green);margin-top:4px" id="rc-tp-reward">—</div>
-              </div>
-              <div style="background:var(--card2);border-radius:8px;padding:10px;text-align:center">
-                <div style="font-size:9px;color:var(--text2);letter-spacing:1px">TP 1:3</div>
-                <div style="font-size:16px;font-weight:700;color:var(--green);margin-top:4px" id="rc-tp-reward3">—</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Kelly Criterion Calculator -->
-          <div class="panel">
-            <div class="panel-title">Kelly Criterion Calculator</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-              <div class="field"><label>Win Rate (%)</label><input type="number" id="kc-wr" value="55" step="1" oninput="rcCalcKelly()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
-              <div class="field"><label>Avg Win ($)</label><input type="number" id="kc-avg-win" value="200" oninput="rcCalcKelly()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
-              <div class="field"><label>Avg Loss ($)</label><input type="number" id="kc-avg-loss" value="100" oninput="rcCalcKelly()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
-              <div class="field"><label>Account Size ($)</label><input type="number" id="kc-balance" value="10000" oninput="rcCalcKelly()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
-            </div>
-            <div style="background:var(--bg2);border:1px solid var(--accent);border-radius:10px;padding:14px">
-              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
-                <div><div style="font-size:9px;color:var(--text2);letter-spacing:1px">FULL KELLY</div><div style="font-size:20px;font-weight:700;color:var(--red);margin-top:4px" id="kc-full">—</div></div>
-                <div style="border-left:1px solid var(--border);border-right:1px solid var(--border)">
-                  <div style="font-size:9px;color:var(--text2);letter-spacing:1px">HALF KELLY ✓</div>
-                  <div style="font-size:20px;font-weight:700;color:var(--accent);margin-top:4px" id="kc-half">—</div>
-                </div>
-                <div><div style="font-size:9px;color:var(--text2);letter-spacing:1px">QUARTER KELLY</div><div style="font-size:20px;font-weight:700;color:var(--green);margin-top:4px" id="kc-quarter">—</div></div>
-              </div>
-              <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:center">
-                  <div><div style="font-size:9px;color:var(--text2)">EXPECTANCY</div><div style="font-size:16px;font-weight:700;margin-top:4px" id="kc-exp">—</div></div>
-                  <div><div style="font-size:9px;color:var(--text2)">RISK AMOUNT (Half K)</div><div style="font-size:16px;font-weight:700;color:var(--accent);margin-top:4px" id="kc-risk-amt">—</div></div>
-                </div>
-              </div>
-            </div>
-            <div style="margin-top:12px;padding:12px;background:rgba(139,92,246,0.08);border-radius:8px;font-size:11px;color:var(--text2);line-height:1.7">
-              <span style="color:var(--accent);font-weight:700">Half-Kelly</span> recommended — পূর্ণ Kelly তে অনেক বেশি drawdown হয়। Half-Kelly তে ৭৫% growth ধরে রেখে volatility ৫০% কমে।
-            </div>
-          </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-
-          <!-- Prop Firm DD Tracker -->
-          <div class="panel">
-            <div class="panel-title">Prop Firm Drawdown Tracker</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-              <div class="field"><label>Account Size ($)</label><input type="number" id="pf-balance" value="100000" oninput="rcCalcPropDD()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
-              <div class="field"><label>Firm Type</label>
-                <select id="pf-type" onchange="rcCalcPropDD()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%">
-                  <option value="5,10">FTMO (5% daily / 10% max)</option>
-                  <option value="4,8">For Traders (4% / 8%)</option>
-                  <option value="5,10">MyFundedFX (5% / 10%)</option>
-                  <option value="3,6">Conservative (3% / 6%)</option>
-                </select>
-              </div>
-              <div class="field"><label>Today's P&amp;L ($)</label><input type="number" id="pf-today-pnl" value="0" oninput="rcCalcPropDD()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
-              <div class="field"><label>Total P&amp;L ($)</label><input type="number" id="pf-total-pnl" value="0" oninput="rcCalcPropDD()" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none;width:100%"></div>
-            </div>
-            <div id="pf-result" style="background:var(--bg2);border-radius:10px;padding:14px">
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-                <div>
-                  <div style="font-size:10px;color:var(--text2);letter-spacing:1px;margin-bottom:6px">DAILY LIMIT</div>
-                  <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div id="pf-daily-bar" style="height:100%;background:var(--green);border-radius:4px;width:0%;transition:width 0.5s"></div></div>
-                  <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px">
-                    <span id="pf-daily-used" style="color:var(--text2)">$0 used</span>
-                    <span id="pf-daily-left" style="color:var(--green)">$5,000 left</span>
-                  </div>
-                </div>
-                <div>
-                  <div style="font-size:10px;color:var(--text2);letter-spacing:1px;margin-bottom:6px">MAX DD LIMIT</div>
-                  <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div id="pf-max-bar" style="height:100%;background:var(--green);border-radius:4px;width:0%;transition:width 0.5s"></div></div>
-                  <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px">
-                    <span id="pf-max-used" style="color:var(--text2)">$0 used</span>
-                    <span id="pf-max-left" style="color:var(--green)">$10,000 left</span>
-                  </div>
-                </div>
-              </div>
-              <div style="text-align:center;padding:10px;border-radius:8px;font-size:13px;font-weight:700;letter-spacing:1px" id="pf-status-bar">✓ SAFE TO TRADE</div>
-            </div>
-          </div>
-
-          <!-- Drawdown Recovery & Correlation Reference -->
-          <div style="display:flex;flex-direction:column;gap:14px">
-            <!-- DD Recovery Calculator -->
-            <div class="panel">
-              <div class="panel-title">Drawdown Recovery Math</div>
-              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
-                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--green)">5%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+5%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
-                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--green)">10%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+11%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
-                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--amber)">15%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+18%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
-                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--amber)">20%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+25%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
-                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--amber)">25%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+33%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
-                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--red)">30%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+43%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
-                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--red)">40%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+67%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
-                <div style="background:var(--bg2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--red)">50%</div><div style="font-size:9px;color:var(--text3);margin-top:2px">DD</div><div style="font-size:12px;font-weight:700;color:var(--text);margin-top:6px">+100%</div><div style="font-size:9px;color:var(--text3)">needed</div></div>
-              </div>
-            </div>
-
-            <!-- Correlation Reference -->
-            <div class="panel" style="flex:1">
-              <div class="panel-title">Pair Correlation Reference</div>
-              <div style="font-size:10px;color:var(--text2);margin-bottom:10px">একসাথে এই pair গুলো trade করলে risk দ্বিগুণ হয়!</div>
-              <div style="display:flex;flex-direction:column;gap:6px">
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px">
-                  <span style="font-size:12px">EURUSD + GBPUSD</span><span style="color:var(--red);font-size:11px;font-weight:700">+0.90 ⚠ Very High</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px">
-                  <span style="font-size:12px">EURUSD + AUDUSD</span><span style="color:var(--red);font-size:11px;font-weight:700">+0.78 ⚠ High</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:6px">
-                  <span style="font-size:12px">EURUSD + USDJPY</span><span style="color:var(--amber);font-size:11px;font-weight:700">−0.82 Inverse</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:6px">
-                  <span style="font-size:12px">EURUSD + USDCHF</span><span style="color:var(--green);font-size:11px;font-weight:700">−0.95 Natural Hedge</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);border-radius:6px">
-                  <span style="font-size:12px">XAUUSD + NAS100</span><span style="color:var(--accent);font-size:11px;font-weight:700">−0.30 Low Corr ✓</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Capital Protection — Buffer Ratchet System (live, MT5-connected) -->
-        <div class="panel" style="margin-top:14px;border-color:var(--red)">
-          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
-            <div style="display:flex;align-items:center;gap:10px">
-              <span>🛡️ Capital Protection — Buffer Ratchet</span>
-              <span id="cp-status-badge" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--card2);color:var(--text3);border:1px solid var(--border)">INACTIVE</span>
-            </div>
-            <button class="sbtn" onclick="cpLoadStatus()" style="font-size:10px;padding:4px 10px">↻ REFRESH</button>
-          </div>
-          <div style="font-size:11px;color:var(--text2);margin-top:6px;margin-bottom:12px;line-height:1.6">
-            প্রতিষ্ঠানিক fund manager-রা যেভাবে capital protect করে — মূল capital কে কখনো risk এ ফেলবে না, শুধু floor-এর উপরে ছোট একটা buffer নিয়ে খেলবে। Buffer target হিট হলে floor উপরে উঠে যায় (lock in)। Floor ভাঙলে সব strategy auto-stop + mandatory cool-off period।
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-            <div>
-              <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:8px">CONFIGURATION</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-                <div class="field"><label>Starting Capital ($)</label><input class="sinput" id="cp-capital" type="number" min="0" value="1000" style="width:100%"/></div>
-                <div class="field"><label>Buffer Amount ($)</label><input class="sinput" id="cp-buffer" type="number" min="0" value="100" style="width:100%"/></div>
-              </div>
-              <div class="field" style="margin-bottom:10px"><label>Cool-off Days After Liquidation</label><input class="sinput" id="cp-break-days" type="number" min="1" max="30" value="7" style="width:100%"/></div>
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px">
-                  <input type="checkbox" id="cp-enabled" style="accent-color:var(--accent);width:16px;height:16px"/>
-                  <span style="color:var(--accent);font-weight:700">ENABLE PROTECTION</span>
-                </label>
-              </div>
-              <div style="display:flex;gap:8px">
-                <button onclick="cpSaveConfig()" style="flex:1;padding:8px;background:linear-gradient(135deg,var(--red),#f97316);border:none;color:#fff;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font)">💾 SAVE &amp; ACTIVATE</button>
-                <button onclick="cpResetCycle()" style="padding:8px 14px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font)">↺ RESET</button>
-              </div>
-            </div>
-            <div>
-              <div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:8px">LIVE STATUS</div>
-              <div style="background:var(--bg2);border-radius:10px;padding:14px">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;text-align:center">
-                  <div>
-                    <div style="font-size:9px;color:var(--text2);letter-spacing:1px">CURRENT EQUITY</div>
-                    <div style="font-size:18px;font-weight:700;color:var(--text);margin-top:4px" id="cp-equity">—</div>
-                  </div>
-                  <div>
-                    <div style="font-size:9px;color:var(--text2);letter-spacing:1px">FLOOR (LIQUIDATION)</div>
-                    <div style="font-size:18px;font-weight:700;color:var(--red);margin-top:4px" id="cp-floor">—</div>
-                  </div>
-                </div>
-                <div style="margin-bottom:10px">
-                  <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div id="cp-progress-bar" style="height:100%;background:var(--green);border-radius:4px;width:0%;transition:width 0.5s"></div></div>
-                  <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px">
-                    <span style="color:var(--text2)">Floor</span>
-                    <span id="cp-target" style="color:var(--green)">Target: —</span>
-                  </div>
-                </div>
-                <div style="text-align:center;padding:10px;border-radius:8px;font-size:13px;font-weight:700;letter-spacing:1px" id="cp-status-msg">CONFIGURE TO BEGIN</div>
-              </div>
             </div>
           </div>
         </div>
@@ -3628,7 +3391,6 @@ function showApp(accountInfo) {
   document.getElementById('main-btn').textContent = 'LOG IN →';
   document.getElementById('main-btn').disabled = false;
   applySettingsToUI(loadSettings());
-  if (!chartsInit) { initCharts(); chartsInit = true; }
   setTimeout(_aiRestoreState, 500);
   setTimeout(cryptoCheckStatus, 1000);
 }
@@ -3647,187 +3409,19 @@ function showPage(id, el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
   if (el) el.classList.add('active');
-  // Full-page mode only for Trading View
-  if (id === 'tradingview') {
-    document.body.classList.add('tv-mode');
-  } else {
-    document.body.classList.remove('tv-mode');
-  }
   // MT5 is irrelevant inside the Crypto section — hide the badge there
   // regardless of role (admin's own MT5 account has nothing to do with
   // crypto bots), and restore it on every other page.
   const connBar = document.getElementById('conn-bar');
   if (connBar) connBar.style.display = 'none';
 
-  if (id === 'tradingview') { setTimeout(() => { tvInit(_tvSym, _tvTf); window.dispatchEvent(new Event('resize')); }, 80); }
   if (id === 'journal')     { jInit(); }
-  if (id === 'risk')        { rcCalcPos(); rcCalcKelly(); rcCalcPropDD(); cpLoadStatus(); }
   if (id === 'crypto')      { cryptoInit(); }
   if (id === 'dashboard')   { loadDashboardReport(); }
   if (id === 'settings')    { applySettingsToUI(loadSettings()); applyStrategyParamsToUI(loadStrategyParams()); if (_getAuthRole() === 'admin') { document.getElementById('admin-clients-panel').style.display = 'block'; document.getElementById('admin-payments-panel').style.display = 'block'; loadAdminClients(); loadAdminPaymentRequests(); } }
   if (id === 'telegram')   { telegramInit(); } else { clearInterval(_tgRefTimer); }
   if (id === 'indian')     { indianInit(); }
   if (id === 'brain')      { jarvisInit(); } else { _jarvisStopAuto(); }
-}
-
-function tvExitFullPage() {
-  const nav = document.querySelector('.nav-item[onclick*="dashboard"]');
-  if (nav) nav.click();
-}
-
-// ── RISK CALCULATOR ────────────────────────────────────────────────────────────
-function rcCalcPos() {
-  const bal     = parseFloat(document.getElementById('rc-balance')?.value) || 10000;
-  const riskPct = parseFloat(document.getElementById('rc-risk-pct')?.value) || 1;
-  const slPips  = parseFloat(document.getElementById('rc-sl-pips')?.value) || 20;
-  const pipVal  = parseFloat(document.getElementById('rc-pip-val')?.value) || 10;
-
-  const dollarRisk = bal * riskPct / 100;
-  const lotSize    = dollarRisk / (slPips * pipVal);
-
-  document.getElementById('rc-lot-result').textContent = Math.max(0.01, lotSize).toFixed(2);
-  document.getElementById('rc-lot-sub').textContent = `Risk: $${dollarRisk.toFixed(2)} | SL: ${slPips} pips`;
-  document.getElementById('rc-dollar-risk').textContent = '$' + dollarRisk.toFixed(2);
-  document.getElementById('rc-tp-reward').textContent = '+$' + (dollarRisk * 2).toFixed(2);
-  document.getElementById('rc-tp-reward3').textContent = '+$' + (dollarRisk * 3).toFixed(2);
-}
-
-function rcCalcKelly() {
-  const wr     = (parseFloat(document.getElementById('kc-wr')?.value) || 55) / 100;
-  const avgW   = parseFloat(document.getElementById('kc-avg-win')?.value) || 200;
-  const avgL   = parseFloat(document.getElementById('kc-avg-loss')?.value) || 100;
-  const bal    = parseFloat(document.getElementById('kc-balance')?.value) || 10000;
-
-  const b      = avgW / avgL;
-  const q      = 1 - wr;
-  const kFull  = Math.max(0, (b * wr - q) / b);
-  const kHalf  = kFull / 2;
-  const kQtr   = kFull / 4;
-  const exp    = (wr * avgW) - (q * avgL);
-
-  const fmtPct = v => (v * 100).toFixed(1) + '%';
-  document.getElementById('kc-full').textContent    = fmtPct(kFull);
-  document.getElementById('kc-full').className      = 'kpi-value ' + (kFull > 0.2 ? 'red' : 'amber');
-  document.getElementById('kc-half').textContent    = fmtPct(kHalf);
-  document.getElementById('kc-quarter').textContent = fmtPct(kQtr);
-  const expEl = document.getElementById('kc-exp');
-  expEl.textContent = (exp >= 0 ? '+$' : '-$') + Math.abs(exp).toFixed(2);
-  expEl.style.color = exp >= 0 ? 'var(--green)' : 'var(--red)';
-  document.getElementById('kc-risk-amt').textContent = '$' + (bal * kHalf).toFixed(2);
-}
-
-function rcCalcPropDD() {
-  const bal      = parseFloat(document.getElementById('pf-balance')?.value) || 100000;
-  const typeVal  = document.getElementById('pf-type')?.value || '5,10';
-  const [dailyPct, maxPct] = typeVal.split(',').map(Number);
-  const todayPnl = parseFloat(document.getElementById('pf-today-pnl')?.value) || 0;
-  const totalPnl = parseFloat(document.getElementById('pf-total-pnl')?.value) || 0;
-
-  const dailyLimit = bal * dailyPct / 100;
-  const maxLimit   = bal * maxPct / 100;
-  const dailyUsed  = Math.max(0, -todayPnl);
-  const maxUsed    = Math.max(0, -totalPnl);
-  const dailyLeft  = Math.max(0, dailyLimit - dailyUsed);
-  const maxLeft    = Math.max(0, maxLimit - maxUsed);
-  const dailyPct2  = Math.min(100, dailyUsed / dailyLimit * 100);
-  const maxPct2    = Math.min(100, maxUsed / maxLimit * 100);
-
-  const barColor = pct => pct < 50 ? 'var(--green)' : pct < 80 ? 'var(--amber)' : 'var(--red)';
-  document.getElementById('pf-daily-bar').style.width = dailyPct2 + '%';
-  document.getElementById('pf-daily-bar').style.background = barColor(dailyPct2);
-  document.getElementById('pf-max-bar').style.width = maxPct2 + '%';
-  document.getElementById('pf-max-bar').style.background = barColor(maxPct2);
-  document.getElementById('pf-daily-used').textContent = '$' + dailyUsed.toLocaleString(undefined,{maximumFractionDigits:0}) + ' used';
-  document.getElementById('pf-daily-left').textContent = '$' + dailyLeft.toLocaleString(undefined,{maximumFractionDigits:0}) + ' left';
-  document.getElementById('pf-max-used').textContent = '$' + maxUsed.toLocaleString(undefined,{maximumFractionDigits:0}) + ' used';
-  document.getElementById('pf-max-left').textContent = '$' + maxLeft.toLocaleString(undefined,{maximumFractionDigits:0}) + ' left';
-  document.getElementById('pf-daily-left').style.color = barColor(dailyPct2);
-  document.getElementById('pf-max-left').style.color = barColor(maxPct2);
-
-  const statusEl = document.getElementById('pf-status-bar');
-  if (dailyLeft <= 0 || maxLeft <= 0) {
-    statusEl.textContent = '🚫 STOP TRADING — LIMIT BREACHED';
-    statusEl.style.background = 'rgba(239,68,68,0.2)'; statusEl.style.color = 'var(--red)'; statusEl.style.border = '1px solid var(--red)';
-  } else if (dailyPct2 >= 80 || maxPct2 >= 80) {
-    statusEl.textContent = '⚠ WARNING — Near Drawdown Limit';
-    statusEl.style.background = 'rgba(245,158,11,0.15)'; statusEl.style.color = 'var(--amber)'; statusEl.style.border = '1px solid var(--amber)';
-  } else {
-    statusEl.textContent = '✓ SAFE TO TRADE';
-    statusEl.style.background = 'rgba(16,185,129,0.1)'; statusEl.style.color = 'var(--green)'; statusEl.style.border = '1px solid var(--green)';
-  }
-}
-
-// ── CAPITAL PROTECTION (Buffer Ratchet System) ──────────────────────────────
-async function cpLoadStatus() {
-  const r = await apiFetch('/api/capital-protection/status');
-  if (r.error) return;
-
-  document.getElementById('cp-capital').value     = r.starting_capital || 1000;
-  document.getElementById('cp-buffer').value      = r.buffer_amount || 100;
-  document.getElementById('cp-break-days').value  = r.break_days || 7;
-  document.getElementById('cp-enabled').checked   = !!r.enabled;
-
-  const badge = document.getElementById('cp-status-badge');
-  if (r.status === 'active') {
-    badge.textContent = '● ACTIVE'; badge.style.background = 'rgba(16,185,129,0.15)';
-    badge.style.color = 'var(--green)'; badge.style.borderColor = 'var(--green)';
-  } else if (r.status === 'liquidated') {
-    badge.textContent = '🛑 LIQUIDATED'; badge.style.background = 'rgba(239,68,68,0.2)';
-    badge.style.color = 'var(--red)'; badge.style.borderColor = 'var(--red)';
-  } else {
-    badge.textContent = 'INACTIVE'; badge.style.background = 'var(--card2)';
-    badge.style.color = 'var(--text3)'; badge.style.borderColor = 'var(--border)';
-  }
-
-  const eq    = r.equity;
-  const floor = r.liquidation_line || 0;
-  const target = r.target_line || 0;
-  document.getElementById('cp-equity').textContent = eq != null ? '$' + eq.toFixed(2) : '—';
-  document.getElementById('cp-floor').textContent   = '$' + floor.toFixed(2);
-  document.getElementById('cp-target').textContent  = 'Target: $' + target.toFixed(2);
-
-  const bar = document.getElementById('cp-progress-bar');
-  if (eq != null && target > floor) {
-    const pct = Math.max(0, Math.min(100, (eq - floor) / (target - floor) * 100));
-    bar.style.width = pct + '%';
-    bar.style.background = pct < 30 ? 'var(--red)' : pct < 70 ? 'var(--amber)' : 'var(--green)';
-  } else {
-    bar.style.width = '0%';
-  }
-
-  const msgEl = document.getElementById('cp-status-msg');
-  if (r.status === 'liquidated') {
-    msgEl.textContent = `🛑 LIQUIDATED — ${r.break_days_left}d cool-off left`;
-    msgEl.style.background = 'rgba(239,68,68,0.2)'; msgEl.style.color = 'var(--red)';
-  } else if (r.status === 'active') {
-    msgEl.textContent = '✓ PROTECTION ACTIVE';
-    msgEl.style.background = 'rgba(16,185,129,0.1)'; msgEl.style.color = 'var(--green)';
-  } else {
-    msgEl.textContent = 'CONFIGURE TO BEGIN';
-    msgEl.style.background = 'var(--card2)'; msgEl.style.color = 'var(--text3)';
-  }
-}
-
-async function cpSaveConfig() {
-  const starting_capital = parseFloat(document.getElementById('cp-capital').value) || 0;
-  const buffer_amount    = parseFloat(document.getElementById('cp-buffer').value) || 0;
-  const break_days       = parseInt(document.getElementById('cp-break-days').value) || 7;
-  const enabled          = document.getElementById('cp-enabled').checked;
-
-  const r = await apiFetch('/api/capital-protection/config', {
-    method: 'POST',
-    body: JSON.stringify({ enabled, starting_capital, buffer_amount, break_days })
-  });
-  if (r.error) { toastErr('Save failed: ' + r.error); return; }
-  toast(enabled ? '🛡️ Capital protection activated' : '🛡️ Capital protection saved (inactive)');
-  cpLoadStatus();
-}
-
-async function cpResetCycle() {
-  const r = await apiFetch('/api/capital-protection/reset', { method: 'POST' });
-  if (r.error) { toastErr('Reset failed: ' + r.error); return; }
-  toast('↺ Cycle reset — floor back at starting capital');
-  cpLoadStatus();
 }
 
 // ── TRADING JOURNAL ────────────────────────────────────────────────────────────
@@ -5771,114 +5365,6 @@ let _todayTimer  = null;
 
 // MT5 removed — startTradesRefresh / stopTradesRefresh are no-op stubs
 function startTradesRefresh() { /* MT5 removed */ }
-
-// ── TRADINGVIEW CHART ──────────────────────────────────────────────────────────
-let _tvTf      = '60';
-let _tvSym     = 'XAUUSDc';
-let _tvWidget  = null;   // persistent widget instance — never rebuild unless necessary
-let _tvReady   = false;  // true once onChartReady fires
-
-function _tvMt5ToTv(mt5) {
-  const s = mt5.replace(/[cm]$/, '').toUpperCase();
-  if (/^(BTC|ETH|BNB|SOL|ADA|XRP|DOGE|MATIC|LINK|DOT|AVAX|LTC)USDT?$/.test(s))
-    return 'BINANCE:' + (s.endsWith('USDT') ? s : s + 'USDT');
-  if (s === 'XAUUSD')                     return 'TVC:GOLD';
-  if (s === 'XAGUSD')                     return 'TVC:SILVER';
-  if (s === 'USOIL' || s === 'WTIUSD')   return 'TVC:USOIL';
-  if (s === 'UKOIL' || s === 'BRENTOIL') return 'TVC:UKOIL';
-  if (s === 'US30'  || s === 'DJ30')     return 'FOREXCOM:DJI';
-  if (s === 'US500' || s === 'SP500')    return 'FOREXCOM:SPXUSD';
-  if (s === 'NAS100' || s === 'NASDAQ')  return 'FOREXCOM:NSXUSD';
-  if (s === 'GER40'  || s === 'DAX40')   return 'FOREXCOM:GER40';
-  if (s === 'UK100')                      return 'FOREXCOM:UK100';
-  return 'FX:' + s;
-}
-
-function _tvUpdateLabel(tvSym) {
-  const lbl = document.getElementById('tv-sym-label');
-  if (lbl) lbl.textContent = tvSym.split(':')[1] || tvSym;
-}
-
-function _tvBuild(tvSym, tf) {
-  const el = document.getElementById('tv-page-container');
-  if (!el) return;
-  el.innerHTML = '';
-  _tvReady  = false;
-  _tvWidget = new window.TradingView.widget({
-    container_id:        'tv-page-container',
-    autosize:            true,
-    symbol:              tvSym,
-    interval:            tf,
-    timezone:            'Etc/UTC',
-    theme:               'dark',
-    style:               '1',          // candlestick
-    locale:              'en',
-    toolbar_bg:          '#0a0a10',
-    // ── Features ─────────────────────────────
-    enable_publishing:   false,
-    hide_side_toolbar:   false,        // drawing tools sidebar
-    hide_top_toolbar:    false,        // symbol search, TF, chart type, indicators
-    allow_symbol_change: true,
-    withdateranges:      true,         // 1D 5D 1M 3M 6M YTD 1Y 5Y ALL buttons
-    details:             true,         // instrument details panel
-    calendar:            false,        // economic calendar (disable — clutters)
-    hotlist:             false,        // market hotlist (disable)
-    show_popup_button:   false,        // no "open in new window" button
-    save_image:          true,
-    // ── Default studies ───────────────────────
-    studies: [
-      'RSI@tv-basicstudies',
-      'MACD@tv-basicstudies',
-    ],
-    // ── Dark theme colours ────────────────────
-    overrides: {
-      'paneProperties.background':           '#0a0a10',
-      'paneProperties.backgroundType':       'solid',
-      'paneProperties.vertGridProperties.color': '#1a1a26',
-      'paneProperties.horzGridProperties.color': '#1a1a26',
-      'scalesProperties.lineColor':          '#2a2a3a',
-      'scalesProperties.textColor':          '#9ca3af',
-      'mainSeriesProperties.candleStyle.upColor':         '#10b981',
-      'mainSeriesProperties.candleStyle.downColor':       '#ef4444',
-      'mainSeriesProperties.candleStyle.wickUpColor':     '#10b981',
-      'mainSeriesProperties.candleStyle.wickDownColor':   '#ef4444',
-      'mainSeriesProperties.candleStyle.borderUpColor':   '#10b981',
-      'mainSeriesProperties.candleStyle.borderDownColor': '#ef4444',
-    },
-  });
-  _tvWidget.onChartReady(() => { _tvReady = true; });
-}
-
-function tvInit(mt5sym, tf) {
-  if (mt5sym) _tvSym = mt5sym;
-  if (tf)     _tvTf  = tf;
-  const tvSym = _tvMt5ToTv(_tvSym);
-  _tvUpdateLabel(tvSym);
-
-  const _run = () => {
-    // Widget already exists and ready → update in-place (preserves drawings)
-    if (_tvWidget && _tvReady) {
-      try {
-        _tvWidget.activeChart().setSymbol(tvSym, () => {});
-        _tvWidget.activeChart().setResolution(_tvTf, () => {});
-        return;
-      } catch(e) { /* widget stale, fall through to rebuild */ }
-    }
-    // Widget exists but not ready yet → still initialising, skip
-    if (_tvWidget && !_tvReady) return;
-    // Build fresh widget
-    _tvBuild(tvSym, _tvTf);
-  };
-
-  if (window.TradingView) {
-    _run();
-  } else {
-    const script  = document.createElement('script');
-    script.src    = 'https://s3.tradingview.com/tv.js';
-    script.onload = _run;
-    document.head.appendChild(script);
-  }
-}
 
 
 function stopTradesRefresh() { /* MT5 removed */ }
@@ -8226,11 +7712,6 @@ function btUpdateSummary() {
   if (el) el.innerHTML = `${sym} &nbsp;|&nbsp; ${strat}<br>${tf} &nbsp;|&nbsp; ${from} → ${to}<br>$${(+cap).toLocaleString()} capital &nbsp;|&nbsp; ${risk}% risk &nbsp;|&nbsp; SL:${sl} TP:${tp}`;
 }
 
-// ESC exits Trading View full-page mode
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && document.body.classList.contains('tv-mode')) tvExitFullPage();
-});
-
 document.addEventListener('DOMContentLoaded', () => {
   ['bt-pair','bt-strategy','bt-tf','bt-from','bt-to','bt-capital','bt-risk','bt-sl','bt-tp'].forEach(id => {
     const el = document.getElementById(id);
@@ -8473,31 +7954,6 @@ function resetBacktest() {
   document.getElementById('bt-progress-bar').style.width = '0%';
 }
 
-// ── CHARTS ─────────────────────────────────────────────────────────────────────
-function initCharts() {
-  const eq = [10000,10280,10510,10390,10720,11050,11340,11180,11630,12010,12280,12650,12490,12980,13420,13750,14100,14832];
-  new Chart(document.getElementById('equityChart'), {
-    type: 'line',
-    data: { labels: months, datasets: [{ data: eq, borderColor: '#00d26a', borderWidth: 2, pointRadius: 0, fill: true, backgroundColor: ctx => { const g = ctx.chart.ctx.createLinearGradient(0,0,0,200); g.addColorStop(0,'rgba(0,210,106,0.18)'); g.addColorStop(1,'rgba(0,210,106,0)'); return g; }, tension: 0.4 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#21262d', titleColor: '#e6edf3', bodyColor: '#7d8590', borderColor: '#30363d', borderWidth: 1, callbacks: { label: v => '$' + v.raw.toLocaleString() } } }, scales: { x: { ticks: { color: tc, font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 9 }, grid: { color: 'rgba(33,38,45,0.6)' } }, y: { ticks: { color: tc, font: { size: 10 }, callback: v => '$' + v.toLocaleString() }, grid: { color: 'rgba(33,38,45,0.6)' } } } }
-  });
-
-  const pl = [280,230,-120,330,330,290,-180,450,380,270,370,-140,490,440,330,350,680,732];
-  new Chart(document.getElementById('plChart'), {
-    type: 'bar',
-    data: { labels: months, datasets: [{ data: pl, backgroundColor: pl.map(v => v >= 0 ? 'rgba(0,210,106,0.7)' : 'rgba(248,81,73,0.7)'), borderColor: pl.map(v => v >= 0 ? '#00d26a' : '#f85149'), borderWidth: 1, borderRadius: 2 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: tc, font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 9 }, grid: { display: false } }, y: { ticks: { color: tc, font: { size: 10 }, callback: v => '$' + v }, grid: { color: 'rgba(33,38,45,0.6)' } } } }
-  });
-
-  const dd = [0,-1.2,-0.8,-2.1,-0.5,-3.4,-7.4,-4.1,-1.8,-0.6,-2.9,-5.1,-1.3,-0.4,-2.7,-1.1,-0.3,0];
-  new Chart(document.getElementById('ddChart'), {
-    type: 'line',
-    data: { labels: months, datasets: [{ data: dd, borderColor: '#f85149', borderWidth: 1.5, pointRadius: 0, fill: true, backgroundColor: 'rgba(248,81,73,0.12)', tension: 0.4 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: tc, font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { display: false } }, y: { ticks: { color: tc, font: { size: 9 }, callback: v => v + '%' }, grid: { color: 'rgba(33,38,45,0.6)' }, max: 0 } } }
-  });
-
-  // pairChart / distChart removed — canvas elements no longer in HTML
-}
 
 // ── CRYPTO FUTURES ─────────────────────────────────────────────────────────────
 let _cxExchange  = 'binance';   // active exchange tab
