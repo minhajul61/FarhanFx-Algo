@@ -145,7 +145,8 @@ def _days_left(user: dict):
         return None
     try:
         delta = datetime.fromisoformat(user["expiry"]) - datetime.now()
-        return max(0, delta.days)
+        secs = delta.total_seconds()
+        return 0 if secs <= 0 else -(-int(secs) // 86400)   # a 7-day trial shows 7, not 6
     except Exception:
         return None
 
