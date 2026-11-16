@@ -933,6 +933,87 @@ def test_admin_panel():
             assert server._require_admin in [x.call for x in route.dependant.dependencies], path
     check("admin: every /api/admin endpoint is owner-only", True)
 
+
+# ── AI Signal Hunter ──────────────────────────────────────────────────────────
+def test_signal_hunter():
+    import autopilot as apm
+    bar = 1_800_000_000_000
+    rows = lambda: [[bar - (299 - i) * 14_400_000, 100, 101, 99, 100 + i * 0.01, 1000] for i in range(300)]
+    opened, sig_on = [], {"AAA/USDT:USDT": ("trend_breakout", "BUY"), "BBB/USDT:USDT": ("bb_squeeze", "SELL")}
+    edge = {"AAA/USDT:USDT": 0.4, "BBB/USDT:USDT": -0.2}
+    ap = apm.Autopilot({
+        "tickers": lambda: {s: {"quoteVolume": 1e9} for s in ("AAA/USDT:USDT", "BBB/USDT:USDT", "CCC/USDT:USDT")},
+        "ohlcv": lambda sym, tf, n: rows(), "history": lambda s, tf, d: [],
+        "backtest": lambda st, r, s, tf, p: {"avg_r": edge.get(s, 0.3), "total_trades": 20, "profit_factor": 1.5},
+        "signal": lambda st, sym, tf, p, r: sig_on[sym][1] if sym in sig_on and sig_on[sym][0] == st else None,
+        "open": lambda cands, cfg: (opened.extend(cands) or [f"opened {c['symbol']}" for c in cands], []),
+    }, path=os.path.join(WORK, "hunt.json"))
+    ap.config["enabled"] = True
+    ap.hunt(apply=True)
+    check("hunter: fresh signal with an edge is traded", [c["symbol"] for c in opened] == ["AAA/USDT:USDT"], opened)
+    check("hunter: signal without an edge on that coin is skipped",
+          any(x["symbol"] == "BBB/USDT:USDT" and not x["edge"]["ok"] for x in ap.state["signals"]))
+    ap.hunt(apply=True)
+    check("hunter: the same candle is never traded twice", len(opened) == 1, len(opened))
+    bar += 14_400_000
+    ap.hunt(apply=True)
+    check("hunter: next candle's fresh signal is traded", len(opened) == 2)
+    bar = int(time.time() * 1000) - 4 * 3600 * 1000 - 3 * 3600 * 1000     # closed 3h ago
+    ap.state["hunted_bar"] = 0
+    ap.hunt(apply=True)
+    check("hunter: a candle that closed hours ago is not chased", len(opened) == 2 and "too late" in " ".join(x["msg"] for x in ap.state["log"][-3:]))
+
+
+def test_hunter_bots_are_one_shot():
+    mkt, ex = fresh()
+    server._rm.update_config({"max_positions": 2})
+    SIGNAL["v"] = "BUY"; mkt.new_candle(100.0)
+    closed_bar = mkt.candles[-2][0]
+    cands = [{"symbol": f"H{i}/USDT:USDT", "strategy": "trend_breakout", "tf": "4h", "side": "BUY", "bar": closed_bar,
+              "params": {"sl_atr": 2.0, "reward_r": 3.0}, "why": "test", "rank": 50 - i, "momentum": 60} for i in range(3)]
+    actions, active = server._autopilot_hunt_open(cands, {"mode": "demo"})
+    hunters = [b for b in server._crypto_bots.values() if b.get("one_shot")]
+    check("hunter: opens only as many as free slots", len(hunters) == 2 and "no free slot" in actions[-1], actions)
+    for b in hunters:
+        tick(b["id"])
+    check("hunter: one-shot bots enter on their signal candle", all(b["open_side"] == "BUY" for b in hunters))
+    b = hunters[0]
+    SIGNAL["v"] = None
+    mkt.move(b["sl"] - 1, low=b["sl"] - 1)
+    tick(b["id"])
+    check("hunter: bot stops for good once its trade closes", b["open_side"] is None and b["status"] == "stopped" and b.get("finished"))
+    late = dict(cands[2], symbol="LATE/USDT:USDT")
+    server._autopilot_hunt_open([late], {"mode": "demo"})
+    lb = next(x for x in server._crypto_bots.values() if x.get("symbol") == "LATE/USDT:USDT")
+    SIGNAL["v"] = "BUY"; mkt.new_candle(100.0)
+    tick(lb["id"])
+    check("hunter: a signal that expired before the bot ran is not traded", lb["open_side"] is None and lb["status"] == "stopped")
+    server._autopilot_hunt_open([], {"mode": "demo"})
+    check("hunter: finished hunters are cleared (trade stays in the ledger)",
+          b["id"] not in server._crypto_bots and any(r["bot_id"] == b["id"] for r in server._ledger.all()))
+
+
+def test_trend_filtered_strategies():
+    import extra_strategies as xs
+    def series(closes, wiggle=0.004):
+        return [[i, c, c * (1 + wiggle), c * (1 - wiggle), c, 1000] for i, c in enumerate(closes)]
+    up = [100 * (1.003 ** i) for i in range(300)]
+    dip = up[:-12] + [up[-13] * (1 - 0.006 * k) for k in range(1, 9)] + [up[-13] * 0.955 * (1 + 0.012 * k) for k in range(1, 5)]
+    check("ema_trend: no signal without a fresh cross", xs.ema_trend(series(up)) is None)
+    check("rsi_trend: pullback then RSI turn up in an uptrend → BUY", any(xs.rsi_trend(series(dip[:n])) == "BUY" for n in range(290, 301)))
+    check("rsi_trend: never SELL in an uptrend", all(xs.rsi_trend(series(dip[:n])) != "SELL" for n in range(230, 301)))
+    rows = series(up)
+    lo20 = min(r[3] for r in rows[-21:-1])
+    rows[-1] = [299, up[-2], up[-2] * 1.004, lo20 * 0.97, up[-2] * 1.003, 3000]
+    check("smc_sweep: sweep below the 20-bar low that closes back up in an uptrend → BUY", xs.smc_sweep(rows) == "BUY")
+    down = [100 * (0.997 ** i) for i in range(300)]
+    rows = series(down)
+    rows[-1] = [299, down[-2], down[-2] * 1.004, min(r[3] for r in rows[-21:-1]) * 0.97, down[-2] * 1.003, 3000]
+    check("smc_sweep: the same candle in a downtrend is ignored", xs.smc_sweep(rows) is None)
+    for name in xs.STRATEGIES:
+        check(f"{name}: wired into the bots", server._get_bot_signal({"strategy": name}, series(up)) in (None, "BUY", "SELL")
+              and server._bot_lookback_bars({"strategy": name}) == xs.LOOKBACK)
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

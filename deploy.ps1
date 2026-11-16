@@ -9,7 +9,7 @@ $DEST = "C:/FarhanFX/"
 $SRC  = "e:/Farhan Fx Algo/"
 
 # ── Files to validate + upload ──────────────────────────────────────────────
-$files = if ($UploadFile) { @($UploadFile) } else { @("index.html", "server.py", "brain.py", "engine.py", "risk_manager.py", "autopilot.py", "market_guard.py", "custom_strategy.py", "trade_ledger.py", "requirements.txt") }
+$files = if ($UploadFile) { @($UploadFile) } else { @("index.html", "server.py", "brain.py", "engine.py", "risk_manager.py", "autopilot.py", "market_guard.py", "custom_strategy.py", "extra_strategies.py", "trade_ledger.py", "requirements.txt") }
 
 Write-Host ""
 Write-Host "FarhanFX Deploy Script" -ForegroundColor Cyan

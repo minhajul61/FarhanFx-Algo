@@ -23,6 +23,7 @@ import risk_manager as _risk_manager
 import autopilot as _autopilot_mod
 import market_guard as _market_guard
 import custom_strategy as _custom
+import extra_strategies as _extra
 import trade_ledger as _trade_ledger
 
 
@@ -2613,6 +2614,8 @@ def _ai_full_analysis(ohlcv, bot_params=None):
 def _bot_lookback_bars(bot) -> int:
     if str(bot.get("strategy", "")).startswith("custom:"):
         return _custom.lookback(bot.get("custom_def") or {})
+    if bot.get("strategy") in _extra.STRATEGIES:
+        return _extra.LOOKBACK
     base = max(100, (bot.get("slow_ema", 21) or 21) + 30)
     st = bot.get("strategy", "")
     if st == "trend_breakout":
@@ -2636,6 +2639,8 @@ def _bot_lookback_bars(bot) -> int:
 def _get_bot_signal(bot, ohlcv):
     if str(bot.get("strategy", "")).startswith("custom:"):
         return _custom.signal(bot.get("custom_def") or {}, ohlcv)
+    if bot.get("strategy") in _extra.STRATEGIES:
+        return _extra.signal(bot["strategy"], ohlcv)
     closes  = [c[4] for c in ohlcv]
     highs   = [c[2] for c in ohlcv]
     lows    = [c[3] for c in ohlcv]
@@ -4056,6 +4061,9 @@ def _bot_step(bot):
     if not closed:
         return
     bar_ts = closed[-1][0]
+    if bot.get("one_shot") and bot.get("hunt_bar") and bar_ts != bot["hunt_bar"]:
+        bot["status"] = "stopped"
+        raise _Skip("🤖 Signal expired before it could be traded — next candle is scanned again")
     if bot.get("last_eval_bar") == bar_ts:
         return                       # this candle was already read
     bot["last_eval_bar"] = bar_ts
@@ -4148,6 +4156,11 @@ def _bot_tick(bot_id):
             print(f"[bot {bot_id}] {type(e).__name__}: {e}")
         finally:
             bot["last_run"] = datetime.now().strftime("%H:%M:%S")
+            if bot.get("one_shot") and not bot.get("open_side") and bot.get("last_eval_bar"):
+                bot["status"] = "stopped"
+                bot["finished"] = True
+                if not bot.get("trades"):
+                    bot["last_error"] = bot.get("last_error") or "🤖 Signal not taken"
             _save_bots()
     _schedule_tick(bot_id)
 
@@ -4320,6 +4333,75 @@ def _autopilot_can_go_live():
     return True, ""
 
 
+def _ap_signal(strategy, symbol, tf, params, rows):
+    bot = _strategy_bot_template(strategy, symbol, tf, params)
+    return _get_bot_signal(bot, rows[-_bot_lookback_bars(bot):])
+
+
+def _hunter_view(b) -> dict:
+    return {"symbol": b["symbol"], "strategy": b["strategy"], "tf": b.get("timeframe"),
+            "direction": "UP" if (b.get("open_side") or b.get("hunt_side")) == "BUY" else "DOWN",
+            "side": b.get("open_side") or b.get("hunt_side"), "momentum": b.get("hunt_momentum") or 0,
+            "rank": b.get("autopilot_rank") or 0, "why": b.get("autopilot_why") or "",
+            "in_trade": bool(b.get("open_side"))}
+
+
+def _autopilot_hunt_open(cands, cfg):
+    """Turn fresh, tradeable signals into one-shot bots (one trade each).
+    Retires the old long-lived autopilot bots and clears finished hunters."""
+    actions = []
+    mode, owner = cfg["mode"], _ap_owner()
+    for bid, b in list(_crypto_bots.items()):
+        if not b.get("autopilot"):
+            continue
+        with _bot_lock(bid):
+            if b.get("one_shot"):
+                if b.get("status") != "active" and not b.get("open_side"):
+                    _crypto_bots.pop(bid, None)          # trade done — it lives on in the ledger / reports
+                continue
+            if b.get("open_side"):                       # an older "pick" bot: let its trade finish
+                b["retiring"] = True
+            else:
+                t = _bot_timers.pop(bid, None)
+                if t:
+                    t.cancel()
+                _crypto_bots.pop(bid, None)
+                actions.append(f"{_bot_label(b)}: replaced by the signal hunter")
+    ex = _active_ex.get(owner, {}).get("binance") if mode == "live" else None
+    busy = {b.get("symbol") for b in _crypto_bots.values() if b.get("status") == "active" or b.get("open_side")}
+    pending = sum(1 for b in _crypto_bots.values() if b.get("one_shot") and b.get("status") == "active" and not b.get("open_side"))
+    free = int(_rm.config["max_positions"]) - _open_positions(mode, ex, owner) - pending
+    for c in cands:
+        if free <= 0:
+            actions.append(f"{c['symbol'].split('/')[0]} {c['side']} ({c['strategy']}): no free slot — {int(_rm.config['max_positions'])} positions max")
+            continue
+        if c["symbol"] in busy:
+            continue
+        bid = str(_uuid.uuid4())[:8]
+        bot = _strategy_bot_template(c["strategy"], c["symbol"], c["tf"], c["params"])
+        bot.update({
+            "id": bid, "username": owner, "exchange": "binance", "group_id": bid,
+            "group_name": f"🤖 AI Hunter · {c['strategy']}", "mode": mode,
+            "leverage": int(_rm.config["max_leverage"]), "margin_mode": "isolated",
+            "demo_balance": _rm.config["demo_capital"], "demo_equity": _rm.config["demo_capital"],
+            "autopilot": True, "one_shot": True, "hunt_bar": c["bar"], "hunt_side": c["side"],
+            "hunt_momentum": c.get("momentum"), "retiring": False,
+            "autopilot_why": c["why"], "autopilot_rank": c["rank"],
+            "status": "active", "trades": [], "total_signals": 0, "last_signal": None, "last_run": None,
+            "last_price": None, "last_error": None, "open_side": None, "open_entry_price": None,
+            "open_trade_count": 0, "open_amount": 0, "max_open_trades": 1,
+            "created": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        })
+        _crypto_bots[bid] = bot
+        busy.add(c["symbol"])
+        free -= 1
+        _schedule_tick(bid, 2 + len(actions))
+        actions.append(f"{mode.upper()} {c['side']} {c['symbol'].split('/')[0]} · {c['strategy']} {c['tf']} — {c['why']}")
+    _save_bots()
+    active = [_hunter_view(b) for b in _crypto_bots.values() if b.get("one_shot") and (b.get("status") == "active" or b.get("open_side"))]
+    return actions, active
+
+
 def _autopilot_apply(picks, cfg) -> list:
     """Turn the autopilot's picks into running bots. Never switches the coin
     of a bot that holds a position; bots that dropped out stop taking new
@@ -4399,6 +4481,8 @@ _autopilot = _autopilot_mod.Autopilot({
         st, rows, sym, tf, risk_pct=_rm.config["risk_pct"], param_overrides=params),
     "slots": lambda: int(_rm.config["max_positions"]),
     "apply": _autopilot_apply,
+    "signal": _ap_signal,
+    "open": _autopilot_hunt_open,
     "can_go_live": _autopilot_can_go_live,
 })
 
@@ -4551,7 +4635,7 @@ def autopilot_toggle(req: AutopilotToggleReq, admin: dict = Depends(_require_adm
 @app.post("/api/autopilot/scan")
 def autopilot_scan(admin: dict = Depends(_require_admin)):
     if not _autopilot.config["enabled"]:
-        threading.Thread(target=lambda: _autopilot.run_scan(apply=False), daemon=True).start()
+        threading.Thread(target=lambda: _autopilot.hunt(apply=False), daemon=True).start()
         return {"success": True, "note": "Preview scan started (autopilot is off, nothing will be traded)"}
     _autopilot.scan_now()
     return {"success": True}
@@ -5006,7 +5090,7 @@ _ALL_CRYPTO_STRATEGIES = ["rsi", "macd_cross", "bb_squeeze", "false_breakout", "
                           # ── Course-derived strategies (backtest-validated, 1yr BTC/ETH/SOL) ──
                           "bpr",                    # PF 4.43 BTC/4h, 71% WR — strongest SMC zone
                           "fibonacci_retracement",  # PF 2.93 BTC/4h, 62% WR — golden zone pullback
-                          "inducement_continuation"] # PF 1.74 ETH/1h, 55% WR — trend continuation
+                          "inducement_continuation", "ema_trend", "rsi_trend", "smc_sweep", "pa_engulf", "macd_trend"] # PF 1.74 ETH/1h, 55% WR — trend continuation
                           # NOT included: crt_pattern (needs tuning), pdh_pdl_failure (0 trades on crypto 24/7)
 
 _backtest_data_cache: dict = {}   # f"{symbol}:{timeframe}:{days}" -> {"data": [...], "fetched_at": ts}

@@ -10,11 +10,11 @@ DOMAIN="${FARHANFX_DOMAIN:-farhanfxalgo.in}"
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 SSH=(ssh -i "$KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15)
 APP_FILES=(server.py index.html brain.py engine.py risk_manager.py autopilot.py market_guard.py
-           custom_strategy.py trade_ledger.py requirements.txt set_admin_password.py)
+           custom_strategy.py extra_strategies.py trade_ledger.py requirements.txt set_admin_password.py)
 
 cd "$SRC"
 echo "== checks"
-python3 -m py_compile server.py brain.py engine.py risk_manager.py autopilot.py market_guard.py custom_strategy.py trade_ledger.py set_admin_password.py
+python3 -m py_compile server.py brain.py engine.py risk_manager.py autopilot.py market_guard.py custom_strategy.py extra_strategies.py trade_ledger.py set_admin_password.py
 if [ -x .venv/bin/python ]; then .venv/bin/python -W ignore tests/test_live_engine.py | tail -1; fi
 
 if [ "${1:-}" = "--setup" ]; then

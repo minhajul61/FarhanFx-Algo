@@ -1,0 +1,355 @@
+{
+ "generated": "2026-11-16 06:16 UTC",
+ "rules": {
+  "grid": [
+   [
+    1.5,
+    1.5
+   ],
+   [
+    1.5,
+    2.0
+   ],
+   [
+    1.5,
+    3.0
+   ],
+   [
+    2.0,
+    1.5
+   ],
+   [
+    2.0,
+    2.0
+   ],
+   [
+    2.0,
+    3.0
+   ],
+   [
+    3.0,
+    1.5
+   ],
+   [
+    3.0,
+    2.0
+   ],
+   [
+    3.0,
+    3.0
+   ]
+  ],
+  "min_train_trades": 40,
+  "min_test_trades": 20,
+  "min_coins_both": 4,
+  "min_test_r": 0.05
+ },
+ "results": [
+  {
+   "strategy": "smc_sweep",
+   "tf": "4h",
+   "sl_atr": 1.5,
+   "reward_r": 2.0,
+   "train_trades": 132,
+   "train_r": 0.28,
+   "test_trades": 55,
+   "test_r": 0.348,
+   "coins_both": 8,
+   "coins": [
+    "ADA",
+    "AVAX",
+    "BNB",
+    "ETH",
+    "LINK",
+    "SOL",
+    "SUI",
+    "XRP"
+   ],
+   "pass": true
+  },
+  {
+   "strategy": "pa_engulf",
+   "tf": "4h",
+   "sl_atr": 3.0,
+   "reward_r": 3.0,
+   "train_trades": 105,
+   "train_r": -0.014,
+   "test_trades": 62,
+   "test_r": 0.336,
+   "coins_both": 2,
+   "coins": [
+    "DOGE",
+    "ETH"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "rsi_trend",
+   "tf": "4h",
+   "sl_atr": 1.5,
+   "reward_r": 1.5,
+   "train_trades": 200,
+   "train_r": -0.005,
+   "test_trades": 108,
+   "test_r": 0.315,
+   "coins_both": 4,
+   "coins": [
+    "ADA",
+    "BTC",
+    "ETH",
+    "XRP"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "ema_trend",
+   "tf": "4h",
+   "sl_atr": 3.0,
+   "reward_r": 1.5,
+   "train_trades": 113,
+   "train_r": -0.07,
+   "test_trades": 56,
+   "test_r": 0.307,
+   "coins_both": 4,
+   "coins": [
+    "BNB",
+    "BTC",
+    "ETH",
+    "XRP"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "vwap_bands",
+   "tf": "4h",
+   "sl_atr": 2.0,
+   "reward_r": 1.5,
+   "train_trades": 344,
+   "train_r": -0.061,
+   "test_trades": 192,
+   "test_r": 0.206,
+   "coins_both": 2,
+   "coins": [
+    "AVAX",
+    "ETH"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "rsi_trend",
+   "tf": "1h",
+   "sl_atr": 3.0,
+   "reward_r": 3.0,
+   "train_trades": 403,
+   "train_r": -0.023,
+   "test_trades": 200,
+   "test_r": 0.195,
+   "coins_both": 2,
+   "coins": [
+    "SOL",
+    "XRP"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "pa_engulf",
+   "tf": "1h",
+   "sl_atr": 3.0,
+   "reward_r": 3.0,
+   "train_trades": 501,
+   "train_r": -0.007,
+   "test_trades": 265,
+   "test_r": 0.077,
+   "coins_both": 2,
+   "coins": [
+    "SUI",
+    "XRP"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "ifvg",
+   "tf": "4h",
+   "sl_atr": 2.0,
+   "reward_r": 2.0,
+   "train_trades": 261,
+   "train_r": 0.045,
+   "test_trades": 151,
+   "test_r": 0.066,
+   "coins_both": 2,
+   "coins": [
+    "BNB",
+    "SUI"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "smc_sweep",
+   "tf": "1h",
+   "sl_atr": 3.0,
+   "reward_r": 1.5,
+   "train_trades": 420,
+   "train_r": -0.024,
+   "test_trades": 227,
+   "test_r": 0.045,
+   "coins_both": 3,
+   "coins": [
+    "ETH",
+    "LINK",
+    "SUI"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "liquidity_sweep",
+   "tf": "4h",
+   "sl_atr": 2.0,
+   "reward_r": 1.5,
+   "train_trades": 307,
+   "train_r": 0.062,
+   "test_trades": 155,
+   "test_r": 0.027,
+   "coins_both": 5,
+   "coins": [
+    "AVAX",
+    "BNB",
+    "DOGE",
+    "ETH",
+    "LINK"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "rsi",
+   "tf": "4h",
+   "sl_atr": 3.0,
+   "reward_r": 1.5,
+   "train_trades": 890,
+   "train_r": -0.027,
+   "test_trades": 518,
+   "test_r": 0.021,
+   "coins_both": 2,
+   "coins": [
+    "ETH",
+    "XRP"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "false_breakout",
+   "tf": "4h",
+   "sl_atr": 3.0,
+   "reward_r": 1.5,
+   "train_trades": 596,
+   "train_r": -0.067,
+   "test_trades": 309,
+   "test_r": 0.012,
+   "coins_both": 1,
+   "coins": [
+    "BTC"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "bos_choch",
+   "tf": "4h",
+   "sl_atr": 3.0,
+   "reward_r": 1.5,
+   "train_trades": 1328,
+   "train_r": -0.017,
+   "test_trades": 795,
+   "test_r": -0.01,
+   "coins_both": 3,
+   "coins": [
+    "ADA",
+    "SUI",
+    "XRP"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "macd_trend",
+   "tf": "1h",
+   "sl_atr": 3.0,
+   "reward_r": 1.5,
+   "train_trades": 429,
+   "train_r": -0.034,
+   "test_trades": 219,
+   "test_r": -0.044,
+   "coins_both": 0,
+   "coins": [],
+   "pass": false
+  },
+  {
+   "strategy": "macd_trend",
+   "tf": "4h",
+   "sl_atr": 1.5,
+   "reward_r": 1.5,
+   "train_trades": 131,
+   "train_r": -0.139,
+   "test_trades": 71,
+   "test_r": -0.053,
+   "coins_both": 1,
+   "coins": [
+    "BTC"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "ema_trend",
+   "tf": "1h",
+   "sl_atr": 1.5,
+   "reward_r": 2.0,
+   "train_trades": 696,
+   "train_r": -0.088,
+   "test_trades": 355,
+   "test_r": -0.083,
+   "coins_both": 0,
+   "coins": [],
+   "pass": false
+  },
+  {
+   "strategy": "fvg",
+   "tf": "4h",
+   "sl_atr": 1.5,
+   "reward_r": 1.5,
+   "train_trades": 625,
+   "train_r": -0.097,
+   "test_trades": 362,
+   "test_r": -0.086,
+   "coins_both": 1,
+   "coins": [
+    "BNB"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "ob_fvg",
+   "tf": "4h",
+   "sl_atr": 1.5,
+   "reward_r": 3.0,
+   "train_trades": 50,
+   "train_r": -0.015,
+   "test_trades": 22,
+   "test_r": -0.131,
+   "coins_both": 1,
+   "coins": [
+    "SUI"
+   ],
+   "pass": false
+  },
+  {
+   "strategy": "rsi_divergence",
+   "tf": "4h",
+   "sl_atr": 1.5,
+   "reward_r": 2.0,
+   "train_trades": 198,
+   "train_r": -0.061,
+   "test_trades": 145,
+   "test_r": -0.261,
+   "coins_both": 0,
+   "coins": [],
+   "pass": false
+  }
+ ]
+}

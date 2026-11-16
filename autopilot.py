@@ -55,6 +55,11 @@ APPROVED_PROFILES = {
         "tf": "4h", "params": {"sl_atr": 3.0, "reward_r": 3.0, "tp_atr": 0.0, "trailing_atr": 0.0},
         "evidence": "test +0.25R/trade, 147 trades (fewer signals)",
     },
+    # strategy_research.py: positive on the unseen test half at all 9 stop/target settings
+    "smc_sweep": {
+        "tf": "4h", "params": {"sl_atr": 1.5, "reward_r": 2.0, "tp_atr": 0.0, "trailing_atr": 0.0},
+        "evidence": "test +0.35R/trade, profitable on 8/10 coins in both halves, 187 trades",
+    },
 }
 
 EXCLUDE_BASES = {
@@ -67,7 +72,7 @@ DEFAULT_CONFIG = {
     "enabled": False,
     "mode": "demo",              # demo | live
     "scan_hours": 4,
-    "universe": 25,              # coins considered (by 24h volume)
+    "universe": 40,              # liquid crypto coins scanned every 4h candle
     "min_volume_usd": 50_000_000,
     "candidates": 8,             # top-momentum coins that get strategy-tested
     "validate_days": 180,
@@ -172,8 +177,10 @@ class Autopilot:
             with open(self.path, encoding="utf-8") as f:
                 d = json.load(f)
             self.config.update({k: v for k, v in d.get("config", {}).items() if k in DEFAULT_CONFIG})
-            self.config["strategies"] = [s for s in self.config["strategies"] if s in APPROVED_PROFILES] \
-                or list(APPROVED_PROFILES)
+            # the hunter always uses every strategy that passed the research
+            self.config["strategies"] = list(APPROVED_PROFILES)
+            if self.config.get("universe") == 25:      # old default → the hunter scans 40
+                self.config["universe"] = 40
             st = d.get("state", {})
             st["scanning"] = False
             self.state.update(st)
@@ -235,7 +242,7 @@ class Autopilot:
             self._wake.clear()          # a scan request that arrived meanwhile is served by this scan
             if self.config["enabled"]:
                 try:
-                    self.run_scan(apply=True)
+                    self.hunt(apply=True)
                 except Exception as e:
                     self.state["last_error"] = str(e)[:300]
                     self._log(f"Scan failed: {str(e)[:200]}")
@@ -321,6 +328,112 @@ class Autopilot:
                     self._log(a)
                 self.save()
             return {"picks": chosen, "actions": actions}
+        finally:
+            with _lock:
+                self.state["scanning"] = False
+                self.save()
+
+    # ── AI Signal Hunter: scan the whole liquid market, trade fresh signals ──
+    HUNT_BARS = 300          # 4h candles per coin: enough for EMA(200) + box warm-up
+    EDGE_TTL = 12 * 3600     # re-check a coin+strategy backtest twice a day
+    MAX_SIGNAL_AGE_MIN = 30  # only enter within 30 min of the candle close
+
+    def _edge(self, symbol, strategy, tf, params):
+        """Has this strategy made money on THIS coin recently? Cached."""
+        cache = self.__dict__.setdefault("_edge_cache", {})
+        key = (symbol, strategy, tf)
+        hit = cache.get(key)
+        if hit and time.time() - hit[0] < self.EDGE_TTL:
+            return hit[1]
+        days = self.PICK_DAYS.get(tf, 180)
+        r = self.hooks["backtest"](strategy, self.hooks["history"](symbol, tf, days), symbol, tf, params)
+        res = {"trades": r.get("total_trades") or 0, "avg_r": r.get("avg_r") or 0, "pf": r.get("profit_factor"),
+               "win_rate": r.get("win_rate"), "days": days}
+        res["ok"] = bool(res["trades"] >= self.config["min_trades"] and res["avg_r"] > 0)
+        cache[key] = (time.time(), res)
+        return res
+
+    def hunt(self, apply: bool = True) -> dict:
+        """Every closed 4h candle: look at the top liquid coins with every tested
+        strategy. A coin with a FRESH buy/sell signal on the candle that just
+        closed, whose strategy also made money on that coin's own recent
+        history, becomes a trade (best first, while risk slots are free).
+        Each candle is acted on once — a restart never enters it twice."""
+        with _lock:
+            if self.state.get("scanning"):
+                return {"busy": True}
+            self.state["scanning"] = True
+            self.state["last_error"] = None
+        t0 = time.time()
+        try:
+            cfg = dict(self.config)
+            board, signals, last_bar = [], [], 0
+            for sym, vol in self._universe(cfg):
+                try:
+                    rows = self.hooks["ohlcv"](sym, "4h", self.HUNT_BARS)
+                except Exception:
+                    continue
+                if len(rows) < 120:
+                    continue
+                last_bar = max(last_bar, rows[-1][0])
+                m = momentum_score(rows[-120:])
+                if m:
+                    board.append({"symbol": sym, "volume_24h": round(vol), **m})
+                for strat in cfg["strategies"]:
+                    prof = APPROVED_PROFILES[strat]
+                    try:
+                        sig = self.hooks["signal"](strat, sym, prof["tf"], prof["params"], rows)
+                    except Exception:
+                        sig = None
+                    if sig in ("BUY", "SELL"):
+                        signals.append({"symbol": sym, "strategy": strat, "tf": prof["tf"], "side": sig,
+                                        "params": prof["params"], "bar": rows[-1][0],
+                                        "momentum": (m or {}).get("score", 0), "trend": (m or {}).get("direction")})
+            board.sort(key=lambda x: -x["score"])
+            fresh = [s for s in signals if s["bar"] == last_bar]
+            for s in fresh:
+                try:
+                    e = self._edge(s["symbol"], s["strategy"], s["tf"], s["params"])
+                except Exception as ex:
+                    e = {"ok": False, "trades": 0, "avg_r": 0, "error": str(ex)[:80]}
+                s["edge"] = e
+                aligned = (s["side"] == "BUY" and s["trend"] == "UP") or (s["side"] == "SELL" and s["trend"] == "DOWN")
+                s["rank"] = round(40 * min(1.0, max(-1.0, (e.get("avg_r") or 0) / 0.5)) + 0.4 * s["momentum"]
+                                  + (15 if aligned else 0), 1)
+                s["direction"] = "UP" if s["side"] == "BUY" else "DOWN"
+                s["why"] = (f"{s['side']} signal on the {datetime.fromtimestamp(s['bar'] / 1000, tz=timezone.utc).strftime('%H:%M')} UTC "
+                            f"candle; {s['strategy'].replace('_', ' ')} on this coin, last {e.get('days', 180)}d: "
+                            f"{e.get('trades', 0)} trades, {(e.get('avg_r') or 0):+.2f}R avg"
+                            + ("" if e.get("ok") else " — no edge here, skipped")
+                            + (f"; momentum {s['momentum']:.0f} {s['trend']}" if s.get("trend") else ""))
+            tradeable = sorted([s for s in fresh if s["edge"].get("ok")], key=lambda s: -s["rank"])
+            new_candle = last_bar > int(self.state.get("hunted_bar") or 0)
+            # the backtest enters right after the candle closes — never chase an old signal
+            age_min = (time.time() * 1000 - (last_bar + 4 * 3600 * 1000)) / 60000 if last_bar else 0
+            too_late = age_min > self.MAX_SIGNAL_AGE_MIN
+            actions, active = [], []
+            if apply and cfg["enabled"]:
+                actions, active = self.hooks["open"](tradeable if (new_candle and not too_late) else [], cfg)
+                if new_candle and too_late and tradeable:
+                    actions.insert(0, f"Candle closed {age_min:.0f} min ago — too late to enter its signals, waiting for the next candle")
+            with _lock:
+                if apply and cfg["enabled"] and new_candle:
+                    self.state["hunted_bar"] = last_bar
+                self.state["leaderboard"] = board[:20]
+                self.state["signals"] = [{k: v for k, v in s.items() if k != "params"} for s in
+                                         sorted(fresh, key=lambda s: -s.get("rank", 0))][:30]
+                self.state["picks"] = active if (apply and cfg["enabled"]) else \
+                    [{k: v for k, v in s.items() if k != "params"} for s in tradeable[:6]]
+                self.state["coins_scanned"] = len(board)
+                self.state["last_scan"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                self.state["scan_seconds"] = round(time.time() - t0, 1)
+                self._log(f"Scanned {len(board)} coins × {len(cfg['strategies'])} strategies: "
+                          f"{len(fresh)} fresh signal(s), {len(tradeable)} with an edge"
+                          + ("" if new_candle or not (apply and cfg["enabled"]) else " — this candle was already traded"))
+                for a in actions:
+                    self._log(a)
+                self.save()
+            return {"signals": fresh, "tradeable": tradeable, "actions": actions}
         finally:
             with _lock:
                 self.state["scanning"] = False

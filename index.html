@@ -1140,7 +1140,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
 
         <div class="ap-cols">
           <div class="ap-card">
-            <h3><i class="ti ti-sparkles"></i> AI picks — coin + strategy <span style="margin-left:auto;font-size:10px;color:var(--text3);letter-spacing:.5px;text-transform:none" id="ap-scan-time"></span></h3>
+            <h3><i class="ti ti-sparkles"></i> AI Signal Hunter — trades &amp; signals <span style="margin-left:auto;font-size:10px;color:var(--text3);letter-spacing:.5px;text-transform:none" id="ap-scan-time"></span></h3>
             <div id="ap-picks"><div class="ap-empty">No scan yet — press SCAN NOW to preview.</div></div>
           </div>
           <div class="ap-card">
@@ -2137,6 +2137,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
                   <option value="bb_squeeze">BB Squeeze — test +0.29R/trade</option>
                   <option value="super_breakout">Super Breakout — test +0.25R/trade</option>
                   <option value="fibonacci_retracement">Fibonacci Golden Zone — test +0.11R/trade</option>
+                  <option value="smc_sweep">SMC Liquidity Sweep (trend) — test +0.35R/trade, 8/10 coins</option>
                   </optgroup>
                   <optgroup label="⚠ Demo only — lost money in the 1-year backtest">
                   <option value="vwap_bands">VWAP Bands mean-reversion</option>
@@ -2156,6 +2157,10 @@ tr:hover td{background:rgba(139,92,246,0.07)}
                   <option value="volume_profile">Volume Profile</option>
                   <option value="fvg">Fair Value Gap</option>
                   <option value="bb_rsi_strict">BB + RSI strict</option>
+                  <option value="pa_engulf">Price action engulfing (trend)</option>
+                  <option value="rsi_trend">RSI pullback (trend)</option>
+                  <option value="ema_trend">EMA 20/50 cross (trend)</option>
+                  <option value="macd_trend">MACD cross (trend)</option>
                   </optgroup>
                 </select>
               </div>
@@ -3524,10 +3529,10 @@ function apRender(d) {
   document.getElementById('ap-btn-live').disabled = c.enabled && c.mode === 'live';
   document.getElementById('ap-btn-stop').disabled = !c.enabled;
   document.getElementById('ap-sub').textContent = c.enabled
-    ? `Running in ${c.mode.toUpperCase()} · ${r.config.max_positions} slots · rescans every ${c.scan_hours}h · next ${st.next_scan || 'soon'}`
-    : 'Scans momentum across Binance futures, tests each strategy on the coin\'s own history, and runs the best ' + r.config.max_positions + ' under the risk manager.';
+    ? `Signal hunter ${c.mode.toUpperCase()} · scans ${st.coins_scanned || c.universe} coins × ${(c.strategies || []).length} strategies every 4h candle · ${r.config.max_positions} slots · next ${st.next_scan || 'soon'}`
+    : 'Every 4h candle the AI scans the liquid crypto market with the tested strategies and trades fresh buy/sell signals on coins where that strategy has an edge — up to ' + r.config.max_positions + ' positions, under the risk manager.';
   const lastLog = (st.log || []).slice(-1)[0];
-  _apType(st.scanning ? 'scanning market · scoring momentum · backtesting strategies per coin…' : (lastLog ? lastLog.msg : 'idle — press SCAN NOW for a preview'));
+  _apType(st.scanning ? 'scanning every liquid coin · reading the closed candle · checking each signal\'s edge…' : (lastLog ? lastLog.msg : 'idle — press SCAN NOW for a preview'));
 
   // stats
   document.getElementById('ap-cap-k').textContent = `Capital (${mode})`;
@@ -3567,7 +3572,12 @@ function apRender(d) {
         <div class="why">${_apEsc(p.why)}</div>
       </div>
       <div style="text-align:right;font-size:11px;color:var(--text2)">rank<br><b style="font-size:16px;color:var(--text)">${p.rank}</b></div>
-    </div>`).join('') : `<div class="ap-empty">${st.last_scan ? 'Last scan found no coin where an approved strategy is currently profitable — the AI is staying out.' : 'No scan yet — press SCAN NOW to preview.'}</div>`;
+    </div>`).join('') : `<div class="ap-empty">${st.last_scan ? 'No open AI trades right now — waiting for the next fresh signal with an edge.' : 'No scan yet — press SCAN NOW to preview.'}</div>`;
+  const sigs = st.signals || [];
+  if (sigs.length) document.getElementById('ap-picks').innerHTML +=
+    `<div style="font-size:9.5px;letter-spacing:1.5px;color:var(--text3);margin:12px 0 6px">SIGNALS ON THE LAST CANDLE (${sigs.length})</div>` +
+    sigs.slice(0, 12).map(x => `<div class="dc-watch"><span><b style="color:${x.side === 'BUY' ? 'var(--green)' : 'var(--red)'}">${x.side === 'BUY' ? '▲ BUY' : '▼ SELL'}</b> ${_apEsc(_apCoin(x.symbol))} · ${_apEsc(x.strategy.replace(/_/g, ' '))}</span>
+      <span style="color:${x.edge && x.edge.ok ? 'var(--green)' : 'var(--text3)'}">${x.edge && x.edge.ok ? 'edge ' + (x.edge.avg_r >= 0 ? '+' : '') + x.edge.avg_r.toFixed(2) + 'R' : 'no edge — skipped'}</span></div>`).join('');
 
   // leaderboard
   const board = st.leaderboard || [];
@@ -9261,6 +9271,11 @@ function dcNarrate() {
   const lines = [];
   const lead = (st.leaderboard || [])[0];
   if (lead) lines.push(['ai', `Momentum scan: ${(st.leaderboard || []).length} liquid coins ranked — leader ${_apCoin(lead.symbol)} ${Math.round(lead.score)} (${lead.direction}, 7d ${lead.roc_7d > 0 ? '+' : ''}${lead.roc_7d}%, ADX ${lead.adx}).`]);
+  if (st.signals) {
+    const sg = st.signals, ok = sg.filter(x => x.edge && x.edge.ok);
+    lines.push(['ai', `Signal hunt on the last candle: ${sg.length} fresh buy/sell signal${sg.length === 1 ? '' : 's'} across ${st.coins_scanned || '?'} coins, ${ok.length} with a proven edge` +
+      (ok.length ? ` — best: ${ok[0].side} ${_apCoin(ok[0].symbol)} (${ok[0].strategy.replace(/_/g, ' ')}, ${ok[0].edge.avg_r >= 0 ? '+' : ''}${ok[0].edge.avg_r.toFixed(2)}R).` : '.')]);
+  }
   bots.forEach(b => {
     const left = _dcFmtLeft(_dcLeft(b.tf));
     lines.push(b.position
@@ -9501,7 +9516,7 @@ function labStrategyChanged(prefix) {
   const b = _lab && _lab.builtin.find(x => x.id === st);
   let sl = 2, rr = 2, text = '';
   if (b && b.tested_tf) {
-    const prof = {trend_breakout: [2, 3], bb_squeeze: [1.5, 1.5], super_breakout: [3, 3], fibonacci_retracement: [1.5, 3]}[st] || [2, 2];
+    const prof = {trend_breakout: [2, 3], bb_squeeze: [1.5, 1.5], super_breakout: [3, 3], fibonacci_retracement: [1.5, 3], smc_sweep: [1.5, 2]}[st] || [2, 2];
     [sl, rr] = prof;
     document.getElementById('lab-t-tf').value = b.tested_tf;
     text = `✅ ${_apEsc(b.evidence || '')}`;
@@ -11397,6 +11412,7 @@ const _TESTED = {
   bb_squeeze:            { tf: '4h', sl_atr: 1.5, reward_r: 1.5, note: 'Tested: test +0.29R per trade, 6/10 coins profitable out of sample (190 trades).' },
   super_breakout:        { tf: '4h', sl_atr: 3.0, reward_r: 3.0, note: 'Tested: test +0.25R per trade (147 trades — fewer signals).' },
   fibonacci_retracement: { tf: '4h', sl_atr: 1.5, reward_r: 3.0, note: 'Tested: test +0.11R per trade, 5/10 coins profitable out of sample (594 trades).' },
+  smc_sweep:             { tf: '4h', sl_atr: 1.5, reward_r: 2.0, note: 'Tested: test +0.35R per trade, profitable on 8/10 coins in both halves (187 trades); positive on the test half at every stop/target setting tried.' },
 };
 const _BT_LOST = {
   vwap_bands: '4h: train −0.03R, test +0.12R', ifvg: '4h: train −0.01R, test +0.08R',
@@ -11408,6 +11424,8 @@ const _BT_LOST = {
   liquidity_sweep: '4h: train −0.10R, test −0.10R', silver_bullet: '4h: train −0.09R, test −0.13R',
   volume_profile: '4h: train −0.06R, test −0.16R', fvg: '4h: train −0.11R, test −0.11R',
   bb_rsi_strict: '4h: train +0.08R, test −0.33R',
+  pa_engulf: '4h: train −0.01R, test +0.34R', rsi_trend: '4h: train −0.01R, test +0.32R',
+  ema_trend: '4h: train −0.07R, test +0.31R', macd_trend: '4h: train −0.14R, test −0.05R',
 };
 const _strategyHints = {
   trend_breakout: 'Donchian(55) breakout taken only in the direction of the EMA(150) trend.',
@@ -11431,6 +11449,11 @@ const _strategyHints = {
   volume_profile: 'Trades between low- and high-volume price nodes.',
   fvg: 'Three-candle fair value gap, traded on the revisit.',
   bb_rsi_strict: 'Lower band + RSI ≤ 30 → buy; upper band + RSI ≥ 70 → sell.',
+  ema_trend: 'EMA 20 crosses EMA 50, only in the direction of the EMA 200 trend.',
+  rsi_trend: 'Pullback in a trend: above EMA 200 and RSI(14) turns back up through 40 → buy; mirror below EMA 200 through 60 → sell.',
+  smc_sweep: 'SMC liquidity sweep: the candle takes the 20-bar low (or high) and closes back inside, only with the EMA 200 trend.',
+  pa_engulf: 'Price action: engulfing candle after a pullback to EMA 50, only when EMA 50 and price agree with EMA 200.',
+  macd_trend: 'MACD histogram crosses zero in the direction of the EMA 200 trend (flat crosses ignored).',
 };
 
 function applyBotPreset() {
