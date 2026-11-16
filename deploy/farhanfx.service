@@ -1,0 +1,24 @@
+[Unit]
+Description=FarhanFX Algo (FastAPI + trading bots)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=farhanfx
+Group=farhanfx
+WorkingDirectory=/opt/farhanfx
+Environment=FARHANFX_PRODUCTION=1
+Environment=PYTHONUNBUFFERED=1
+# Only Caddy (HTTPS) talks to the app; port 8000 is never exposed
+ExecStart=/opt/farhanfx/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=always
+RestartSec=5
+# give open-position bookkeeping time to save on stop
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

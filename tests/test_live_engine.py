@@ -885,6 +885,54 @@ def test_payment_approval_extends_expiry():
     after = _dt.fromisoformat(server._user_record("cli")["expiry"])
     check("billing: approval adds days on top of the days left", 29.9 <= (after - before).total_seconds() / 86400 <= 30.1, (before, after))
 
+
+# ── Admin control panel ───────────────────────────────────────────────────────
+def test_admin_panel():
+    from datetime import datetime as _dt
+    mkt, ex = fresh()
+    _mk_users()
+    adm = {"username": "admin", "role": "admin"}
+    r = server.admin_create_client(server.AdminCreateClientReq(username="newbie", password="short", days=10), adm)
+    check("admin: weak password refused on create", getattr(r, "status_code", 200) == 400)
+    r = server.admin_create_client(server.AdminCreateClientReq(username="newbie", password="goodpass123", display_name="New B",
+                                                               contact="+880", days=10, permissions={"live_trading": False}), adm)
+    check("admin: client created", r["success"] and server._perms("newbie")["live_trading"] is False)
+    dup = server.admin_create_client(server.AdminCreateClientReq(username="NEWBIE", password="goodpass123"), adm)
+    check("admin: duplicate username refused", getattr(dup, "status_code", 200) == 400)
+    before = _dt.fromisoformat(server._user_record("newbie")["expiry"])
+    server.admin_client_access("newbie", server.AdminAccessReq(days=30, mode="extend"), adm)
+    after = _dt.fromisoformat(server._user_record("newbie")["expiry"])
+    check("admin: +30 days added on top", 29.9 <= (after - before).total_seconds() / 86400 <= 30.1)
+    server.admin_client_access("newbie", server.AdminAccessReq(days=0, mode="set"), adm)
+    check("admin: end access now", server._is_client_expired(server._user_record("newbie")))
+    server.admin_client_access("newbie", server.AdminAccessReq(days=5, mode="set"), adm)
+    r = server.admin_client_permissions("newbie", {"live_trading": True, "max_bots": 99, "evil": True}, adm)
+    check("admin: permissions saved, max bots capped, unknown keys ignored",
+          r["permissions"]["live_trading"] is True and r["permissions"]["max_bots"] == 50 and "evil" not in r["permissions"])
+    tok = server._make_session("newbie", "New B", "client")
+    r = server.admin_client_suspend("newbie", {"on": True}, adm)
+    check("admin: suspend signs out and halts trading", r["signed_out"] == 1 and server._rm_for("newbie").state["manual_halt"])
+    login = server.auth_login(server.AuthLoginRequest(username="newbie", password="goodpass123"))
+    check("admin: suspended client cannot log in", getattr(login, "status_code", 200) == 403)
+    server.admin_client_suspend("newbie", {"on": False}, adm)
+    r = server.admin_client_reset_password("newbie", adm)
+    login = server.auth_login(server.AuthLoginRequest(username="newbie", password=r["temporary_password"]))
+    check("admin: reset password works and old one stops", isinstance(login, dict) and login.get("token")
+          and getattr(server.auth_login(server.AuthLoginRequest(username="newbie", password="goodpass123")), "status_code", 200) == 401)
+    b = add_bot("nb1", mode="demo", sym="NB/USDT:USDT"); b["username"] = "newbie"
+    d = server.admin_client_delete("newbie", adm)
+    check("admin: delete refused while a bot runs", getattr(d, "status_code", 200) == 400)
+    server.admin_client_stop_bots("newbie", adm)
+    d = server.admin_client_delete("newbie", adm)
+    check("admin: client deleted after bots stopped", d.get("success") and server._user_record("newbie") is None and "nb1" not in server._crypto_bots)
+    o = server.admin_overview(adm)
+    check("admin: overview counts clients", o["clients"]["total"] == 1 and "pending" in o["payments"])
+    for route in server.app.routes:
+        path = getattr(route, "path", "")
+        if path.startswith("/api/admin/"):
+            assert server._require_admin in [x.call for x in route.dependant.dependencies], path
+    check("admin: every /api/admin endpoint is owner-only", True)
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

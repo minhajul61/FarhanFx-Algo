@@ -653,6 +653,28 @@ tr:hover td{background:rgba(139,92,246,0.07)}
 @media(max-width:1200px){.dc-scene{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:620px){.dc-radar-wrap{grid-template-columns:minmax(0,1fr)}.dc-radar{max-width:260px;margin:0 auto}}
 @media(prefers-reduced-motion:reduce){.dc-tape-inner,.dc-sweep,.dc-blip,.dc-blip-pick,.dc-agent::after,.dc-eq i{animation:none!important}}
+.adm-count{font-size:10px;font-weight:800;padding:1px 7px;border-radius:999px;background:rgba(34,211,238,.15);color:var(--cyan);margin-left:4px}
+.adm-count:empty{display:none}.adm-count.warn{background:rgba(245,158,11,.18);color:var(--amber)}
+.adm-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.adm-kpis .ap-stat .v{font-size:22px}
+.adm-table td{vertical-align:middle}
+.adm-user b{display:block;font-size:12.5px}.adm-user span{font-size:10.5px;color:var(--text3)}
+.adm-badge{font-size:9.5px;font-weight:800;letter-spacing:1px;padding:3px 8px;border-radius:6px;white-space:nowrap}
+.adm-badge.active{background:rgba(16,185,129,.15);color:var(--green)}.adm-badge.trial{background:rgba(34,211,238,.13);color:var(--cyan)}
+.adm-badge.expired{background:rgba(239,68,68,.13);color:var(--red)}.adm-badge.suspended{background:rgba(148,163,184,.18);color:var(--text2)}
+.adm-days{font-size:11px}.adm-days small{display:block;color:var(--text3);font-size:10px}
+.adm-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px}
+.adm-box{max-width:640px!important;border-color:rgba(139,92,246,.45)!important;max-height:90vh;overflow:auto}
+.adm-sec{margin:12px 0;padding:12px;border-radius:12px;background:var(--bg2)}
+.adm-sec h4{font-size:10px;letter-spacing:1.5px;color:var(--text3);margin:0 0 10px;font-weight:800}
+.adm-btns{display:flex;gap:6px;flex-wrap:wrap}
+.adm-btns button{font-size:10.5px;padding:7px 11px}
+.adm-perm{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px}
+.adm-perm input[type=number]{width:70px;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:5px 8px;color:var(--text);font-family:var(--font)}
+.adm-pay{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;background:var(--bg2)}
+.adm-pay img{width:96px;height:96px;object-fit:cover;border-radius:9px;background:var(--bg);cursor:zoom-in}
+.adm-secret{font-family:ui-monospace,Menlo,monospace;font-size:15px;padding:10px 12px;border-radius:9px;background:#05070d;border:1px dashed var(--cyan);color:var(--cyan);user-select:all;word-break:break-all}
+@media(max-width:900px){.adm-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.adm-pay{grid-template-columns:72px minmax(0,1fr)}.adm-pay img{width:72px;height:72px}.adm-pay>div:last-child{grid-column:1/-1}}
 .tp-card{background:var(--card);border:1px solid var(--border2);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
 .tp-header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border2)}
 .tp-header-binance{background:linear-gradient(135deg,rgba(240,185,11,0.10),rgba(240,185,11,0.03))}
@@ -926,7 +948,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
       <div class="nav-item" id="nav-indian" onclick="showPage('indian',this)"><i class="ti ti-building-bank"></i> INDIAN MARKET</div>
       <div class="nav-item" id="nav-journal" onclick="showPage('journal',this)"><i class="ti ti-notebook"></i> JOURNAL</div>
       <div class="nav-item" id="nav-profile" onclick="showPage('profile',this)"><i class="ti ti-user-circle"></i> PROFILE</div>
-      <div class="nav-item" id="nav-settings" onclick="showPage('settings',this)"><i class="ti ti-settings"></i> SETTINGS</div>
+      <div class="nav-item" id="nav-admin" onclick="showPage('admin',this)"><i class="ti ti-shield-cog"></i> ADMIN</div>
     </div>
     <div class="content">
 
@@ -1457,6 +1479,92 @@ tr:hover td{background:rgba(139,92,246,0.07)}
               <button class="ap-btn" onclick="showPage('reports', document.getElementById('nav-reports'))"><i class="ti ti-report-analytics"></i> REPORTS</button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- ADMIN CONTROL PANEL -->
+      <div class="page" id="page-admin">
+        <div class="rp-head">
+          <div>
+            <div class="ap-title">ADMIN CONTROL PANEL</div>
+            <div class="ap-sub">Clients, access, payments and the server — owner only.</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="ap-btn primary" onclick="admOpenCreate()"><i class="ti ti-user-plus"></i> ADD CLIENT</button>
+            <button class="dc-icon" title="Refresh" onclick="admLoad()" style="width:38px;height:38px"><i class="ti ti-refresh"></i></button>
+          </div>
+        </div>
+
+        <div class="lab-tabs">
+          <button class="lab-tab adm-tab active" data-tab="overview" onclick="admTab('overview')"><i class="ti ti-layout-dashboard"></i> Overview</button>
+          <button class="lab-tab adm-tab" data-tab="clients" onclick="admTab('clients')"><i class="ti ti-users"></i> Clients <span class="adm-count" id="adm-n-clients"></span></button>
+          <button class="lab-tab adm-tab" data-tab="payments" onclick="admTab('payments')"><i class="ti ti-receipt"></i> Payments <span class="adm-count warn" id="adm-n-pending"></span></button>
+          <button class="lab-tab adm-tab" data-tab="system" onclick="admTab('system')"><i class="ti ti-server-2"></i> System</button>
+        </div>
+
+        <!-- OVERVIEW -->
+        <div class="adm-pane" id="adm-pane-overview">
+          <div class="adm-kpis" id="adm-kpis"></div>
+          <div class="ap-cols">
+            <div class="ap-card"><h3><i class="ti ti-hourglass-low"></i> Expiring within 7 days</h3><div id="adm-expiring"></div></div>
+            <div class="ap-card"><h3><i class="ti ti-user-check"></i> Newest clients</h3><div id="adm-recent"></div></div>
+          </div>
+        </div>
+
+        <!-- CLIENTS -->
+        <div class="adm-pane" id="adm-pane-clients" style="display:none">
+          <div class="ap-card">
+            <div class="rp-histbar">
+              <input id="adm-search" placeholder="Search username, name or contact…" oninput="admRenderClients()"/>
+              <select id="adm-filter" onchange="admRenderClients()">
+                <option value="all">All clients</option><option value="active">Active</option><option value="trial">Free trial</option>
+                <option value="expiring">Expiring ≤ 7 days</option><option value="expired">Expired</option><option value="suspended">Suspended</option>
+              </select>
+            </div>
+            <div class="lab-wrap"><table class="lab-table adm-table"><thead><tr>
+              <th>CLIENT</th><th>STATUS</th><th>ACCESS</th><th>BOTS</th><th>BINANCE</th><th>LIVE</th><th>TRADES</th><th>P&amp;L</th><th>LAST LOGIN</th><th></th>
+            </tr></thead><tbody id="adm-clients"></tbody></table></div>
+          </div>
+        </div>
+
+        <!-- PAYMENTS -->
+        <div class="adm-pane" id="adm-pane-payments" style="display:none">
+          <div class="ap-card">
+            <div class="rp-histbar">
+              <select id="adm-pay-filter" onchange="admRenderPayments()"><option value="pending">Pending</option><option value="all">All</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>
+            </div>
+            <div id="adm-payments"></div>
+          </div>
+        </div>
+
+        <!-- SYSTEM -->
+        <div class="adm-pane" id="adm-pane-system" style="display:none">
+          <div class="ap-cols">
+            <div class="ap-card"><h3><i class="ti ti-server-2"></i> Server</h3><div class="pf-stats" id="adm-server"></div>
+              <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+                <button class="ap-btn danger" id="restart-server-btn" onclick="restartServer()"><i class="ti ti-refresh-alert"></i> RESTART SERVER</button>
+              </div>
+              <div class="dc-note">Open positions keep their stop loss and take profit on Binance while the server restarts. Bots resume on start.</div>
+            </div>
+            <div class="ap-card"><h3><i class="ti ti-info-circle"></i> Where things live</h3>
+              <div class="dc-brain-txt">
+                <b>Your own account</b> — password, Binance keys, risk rules: <a href="#" onclick="showPage('profile', document.getElementById('nav-profile'));return false" style="color:var(--cyan)">Profile</a>.<br>
+                <b>Strategies</b> always run with their tested settings; new ideas are built and tested in the <a href="#" onclick="showPage('lab', document.getElementById('nav-lab'));return false" style="color:var(--cyan)">Strategy Lab</a>.<br>
+                <b>Client defaults</b> for new sign-ups: 7-day free trial, demo + live trading, Strategy Lab, Reports, 5 running bots. Change any client's access on the Clients tab.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- admin: manage client modal -->
+      <div class="ap-modal" id="adm-modal">
+        <div class="box adm-box">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div><div class="ap-title" style="font-size:16px" id="adm-m-title">—</div><div class="ap-sub" id="adm-m-sub"></div></div>
+            <button class="dc-icon" onclick="admClose()"><i class="ti ti-x"></i></button>
+          </div>
+          <div id="adm-m-body"></div>
         </div>
       </div>
 
@@ -3125,52 +3233,6 @@ tr:hover td{background:rgba(139,92,246,0.07)}
 
       </div><!-- /page-brain -->
 
-      <!-- SETTINGS PAGE -->
-      <div class="page" id="page-settings">
-        <div class="page-title">Settings</div>
-        <div class="panel" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-          <div style="flex:1;min-width:220px;font-size:12px;color:var(--text2);line-height:1.6">
-            <b style="color:var(--text)">System.</b> Your account, password, subscription, exchange keys and risk rules are on the
-            <a href="#" onclick="showPage('profile', document.getElementById('nav-profile'));return false" style="color:var(--cyan)">Profile</a> page.
-            Strategies always run with their tested settings — to try other settings, build a strategy in the
-            <a href="#" onclick="showPage('lab', document.getElementById('nav-lab'));return false" style="color:var(--cyan)">Strategy Lab</a>.
-          </div>
-          <button class="sbtn" id="restart-server-btn" style="padding:10px 20px;font-size:12px;background:rgba(239,68,68,0.15);border-color:var(--red);color:var(--red)" onclick="restartServer()">⚡ RESTART SERVER</button>
-        </div>
-        <div class="dc-note" style="margin:16px 0 4px">ADMIN — clients and payment requests (these move to the Admin Control Panel)</div>
-        <div class="panel" id="admin-clients-panel" style="margin-top:16px;display:none">
-          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
-            <span>Crypto Bot Clients</span>
-            <button class="sbtn" style="padding:5px 12px;font-size:10px" onclick="loadAdminClients()">↻ REFRESH</button>
-          </div>
-          <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
-            <thead>
-              <tr style="color:var(--text3);font-size:9px;letter-spacing:1px;border-bottom:1px solid var(--border)">
-                <th style="text-align:left;padding:6px">USERNAME</th>
-                <th style="text-align:left;padding:6px">NAME</th>
-                <th style="text-align:left;padding:6px">CONTACT</th>
-                <th style="text-align:left;padding:6px">EXPIRES</th>
-                <th style="text-align:center;padding:6px">STATUS</th>
-                <th style="text-align:right;padding:6px">SET DAYS FROM NOW</th>
-              </tr>
-            </thead>
-            <tbody id="admin-clients-body">
-              <tr><td colspan="6" style="text-align:center;color:var(--text3);padding:14px">Loading…</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="panel" id="admin-payments-panel" style="margin-top:16px;display:none">
-          <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
-            <span>Payment Requests <span id="admin-payments-pending-count" style="color:var(--amber)"></span></span>
-            <button class="sbtn" style="padding:5px 12px;font-size:10px" onclick="loadAdminPaymentRequests()">↻ REFRESH</button>
-          </div>
-          <div id="admin-payments-body" style="margin-top:8px;display:flex;flex-direction:column;gap:10px">
-            <div style="text-align:center;color:var(--text3);padding:14px">Loading…</div>
-          </div>
-        </div>
-      </div>
-
     </div>
   </div>
 </div>
@@ -3578,7 +3640,7 @@ function showPage(id, el) {
   if (id === 'lab')         { labInit(); }
   if (id === 'reports')     { rpInit(); }
   if (id === 'profile')     { pfLoad(); }
-  if (id === 'settings')    { if (_getAuthRole() === 'admin') { document.getElementById('admin-clients-panel').style.display = 'block'; document.getElementById('admin-payments-panel').style.display = 'block'; loadAdminClients(); loadAdminPaymentRequests(); } }
+  if (id === 'admin')       { if (_getAuthRole() === 'admin') admLoad(); }
   if (id === 'telegram')   { telegramInit(); } else { clearInterval(_tgRefTimer); }
   if (id === 'indian')     { indianInit(); }
   if (id === 'brain')      { jarvisInit(); } else { _jarvisStopAuto(); }
@@ -10101,7 +10163,209 @@ async function applyMenuPermissions() {
   show('nav-lab', p.strategy_lab);
   show('nav-reports', p.reports);
   show('nav-profile', true);
-  if (client) ['nav-dashboard', 'nav-autopilot', 'nav-telegram', 'nav-brain', 'nav-indian', 'nav-journal', 'nav-settings'].forEach(id => show(id, false));
+  if (client) ['nav-dashboard', 'nav-autopilot', 'nav-telegram', 'nav-brain', 'nav-indian', 'nav-journal', 'nav-admin'].forEach(id => show(id, false));
+}
+
+// ═══ ADMIN CONTROL PANEL ════════════════════════════════════════════════════
+let _adm = {clients: [], labels: {}, payments: [], overview: null};
+const _admStatus = {active: 'ACTIVE', trial: 'FREE TRIAL', expired: 'EXPIRED', suspended: 'SUSPENDED'};
+
+function admTab(t) {
+  document.querySelectorAll('.adm-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  document.querySelectorAll('.adm-pane').forEach(p => p.style.display = p.id === 'adm-pane-' + t ? '' : 'none');
+}
+
+async function admLoad() {
+  const [o, c, p] = await Promise.all([apiFetch('/api/admin/overview'), apiFetch('/api/admin/clients_full'), apiFetch('/api/admin/payment_requests')]);
+  if (o && !o.error) { _adm.overview = o; admRenderOverview(); }
+  if (c && !c.error) { _adm.clients = c.clients; _adm.labels = c.permission_labels; admRenderClients(); }
+  if (Array.isArray(p)) { _adm.payments = p; admRenderPayments(); }
+  const n = document.getElementById('adm-n-clients'); if (n) n.textContent = _adm.clients.length || '';
+  const pend = _adm.payments.filter(x => x.status === 'pending').length;
+  const np = document.getElementById('adm-n-pending'); if (np) np.textContent = pend || '';
+}
+
+function _admUserCell(c) {
+  return `<div class="adm-user"><b>${_apEsc(c.display_name)}</b><span>@${_apEsc(c.username)}${c.contact ? ' · ' + _apEsc(c.contact) : ''}</span></div>`;
+}
+function _admDays(c) {
+  if (!c.expiry) return '—';
+  const d = c.days_left ?? 0;
+  return `<div class="adm-days" style="color:${c.status === 'expired' ? 'var(--red)' : d <= 7 ? 'var(--amber)' : 'var(--text)'}">${c.status === 'expired' ? 'expired' : d + ' day' + (d === 1 ? '' : 's')}<small>until ${_apEsc(c.expiry.slice(0, 10))}</small></div>`;
+}
+
+function admRenderOverview() {
+  const o = _adm.overview, c = o.clients, p = o.payments, t = o.trading;
+  const tile = (k, v, s, col) => `<div class="ap-stat"><div class="k">${k}</div><div class="v" style="color:${col || 'var(--text)'}">${v}</div><div class="s">${s}</div></div>`;
+  document.getElementById('adm-kpis').innerHTML = [
+    tile('CLIENTS', c.total, `${c.active} active · ${c.trial} trial · ${c.expired} expired${c.suspended ? ' · ' + c.suspended + ' suspended' : ''}`),
+    tile('PENDING PAYMENTS', p.pending, `${p.approved_30d} approved in 30d · ${p.days_sold_30d} days sold`, p.pending ? 'var(--amber)' : null),
+    tile('EXPIRING ≤ 7 DAYS', c.expiring_7d, `${c.new_30d} new sign-ups in 30d`, c.expiring_7d ? 'var(--amber)' : null),
+    tile('BINANCE CONNECTED', c.binance_connected, 'client accounts with keys'),
+    tile('BOTS RUNNING', t.bots_running, `${t.live_bots} live · ${t.open_positions} open positions`),
+    tile('TRADES · 30D', t.trades_30d, `${t.accounts_trading} account(s) traded`),
+    tile('P&amp;L · 30D (ALL)', _rpMoney(t.pnl_30d), 'every account, net of fees', _rpCol(t.pnl_30d)),
+    tile('AUTOPILOT', o.server.autopilot ? String(o.server.autopilot_mode).toUpperCase() : 'OFF', `server up ${o.server.uptime_h}h`, o.server.autopilot ? 'var(--green)' : 'var(--text3)'),
+  ].join('');
+  const row = (c, right) => `<div class="adm-row">${_admUserCell(c)}<div style="display:flex;align-items:center;gap:8px">${right}</div></div>`;
+  document.getElementById('adm-expiring').innerHTML = o.expiring.length ? o.expiring.map(c => row(c,
+    `${_admDays(c)}<button class="sbtn" style="font-size:10px;padding:5px 9px" onclick="admQuickExtend('${_apEsc(c.username)}',30)">+30 DAYS</button>`)).join('')
+    : '<div class="ap-empty">Nobody expires in the next 7 days.</div>';
+  document.getElementById('adm-recent').innerHTML = o.recent_clients.length ? o.recent_clients.map(c => row(c,
+    `<span class="adm-badge ${c.status}">${_admStatus[c.status] || c.status}</span><button class="sbtn" style="font-size:10px;padding:5px 9px" onclick="admManage('${_apEsc(c.username)}')">MANAGE</button>`)).join('')
+    : '<div class="ap-empty">No clients yet — they sign up on the login page, or use ADD CLIENT.</div>';
+  const sv = o.server;
+  const el = document.getElementById('adm-server');
+  if (el) el.innerHTML = `<div><span>UPTIME</span><b>${sv.uptime_h}h</b></div><div><span>MODE</span><b>${sv.production ? 'PRODUCTION' : 'LOCAL'}</b></div>
+    <div><span>SIGNED-IN SESSIONS</span><b>${sv.sessions}</b></div><div><span>TRADES IN LEDGER</span><b>${sv.ledger_trades}</b></div>`;
+}
+
+function admRenderClients() {
+  const q = (document.getElementById('adm-search').value || '').toLowerCase(), f = document.getElementById('adm-filter').value;
+  const rows = _adm.clients.filter(c => (!q || [c.username, c.display_name, c.contact].join(' ').toLowerCase().includes(q))
+    && (f === 'all' || (f === 'expiring' ? (['active', 'trial'].includes(c.status) && (c.days_left ?? 0) <= 7) : c.status === f)));
+  document.getElementById('adm-clients').innerHTML = rows.length ? rows.map(c => `<tr>
+      <td>${_admUserCell(c)}</td><td><span class="adm-badge ${c.status}">${_admStatus[c.status] || c.status}</span>${c.kill_switch && c.status !== 'suspended' ? ' <span class="adm-badge expired">KILL</span>' : ''}</td>
+      <td>${_admDays(c)}</td><td>${c.bots_running}/${c.permissions.max_bots}${c.open_positions ? ` <small style="color:var(--cyan)">· ${c.open_positions} open</small>` : ''}</td>
+      <td>${c.binance ? '<span style="color:var(--green)">● yes</span>' : '<span style="color:var(--text3)">—</span>'}</td>
+      <td>${c.permissions.live_trading ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--red)">✕</span>'}</td>
+      <td>${c.trades}</td><td style="color:${_rpCol(c.pnl)}">${_rpMoney(c.pnl)}</td>
+      <td>${c.last_login ? _apEsc(c.last_login.replace('T', ' ')) : '—'}</td>
+      <td><button class="sbtn" style="font-size:10px;padding:5px 10px" onclick="admManage('${_apEsc(c.username)}')">MANAGE</button></td></tr>`).join('')
+    : '<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:22px">No clients match.</td></tr>';
+}
+
+function admRenderPayments() {
+  const f = document.getElementById('adm-pay-filter').value;
+  const rows = _adm.payments.filter(p => f === 'all' || p.status === f);
+  const el = document.getElementById('adm-payments');
+  _paymentImageBlobUrls.forEach(u => URL.revokeObjectURL(u)); _paymentImageBlobUrls = [];
+  el.innerHTML = rows.length ? rows.map(p => {
+    const c = _adm.clients.find(x => x.username === p.username);
+    const act = p.status === 'pending'
+      ? `<div class="adm-btns"><button class="ap-btn primary" onclick="admPay('${p.id}','approve')"><i class="ti ti-check"></i> APPROVE +${p.days_requested}d</button><button class="ap-btn danger" onclick="admPay('${p.id}','reject')"><i class="ti ti-x"></i> REJECT</button></div>`
+      : `<span class="adm-badge ${p.status === 'approved' ? 'active' : 'expired'}">${p.status.toUpperCase()}</span>`;
+    return `<div class="adm-pay"><img id="adm-img-${p.id}" alt="payment proof" onclick="if(this.src)window.open(this.src,'_blank')"/>
+      <div><b>${_apEsc(c ? c.display_name : p.username)}</b> <span style="color:var(--text3)">@${_apEsc(p.username)}</span> asks for <b>${p.days_requested} days</b><br>
+      <span style="font-size:11px;color:var(--text3)">${_apEsc(new Date(p.submitted_at).toLocaleString())}${c ? ` · now ${c.status === 'expired' ? 'expired' : (c.days_left ?? 0) + ' days left'}` : ''}</span>
+      ${p.note ? `<div style="font-size:11.5px;margin-top:4px">Note: ${_apEsc(p.note)}</div>` : ''}</div>${act}</div>`;
+  }).join('') : '<div class="ap-empty">No payment requests here.</div>';
+  rows.forEach(async p => { const u = await _fetchAuthedImageUrl(`/api/admin/payment_requests/${p.id}/image`); const img = document.getElementById('adm-img-' + p.id); if (img && u) img.src = u; });
+}
+
+async function admPay(id, action) {
+  if (action === 'reject' && !confirm('Reject this payment request?')) return;
+  const r = await apiFetch(`/api/admin/payment_requests/${id}/${action}`, {method: 'POST'});
+  if (r.error) { toast(r.error, false); return; }
+  toast(action === 'approve' ? 'Approved — days added on top of what was left' : 'Rejected', true);
+  admLoad();
+}
+
+async function admQuickExtend(u, days) {
+  const r = await apiFetch(`/api/admin/clients/${encodeURIComponent(u)}/access`, {method: 'POST', body: JSON.stringify({days, mode: 'extend'})});
+  if (r.error) { toast(r.error, false); return; }
+  toast(`@${u}: +${days} days → ${r.expiry.slice(0, 10)}`, true);
+  await admLoad();
+  if (document.getElementById('adm-modal').style.display === 'flex') admManage(u);
+}
+
+function admClose() { document.getElementById('adm-modal').style.display = 'none'; }
+
+function admManage(u) {
+  const c = _adm.clients.find(x => x.username === u);
+  if (!c) return;
+  document.getElementById('adm-m-title').textContent = c.display_name;
+  document.getElementById('adm-m-sub').innerHTML = `@${_apEsc(c.username)}${c.contact ? ' · ' + _apEsc(c.contact) : ''} · joined ${_apEsc(c.created || '—')} · <span class="adm-badge ${c.status}">${_admStatus[c.status] || c.status}</span>`;
+  const p = c.permissions, lab = _adm.labels;
+  const perm = k => typeof p[k] === 'boolean'
+    ? `<div class="adm-perm"><span>${_apEsc(lab[k] || k)}</span><div class="toggle${p[k] ? ' on' : ''}" data-perm="${k}" onclick="this.classList.toggle('on')"></div></div>`
+    : `<div class="adm-perm"><span>${_apEsc(lab[k] || k)}</span><input type="number" min="0" max="50" data-perm="${k}" value="${p[k]}"/></div>`;
+  document.getElementById('adm-m-body').innerHTML = `
+    <div class="adm-sec"><h4>ACCESS · ${c.expiry ? (c.status === 'expired' ? 'EXPIRED ' : (c.days_left ?? 0) + ' DAYS LEFT · ') + 'UNTIL ' + _apEsc(c.expiry.slice(0, 10)) : 'NO EXPIRY SET'}</h4>
+      <div class="adm-btns">${[7, 30, 90, 365].map(d => `<button class="sbtn" onclick="admQuickExtend('${_apEsc(u)}',${d})">+${d} DAYS</button>`).join('')}
+        <button class="sbtn" onclick="admSetDays('${_apEsc(u)}')">SET EXACT…</button>
+        <button class="sbtn" style="color:var(--red)" onclick="admRevoke('${_apEsc(u)}')">END ACCESS NOW</button></div></div>
+    <div class="adm-sec"><h4>PERMISSIONS</h4>${Object.keys(lab).map(perm).join('')}
+      <button class="ap-btn primary" style="margin-top:10px" onclick="admSavePerms('${_apEsc(u)}')"><i class="ti ti-device-floppy"></i> SAVE PERMISSIONS</button></div>
+    <div class="adm-sec"><h4>ACTIVITY</h4><div class="pf-stats">
+      <div><span>BOTS</span><b>${c.bots_running}</b> <small style="color:var(--text3)">running / ${c.bots_total}</small></div><div><span>OPEN POSITIONS</span><b>${c.open_positions}</b></div>
+      <div><span>CLOSED TRADES</span><b>${c.trades}</b></div><div><span>NET P&amp;L</span><b style="color:${_rpCol(c.pnl)}">${_rpMoney(c.pnl)}</b></div></div>
+      <div class="adm-btns" style="margin-top:10px">
+        <button class="sbtn" onclick="showPage('reports', document.getElementById('nav-reports'));setTimeout(()=>{const a=document.getElementById('rp-account');if([...a.options].some(o=>o.value==='${_apEsc(u)}')){a.value='${_apEsc(u)}';rpLoad();}},800);admClose()">VIEW REPORT</button>
+        <button class="sbtn" onclick="admAction('${_apEsc(u)}','stop_bots','Stop all of this client\\'s bots? Open positions keep their stop & target.')">STOP ALL BOTS</button></div></div>
+    <div class="adm-sec"><h4>SECURITY</h4><div class="adm-btns">
+      <button class="sbtn" onclick="admResetPw('${_apEsc(u)}')">RESET PASSWORD</button>
+      <button class="sbtn" onclick="admAction('${_apEsc(u)}','logout','Sign this client out of every device?')">SIGN OUT EVERYWHERE (${c.sessions})</button>
+      <button class="sbtn" style="color:${c.disabled ? 'var(--green)' : 'var(--amber)'}" onclick="admSuspend('${_apEsc(u)}',${!c.disabled})">${c.disabled ? 'REACTIVATE ACCOUNT' : 'SUSPEND ACCOUNT'}</button>
+      <button class="sbtn" style="color:var(--red)" onclick="admDelete('${_apEsc(u)}')">DELETE ACCOUNT</button></div>
+      <div id="adm-m-secret" style="margin-top:10px"></div></div>`;
+  document.getElementById('adm-modal').style.display = 'flex';
+}
+
+async function admSetDays(u) {
+  const v = prompt('Access from TODAY for how many days? (0 = ends now)', '30');
+  if (v === null) return;
+  const r = await apiFetch(`/api/admin/clients/${encodeURIComponent(u)}/access`, {method: 'POST', body: JSON.stringify({days: parseInt(v) || 0, mode: 'set'})});
+  if (r.error) { toast(r.error, false); return; }
+  toast(`@${u}: access until ${r.expiry.slice(0, 10)}`, true); await admLoad(); admManage(u);
+}
+async function admRevoke(u) {
+  if (!confirm(`End @${u}'s access now? They will be signed out on their next page load.`)) return;
+  const r = await apiFetch(`/api/admin/clients/${encodeURIComponent(u)}/access`, {method: 'POST', body: JSON.stringify({days: 0, mode: 'set'})});
+  if (r.error) { toast(r.error, false); return; }
+  toast(`@${u}: access ended`, true); await admLoad(); admManage(u);
+}
+async function admSavePerms(u) {
+  const body = {};
+  document.querySelectorAll('#adm-m-body [data-perm]').forEach(el => body[el.dataset.perm] = el.tagName === 'INPUT' ? parseInt(el.value) || 0 : el.classList.contains('on'));
+  const r = await apiFetch(`/api/admin/clients/${encodeURIComponent(u)}/permissions`, {method: 'POST', body: JSON.stringify(body)});
+  if (r.error) { toast(r.error, false); return; }
+  toast(`@${u}: permissions saved`, true); await admLoad(); admManage(u);
+}
+async function admAction(u, action, question) {
+  if (!confirm(question)) return;
+  const r = await apiFetch(`/api/admin/clients/${encodeURIComponent(u)}/${action}`, {method: 'POST'});
+  if (r.error) { toast(r.error, false); return; }
+  toast(action === 'stop_bots' ? `${r.stopped} bot(s) stopped` : `${r.signed_out} session(s) signed out`, true); await admLoad(); admManage(u);
+}
+async function admSuspend(u, on) {
+  if (!confirm(on ? `Suspend @${u}? They are signed out, cannot log in, and their bots cannot open new trades.` : `Reactivate @${u}?`)) return;
+  const r = await apiFetch(`/api/admin/clients/${encodeURIComponent(u)}/suspend`, {method: 'POST', body: JSON.stringify({on})});
+  if (r.error) { toast(r.error, false); return; }
+  toast(on ? `@${u} suspended` : `@${u} reactivated`, true); await admLoad(); admManage(u);
+}
+async function admResetPw(u) {
+  if (!confirm(`Give @${u} a new random password? Their current password stops working and they are signed out.`)) return;
+  const r = await apiFetch(`/api/admin/clients/${encodeURIComponent(u)}/reset_password`, {method: 'POST'});
+  if (r.error) { toast(r.error, false); return; }
+  document.getElementById('adm-m-secret').innerHTML = `<div style="font-size:11px;color:var(--text2);margin-bottom:6px">New password — shown only once. Send it to the client privately; they can change it in Profile.</div><div class="adm-secret">${_apEsc(r.temporary_password)}</div>`;
+}
+async function admDelete(u) {
+  if (prompt(`Type the username to permanently delete @${u}. Their trade history stays in the reports.`) !== u) return;
+  const r = await apiFetch(`/api/admin/clients/${encodeURIComponent(u)}`, {method: 'DELETE'});
+  if (r.error) { toast(r.error, false); return; }
+  toast(`@${u} deleted`, true); admClose(); admLoad();
+}
+
+function admOpenCreate() {
+  document.getElementById('adm-m-title').textContent = 'Add client';
+  document.getElementById('adm-m-sub').textContent = 'Creates the account with a password you hand to the client.';
+  document.getElementById('adm-m-body').innerHTML = `<div class="pf-form">
+      <div><label>Username</label><input id="adm-c-user" autocomplete="off"/></div>
+      <div><label>Display name</label><input id="adm-c-name"/></div>
+      <div><label>Contact</label><input id="adm-c-contact"/></div>
+      <div><label>Access days</label><input id="adm-c-days" type="number" value="30" min="0"/></div>
+      <div class="wide"><label>Password (8+ characters)</label><input id="adm-c-pw" type="text" autocomplete="off"/></div></div>
+    <div class="adm-btns" style="margin-top:12px"><button class="sbtn" onclick="document.getElementById('adm-c-pw').value=Array.from(crypto.getRandomValues(new Uint8Array(9)),b=>'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b%55]).join('')">GENERATE PASSWORD</button>
+      <button class="ap-btn primary" onclick="admCreate()"><i class="ti ti-user-plus"></i> CREATE</button></div>`;
+  document.getElementById('adm-modal').style.display = 'flex';
+}
+async function admCreate() {
+  const g = id => document.getElementById(id).value.trim();
+  const body = {username: g('adm-c-user'), display_name: g('adm-c-name'), contact: g('adm-c-contact'), days: parseInt(g('adm-c-days')) || 0, password: g('adm-c-pw')};
+  const r = await apiFetch('/api/admin/clients', {method: 'POST', body: JSON.stringify(body)});
+  if (r.error) { toast(r.error, false); return; }
+  toast(`Client @${r.username} created`, true); admClose(); await admLoad(); admTab('clients');
 }
 
 function showCryptoTab(tab, el) {

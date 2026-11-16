@@ -164,10 +164,14 @@ def _ensure_default_user():
     data = _load_users()
     if not data.get("users"):
         salt = secrets.token_hex(16)
+        # On a public server never start with a known password: the owner sets
+        # it with set_admin_password.py (or FARHANFX_ADMIN_PASSWORD) instead.
+        initial = os.environ.get("FARHANFX_ADMIN_PASSWORD") or (
+            secrets.token_urlsafe(24) if os.environ.get("FARHANFX_PRODUCTION") else "admin123")
         data["users"] = [{
             "username": "admin",
             "salt": salt,
-            "password_hash": _hash_pw("admin123", salt),
+            "password_hash": _hash_pw(initial, salt),
             "display_name": "Admin",
             "role": "admin",
         }]
@@ -198,6 +202,8 @@ def auth_login(req: AuthLoginRequest):
     user  = next((u for u in data.get("users", []) if u["username"] == req.username), None)
     if not user or _hash_pw(req.password, user["salt"]) != user["password_hash"]:
         return JSONResponse({"error": "Invalid username or password"}, status_code=401)
+    if user.get("disabled"):
+        return JSONResponse({"error": "Account suspended — contact the admin"}, status_code=403)
     if _is_client_expired(user):
         return JSONResponse({"error": "Service expired — contact admin to renew"}, status_code=403)
     display_name = user.get("display_name", req.username)
@@ -250,7 +256,7 @@ def auth_verify(authorization: str = Header(default=None)):
     # admin revoking/shortening access takes effect on the client's next page load.
     data = _load_users()
     user = next((u for u in data.get("users", []) if u["username"] == sess["username"]), None)
-    if user and _is_client_expired(user):
+    if user and (_is_client_expired(user) or user.get("disabled")):
         _auth_sessions.pop(token, None)
         _save_auth_sessions()
         return JSONResponse({"error": "Service expired — contact admin to renew"}, status_code=403)
@@ -298,39 +304,6 @@ def _require_admin(current_user: dict = Depends(_get_current_user)) -> dict:
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
     return current_user
-
-
-class SetClientExpiryRequest(BaseModel):
-    days: int   # access expires `days` from now (0 = revoke immediately)
-
-@app.get("/api/admin/clients")
-def admin_list_clients(admin: dict = Depends(_require_admin)):
-    data = _load_users()
-    clients = []
-    for u in data.get("users", []):
-        if u.get("role") != "client":
-            continue
-        clients.append({
-            "username":     u["username"],
-            "display_name": u.get("display_name", u["username"]),
-            "contact":      u.get("contact", ""),
-            "expiry":       u.get("expiry"),
-            "expired":      _is_client_expired(u),
-            "days_left":    _days_left(u),
-        })
-    clients.sort(key=lambda c: c["expiry"] or "")
-    return clients
-
-@app.post("/api/admin/clients/{username}/set_expiry")
-def admin_set_client_expiry(username: str, req: SetClientExpiryRequest, admin: dict = Depends(_require_admin)):
-    data = _load_users()
-    user = next((u for u in data.get("users", []) if u["username"] == username), None)
-    if not user or user.get("role") != "client":
-        return JSONResponse({"error": "Client not found"}, status_code=404)
-    expiry = (datetime.now() + timedelta(days=req.days)).isoformat()
-    user["expiry"] = expiry
-    _save_users(data)
-    return {"success": True, "username": username, "expiry": expiry}
 
 
 # ── PAYMENT PROOF SUBMISSION / APPROVAL ─────────────────────────────────────────
@@ -614,6 +587,252 @@ def account_reset_demo(current_user: dict = Depends(_get_current_user)):
     return {"success": True}
 
 
+# ── ADMIN CONTROL PANEL ─────────────────────────────────────────────────────
+_SERVER_STARTED = _time.time() if "_time" in globals() else __import__("time").time()
+
+
+def _client_or_404(data, username):
+    user = next((u for u in data.get("users", []) if u["username"] == username), None)
+    if not user or user.get("role") != "client":
+        return None, JSONResponse(status_code=404, content={"error": "Client not found"})
+    return user, None
+
+
+def _sign_out_user(username):
+    gone = [t for t, s in _auth_sessions.items() if s.get("username") == username]
+    for t in gone:
+        _auth_sessions.pop(t, None)
+    _save_auth_sessions()
+    return len(gone)
+
+
+def _client_row(u, ledger_rows):
+    uname = u["username"]
+    bots = [b for b in _crypto_bots.values() if b.get("username") == uname]
+    sessions = [s for s in _auth_sessions.values() if s.get("username") == uname]
+    mine = [r for r in ledger_rows if r.get("account") == uname and r.get("status") == "closed"]
+    return {
+        "username": uname,
+        "display_name": u.get("display_name", uname),
+        "contact": u.get("contact", ""),
+        "created": (u.get("created") or u.get("risk_accepted_at") or "")[:10] or None,
+        "expiry": u.get("expiry"),
+        "days_left": _days_left(u),
+        "status": "suspended" if u.get("disabled") else _account_status(u),
+        "disabled": bool(u.get("disabled")),
+        "permissions": _perms(uname),
+        "bots_running": sum(1 for b in bots if b.get("status") == "active"),
+        "bots_total": len(bots),
+        "open_positions": sum(1 for b in bots if b.get("open_side")),
+        "binance": bool(_active_ex.get(uname, {}).get("binance")),
+        "sessions": len(sessions),
+        "last_login": max((s.get("created", "") for s in sessions), default="")[:16] or None,
+        "trades": len(mine),
+        "pnl": round(sum(float(r.get("pnl") or 0) for r in mine), 2),
+        "kill_switch": _rm_for(uname).state.get("manual_halt", False),
+    }
+
+
+@app.get("/api/admin/overview")
+def admin_overview(admin: dict = Depends(_require_admin)):
+    users = _load_users().get("users", [])
+    clients = [u for u in users if u.get("role") == "client"]
+    ledger_rows = _ledger.all()
+    rows = [_client_row(u, ledger_rows) for u in clients]
+    pays = list(_load_payment_requests().values())
+    since30 = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+    closed30 = [r for r in ledger_rows if r.get("status") == "closed" and (r.get("close_time") or "") >= since30]
+    approved = [p for p in pays if p.get("status") == "approved"]
+    return {
+        "clients": {
+            "total": len(rows),
+            "active": sum(1 for r in rows if r["status"] == "active"),
+            "trial": sum(1 for r in rows if r["status"] == "trial"),
+            "expired": sum(1 for r in rows if r["status"] == "expired"),
+            "suspended": sum(1 for r in rows if r["status"] == "suspended"),
+            "expiring_7d": sum(1 for r in rows if r["status"] in ("active", "trial") and (r["days_left"] or 0) <= 7),
+            "new_30d": sum(1 for r in rows if (r["created"] or "") >= since30),
+            "binance_connected": sum(1 for r in rows if r["binance"]),
+        },
+        "payments": {
+            "pending": sum(1 for p in pays if p.get("status") == "pending"),
+            "approved": len(approved),
+            "approved_30d": sum(1 for p in approved if (p.get("resolved_at") or "") >= since30),
+            "days_sold_30d": sum(int(p.get("days_requested") or 0) for p in approved if (p.get("resolved_at") or "") >= since30),
+        },
+        "trading": {
+            "bots_running": sum(1 for b in _crypto_bots.values() if b.get("status") == "active"),
+            "live_bots": sum(1 for b in _crypto_bots.values() if b.get("status") == "active" and b.get("mode") == "live"),
+            "open_positions": sum(1 for b in _crypto_bots.values() if b.get("open_side")),
+            "trades_30d": len(closed30),
+            "pnl_30d": round(sum(float(r.get("pnl") or 0) for r in closed30), 2),
+            "accounts_trading": len({r.get("account") for r in closed30}),
+        },
+        "expiring": sorted([r for r in rows if r["status"] in ("active", "trial") and (r["days_left"] or 0) <= 7],
+                           key=lambda r: r["days_left"] or 0)[:10],
+        "recent_clients": sorted(rows, key=lambda r: r["created"] or "", reverse=True)[:8],
+        "server": {"uptime_h": round((_time.time() - _SERVER_STARTED) / 3600, 1),
+                   "production": bool(os.environ.get("FARHANFX_PRODUCTION")),
+                   "sessions": len(_auth_sessions), "ledger_trades": len(ledger_rows),
+                   "autopilot": _autopilot.config.get("enabled"), "autopilot_mode": _autopilot.config.get("mode")},
+    }
+
+
+@app.get("/api/admin/clients_full")
+def admin_clients_full(admin: dict = Depends(_require_admin)):
+    ledger_rows = _ledger.all()
+    rows = [_client_row(u, ledger_rows) for u in _load_users().get("users", []) if u.get("role") == "client"]
+    rows.sort(key=lambda r: (r["status"] != "trial" and r["status"] != "active", r["expiry"] or ""))
+    return {"clients": rows, "permission_labels": PERMISSION_LABELS, "permission_defaults": PERMISSION_DEFAULTS}
+
+
+class AdminCreateClientReq(BaseModel):
+    username: str
+    password: str
+    display_name: str = ""
+    contact: str = ""
+    days: int = 30
+    permissions: dict = {}
+
+
+@app.post("/api/admin/clients")
+def admin_create_client(req: AdminCreateClientReq, admin: dict = Depends(_require_admin)):
+    username = req.username.strip()
+    if not username or not username.replace("_", "").replace("-", "").replace(".", "").isalnum():
+        return JSONResponse(status_code=400, content={"error": "Username: letters, numbers, . _ - only"})
+    if len(req.password) < 8:
+        return JSONResponse(status_code=400, content={"error": "Password must be at least 8 characters"})
+    data = _load_users()
+    if any(u["username"].lower() == username.lower() for u in data.get("users", [])):
+        return JSONResponse(status_code=400, content={"error": "Username already taken"})
+    salt = secrets.token_hex(16)
+    now = datetime.now()
+    data.setdefault("users", []).append({
+        "username": username, "salt": salt, "password_hash": _hash_pw(req.password, salt),
+        "display_name": req.display_name.strip() or username, "role": "client",
+        "expiry": (now + timedelta(days=max(0, int(req.days)))).isoformat(),
+        "contact": req.contact.strip(), "created": now.isoformat(), "created_by": admin["username"],
+        "permissions": {k: v for k, v in (req.permissions or {}).items() if k in PERMISSION_DEFAULTS},
+    })
+    _save_users(data)
+    return {"success": True, "username": username}
+
+
+class AdminAccessReq(BaseModel):
+    days: int
+    mode: str = "extend"     # extend = add to the days left | set = from today
+
+
+@app.post("/api/admin/clients/{username}/access")
+def admin_client_access(username: str, req: AdminAccessReq, admin: dict = Depends(_require_admin)):
+    data = _load_users()
+    user, err = _client_or_404(data, username)
+    if err:
+        return err
+    now = datetime.now()
+    if req.mode == "extend":
+        try:
+            base = max(now, datetime.fromisoformat(user.get("expiry") or ""))
+        except Exception:
+            base = now
+        expiry = base + timedelta(days=int(req.days))
+    else:
+        expiry = now + timedelta(days=max(0, int(req.days)))
+    user["expiry"] = expiry.isoformat()
+    _save_users(data)
+    return {"success": True, "expiry": user["expiry"], "days_left": _days_left(user)}
+
+
+@app.post("/api/admin/clients/{username}/permissions")
+def admin_client_permissions(username: str, body: dict, admin: dict = Depends(_require_admin)):
+    data = _load_users()
+    user, err = _client_or_404(data, username)
+    if err:
+        return err
+    perms = dict(user.get("permissions") or {})
+    for k, v in (body or {}).items():
+        if k not in PERMISSION_DEFAULTS:
+            continue
+        perms[k] = max(0, min(50, int(v))) if k == "max_bots" else bool(v)
+    user["permissions"] = perms
+    _save_users(data)
+    return {"success": True, "permissions": _perms(username)}
+
+
+@app.post("/api/admin/clients/{username}/suspend")
+def admin_client_suspend(username: str, body: dict, admin: dict = Depends(_require_admin)):
+    """Suspended accounts cannot log in and their risk manager blocks new trades.
+    Open positions keep their stop loss and take profit."""
+    on = bool((body or {}).get("on"))
+    data = _load_users()
+    user, err = _client_or_404(data, username)
+    if err:
+        return err
+    user["disabled"] = on
+    _save_users(data)
+    signed_out = _sign_out_user(username) if on else 0
+    _rm_for(username).set_manual_halt(on)
+    return {"success": True, "disabled": on, "signed_out": signed_out}
+
+
+@app.post("/api/admin/clients/{username}/reset_password")
+def admin_client_reset_password(username: str, admin: dict = Depends(_require_admin)):
+    """New random password, shown once to the admin to pass on to the client."""
+    data = _load_users()
+    user, err = _client_or_404(data, username)
+    if err:
+        return err
+    temp = secrets.token_urlsafe(9)
+    user["salt"] = secrets.token_hex(16)
+    user["password_hash"] = _hash_pw(temp, user["salt"])
+    _save_users(data)
+    _sign_out_user(username)
+    return {"success": True, "temporary_password": temp}
+
+
+@app.post("/api/admin/clients/{username}/logout")
+def admin_client_logout(username: str, admin: dict = Depends(_require_admin)):
+    data = _load_users()
+    _, err = _client_or_404(data, username)
+    if err:
+        return err
+    return {"success": True, "signed_out": _sign_out_user(username)}
+
+
+@app.post("/api/admin/clients/{username}/stop_bots")
+def admin_client_stop_bots(username: str, admin: dict = Depends(_require_admin)):
+    """Stop the client's bots (open positions keep their stop & target)."""
+    stopped = 0
+    for bid, b in list(_crypto_bots.items()):
+        if b.get("username") == username and b.get("status") == "active":
+            with _bot_lock(bid):
+                b["status"] = "stopped"
+                t = _bot_timers.pop(bid, None)
+                if t:
+                    t.cancel()
+            stopped += 1
+    _save_bots()
+    return {"success": True, "stopped": stopped}
+
+
+@app.delete("/api/admin/clients/{username}")
+def admin_client_delete(username: str, admin: dict = Depends(_require_admin)):
+    data = _load_users()
+    user, err = _client_or_404(data, username)
+    if err:
+        return err
+    if any(b.get("username") == username and (b.get("status") == "active" or b.get("open_side")) for b in _crypto_bots.values()):
+        return JSONResponse(status_code=400, content={"error": "Stop the client's bots and close open positions first"})
+    data["users"] = [u for u in data["users"] if u["username"] != username]
+    _save_users(data)
+    _sign_out_user(username)
+    for bid in [bid for bid, b in _crypto_bots.items() if b.get("username") == username]:
+        _crypto_bots.pop(bid, None)
+    _save_bots()
+    _active_ex.pop(username, None)
+    return {"success": True}
+
+
 @app.post("/api/admin/restart")
 def admin_restart(admin: dict = Depends(_require_admin)):
     """Restart the server via a detached bat file (Windows-safe)."""
@@ -638,7 +857,7 @@ def admin_restart(admin: dict = Depends(_require_admin)):
                 creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
                 cwd=cwd
             )
-        else:
+        elif not os.environ.get("INVOCATION_ID"):      # not under systemd
             subprocess.Popen([sys.executable] + sys.argv, cwd=cwd)
         os._exit(0)
     threading.Thread(target=_do, daemon=False).start()
