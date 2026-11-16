@@ -593,6 +593,66 @@ tr:hover td{background:rgba(139,92,246,0.07)}
 .user-badge{cursor:pointer}
 .user-badge:hover{border-color:var(--cyan)}
 @media(max-width:1000px){.pf-grid{grid-template-columns:minmax(0,1fr)}.pf-hero{grid-template-columns:minmax(0,1fr)}.pf-avatar{display:none}.pf-form.three{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* ── dashboard AI scenes ── */
+.dc-tape{display:flex;align-items:center;gap:0;margin-bottom:12px;border-radius:12px;border:1px solid var(--border);background:linear-gradient(90deg,rgba(139,92,246,.10),rgba(0,0,0,.25) 30%);overflow:hidden;height:38px}
+.dc-tape-label{flex-shrink:0;display:flex;align-items:center;gap:7px;padding:0 14px;font-size:10px;font-weight:800;letter-spacing:1.5px;color:var(--cyan);border-right:1px solid var(--border);height:100%;background:rgba(0,0,0,.25)}
+.dc-tape-label .dot,.dc-live .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:apPulse 1.4s ease-in-out infinite}
+.dc-tape-track{flex:1;overflow:hidden;position:relative;height:100%;-webkit-mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent);mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
+.dc-tape-inner{position:absolute;top:0;left:0;height:100%;display:flex;align-items:center;white-space:nowrap;animation:dcTape 60s linear infinite;will-change:transform}
+.dc-tape:hover .dc-tape-inner{animation-play-state:paused}
+.dc-tk{display:inline-flex;align-items:baseline;gap:7px;padding:0 18px;font-size:12px;border-right:1px solid rgba(255,255,255,.05)}
+.dc-tk b{font-weight:800;letter-spacing:.5px}.dc-tk .p{font-family:ui-monospace,Menlo,monospace;color:var(--text)}.dc-tk .c{font-size:11px;font-weight:700}
+@keyframes dcTape{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.dc-hero{isolation:isolate}
+.dc-hero>*:not(.dc-neural){position:relative;z-index:1}
+.dc-neural{position:absolute;inset:0;width:100%;height:100%;z-index:0;opacity:.55;pointer-events:none}
+.dc-state{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.dc-state b{font-size:11px;letter-spacing:2px;color:var(--cyan)}
+.dc-state .s{font-size:11px;color:var(--text3)}
+.dc-eq{display:inline-flex;align-items:flex-end;gap:2px;height:14px}
+.dc-eq i{width:3px;background:linear-gradient(var(--cyan),var(--accent));border-radius:2px;animation:dcEq 1s ease-in-out infinite}
+.dc-eq i:nth-child(2){animation-delay:.15s}.dc-eq i:nth-child(3){animation-delay:.3s}.dc-eq i:nth-child(4){animation-delay:.45s}.dc-eq i:nth-child(5){animation-delay:.6s}
+.dc-eq.idle i{animation:none;height:3px!important;opacity:.4}
+@keyframes dcEq{0%,100%{height:3px}50%{height:14px}}
+.dc-scene{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:16px;margin-bottom:16px}
+.dc-radar-wrap{display:grid;grid-template-columns:minmax(200px,250px) minmax(0,1fr);gap:14px;align-items:center}
+.dc-radar{position:relative;aspect-ratio:1;width:100%;border-radius:50%;background:radial-gradient(circle,rgba(34,211,238,.10),rgba(15,23,42,.6) 70%);border:1px solid rgba(34,211,238,.25);overflow:hidden;box-shadow:inset 0 0 40px rgba(34,211,238,.08),0 0 30px rgba(139,92,246,.12)}
+.dc-radar svg{position:absolute;inset:0;width:100%;height:100%}
+.dc-sweep{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,rgba(34,211,238,.38),rgba(34,211,238,0) 70deg,transparent 360deg);animation:dcSweep 4s linear infinite}
+@keyframes dcSweep{to{transform:rotate(360deg)}}
+.dc-blip{animation:dcBlip 4s linear infinite}
+@keyframes dcBlip{0%,6%{opacity:1}40%{opacity:.35}100%{opacity:.35}}
+.dc-blip-pick{animation:dcPick 1.6s ease-out infinite}
+@keyframes dcPick{0%{r:5;opacity:.9}100%{r:16;opacity:0}}
+.dc-radar-list{display:flex;flex-direction:column;gap:6px;min-width:0}
+.dc-rl{display:grid;grid-template-columns:18px 54px minmax(0,1fr) 46px;gap:8px;align-items:center;font-size:11.5px}
+.dc-rl .n{color:var(--text3);font-size:10px}.dc-rl b{letter-spacing:.5px}
+.dc-rl .bar{height:6px;border-radius:9px;background:var(--bg2);overflow:hidden}.dc-rl .bar i{display:block;height:100%;border-radius:9px}
+.dc-rl .pick{grid-column:2/-1;font-size:9.5px;color:#c4b5fd;margin-top:-3px;letter-spacing:.5px}
+.dc-floor{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.dc-agent{position:relative;border-radius:14px;padding:12px;background:linear-gradient(160deg,rgba(139,92,246,.10),rgba(15,23,42,.5));border:1px solid var(--border2);overflow:hidden}
+.dc-agent.inpos{border-color:rgba(34,211,238,.45);box-shadow:0 0 22px rgba(34,211,238,.12)}
+.dc-agent::after{content:"";position:absolute;left:-40%;top:0;bottom:0;width:40%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.05),transparent);animation:dcScanLine 5s ease-in-out infinite}
+@keyframes dcScanLine{0%{left:-40%}60%,100%{left:120%}}
+.dc-agent-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.dc-agent-coin{font-size:16px;font-weight:900;letter-spacing:.5px}
+.dc-agent-coin span{display:block;font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.5px;margin-top:2px;text-transform:uppercase}
+.dc-ring{--p:0;width:44px;height:44px;border-radius:50%;flex-shrink:0;background:conic-gradient(var(--cyan) calc(var(--p)*1%),rgba(255,255,255,.07) 0);display:flex;align-items:center;justify-content:center;position:relative}
+.dc-ring::before{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--card)}
+.dc-ring span{position:relative;font-size:9px;font-weight:800;font-family:ui-monospace,Menlo,monospace;color:var(--text2);text-align:center;line-height:1.1}
+.dc-spark{display:block;width:100%;height:58px;margin:8px 0 6px}
+.dc-agent-st{font-size:10.5px;color:var(--text2);line-height:1.45;min-height:30px}
+.dc-agent-st b{color:var(--text)}
+.dc-agent-tags{display:flex;gap:4px;margin-top:2px}
+.dc-term-card{min-height:330px}
+.dc-term{flex:1;background:#05070d;border:1px solid rgba(34,211,238,.18);border-radius:12px;padding:10px 12px;font-family:ui-monospace,Menlo,monospace;font-size:11px;line-height:1.65;color:#9be7f5;overflow:auto;max-height:300px;box-shadow:inset 0 0 30px rgba(34,211,238,.05)}
+.dc-term div{white-space:pre-wrap;word-break:break-word}
+.dc-term .t{color:#64748b}.dc-term .ai{color:#c4b5fd}.dc-term .ok{color:#4ade80}.dc-term .warn{color:#fbbf24}.dc-term .bad{color:#f87171}
+.dc-term .cur{display:inline-block;width:7px;height:12px;background:#22d3ee;vertical-align:-2px;margin-left:2px;animation:apBlink 1s steps(1) infinite}
+.dc-live{display:inline-flex;align-items:center;gap:6px;font-size:9.5px;font-weight:800;letter-spacing:1.5px;color:var(--green)}
+@media(max-width:1200px){.dc-scene{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:620px){.dc-radar-wrap{grid-template-columns:minmax(0,1fr)}.dc-radar{max-width:260px;margin:0 auto}}
+@media(prefers-reduced-motion:reduce){.dc-tape-inner,.dc-sweep,.dc-blip,.dc-blip-pick,.dc-agent::after,.dc-eq i{animation:none!important}}
 .tp-card{background:var(--card);border:1px solid var(--border2);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
 .tp-header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border2)}
 .tp-header-binance{background:linear-gradient(135deg,rgba(240,185,11,0.10),rgba(240,185,11,0.03))}
@@ -872,8 +932,11 @@ tr:hover td{background:rgba(139,92,246,0.07)}
 
       <!-- DASHBOARD PAGE -->
             <div class="page active" id="page-dashboard">
+        <div class="dc-tape"><div class="dc-tape-label"><span class="dot"></span>LIVE MARKETS</div>
+          <div class="dc-tape-track"><div class="dc-tape-inner" id="dc-tape-inner"><span class="dc-tk" style="color:var(--text3)">Connecting to Binance futures…</span></div></div></div>
         <!-- ═══ AI COMMAND CENTER ═══ -->
         <div class="ap-hero dc-hero" id="dc-hero">
+          <canvas class="dc-neural" id="dc-neural" aria-hidden="true"></canvas>
           <div class="ap-core off" id="dc-core"><div class="ring"></div><div class="ring r2"></div><div class="orb"></div></div>
           <div style="min-width:0">
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -882,6 +945,8 @@ tr:hover td{background:rgba(139,92,246,0.07)}
             </div>
             <div class="ap-sub" id="dc-greet">Loading your trading desk…</div>
             <div class="ap-think" id="dc-think"></div>
+            <div class="dc-state"><span class="dc-eq" id="dc-eq"><i></i><i></i><i></i><i></i><i></i></span>
+              <b id="dc-state">INITIALISING</b><span class="s" id="dc-state-sub"></span></div>
             <div class="dc-chips">
               <span class="dc-mini" id="dc-chip-guard"><i class="ti ti-shield-half"></i> AI Guard —</span>
               <span class="dc-mini" id="dc-chip-brain"><i class="ti ti-brain"></i> AI Brain —</span>
@@ -900,6 +965,34 @@ tr:hover td{background:rgba(139,92,246,0.07)}
           <div class="ap-stat"><div class="k">TODAY</div><div class="v" id="dc-today">—</div><div class="s" id="dc-today-s">—</div></div>
           <div class="ap-stat"><div class="k">OPEN POSITIONS</div><div class="v" id="dc-pos">—</div><div class="ap-meter"><i id="dc-pos-bar" style="width:0%;background:linear-gradient(90deg,var(--accent),var(--cyan))"></i></div></div>
           <div class="ap-stat"><div class="k">DAILY LOSS BUDGET</div><div class="v" id="dc-budget">—</div><div class="ap-meter"><i id="dc-budget-bar" style="width:0%"></i></div><div class="s" id="dc-budget-s">—</div></div>
+        </div>
+
+        <div class="dc-scene">
+          <div class="ap-card dc-radar-card">
+            <h3><i class="ti ti-radar-2"></i> AI Research Radar <span style="flex:1"></span><span class="dc-sub" id="dc-radar-sub"></span>
+              <button class="dc-icon" title="Run an AI scan now" onclick="dcScan()"><i class="ti ti-refresh"></i></button></h3>
+            <div class="dc-radar-wrap">
+              <div class="dc-radar">
+                <svg viewBox="0 0 240 240" aria-label="Momentum radar">
+                  <circle cx="120" cy="120" r="110" fill="none" stroke="rgba(34,211,238,.22)"/>
+                  <circle cx="120" cy="120" r="82" fill="none" stroke="rgba(34,211,238,.14)"/>
+                  <circle cx="120" cy="120" r="55" fill="none" stroke="rgba(34,211,238,.14)"/>
+                  <circle cx="120" cy="120" r="28" fill="none" stroke="rgba(34,211,238,.14)"/>
+                  <line x1="120" y1="8" x2="120" y2="232" stroke="rgba(34,211,238,.10)"/>
+                  <line x1="8" y1="120" x2="232" y2="120" stroke="rgba(34,211,238,.10)"/>
+                  <g id="dc-radar-blips"></g>
+                  <circle cx="120" cy="120" r="3" fill="#22d3ee"/>
+                </svg>
+                <div class="dc-sweep"></div>
+              </div>
+              <div class="dc-radar-list" id="dc-radar-list"><div class="ap-empty">Loading…</div></div>
+            </div>
+            <div class="dc-note" id="dc-radar-note"></div>
+          </div>
+          <div class="ap-card dc-floor-card">
+            <h3><i class="ti ti-cpu"></i> Live Trading Floor <span style="flex:1"></span><span class="dc-sub" id="dc-floor-sub"></span></h3>
+            <div class="dc-floor" id="dc-floor"><div class="ap-empty">Loading…</div></div>
+          </div>
         </div>
 
         <div class="dc-grid">
@@ -925,22 +1018,16 @@ tr:hover td{background:rgba(139,92,246,0.07)}
             <div class="dc-note" id="dc-guard-note">The guard can only pause entries or lower risk — never raise it.</div>
           </div>
 
-          <!-- Live positions -->
-          <div class="ap-card dc-card">
-            <h3><i class="ti ti-activity-heartbeat"></i> Live Positions <span style="flex:1"></span><span class="dc-sub" id="dc-pos-sub"></span></h3>
-            <div id="dc-positions"><div class="ap-empty">Loading…</div></div>
-          </div>
-
           <!-- AI Brain -->
           <div class="ap-card dc-card">
             <h3><i class="ti ti-brain"></i> AI Brain <span style="flex:1"></span><span class="dc-sub" id="dc-brain-sub"></span></h3>
             <div id="dc-brain"><div class="ap-empty">Loading…</div></div>
           </div>
-        </div>
-
-        <div class="ap-card" style="margin-bottom:16px">
-          <h3><i class="ti ti-timeline-event"></i> AI Activity <span style="flex:1"></span><span class="dc-sub">autopilot · risk manager · guard</span></h3>
-          <div class="ap-log" id="dc-feed" style="max-height:220px"><div>No events yet.</div></div>
+          <!-- AI thought stream -->
+          <div class="ap-card dc-card dc-term-card">
+            <h3><i class="ti ti-terminal-2"></i> AI Thought Stream <span style="flex:1"></span><span class="dc-live"><span class="dot"></span>LIVE</span></h3>
+            <div class="dc-term" id="dc-term" aria-live="off"></div>
+          </div>
         </div>
 
         <!-- 30-day snapshot — the full report lives on the REPORTS page -->
@@ -8425,7 +8512,8 @@ async function tpLoadMark(ex) {
   try {
     const r = await apiFetch(`/api/crypto/ohlcv?symbol=${encodeURIComponent(sym)}&timeframe=1m&limit=1`);
     if (r && !r.error && r.length > 0) {
-      const price = r[r.length - 1][4]; // close
+      const last = r[r.length - 1];
+      const price = Array.isArray(last) ? last[4] : last.c; // close
       _tpState[ex].markPrice = price;
       const el = document.getElementById(`tp-mark-${ex}`);
       if (el) el.textContent = '$' + Number(price).toLocaleString(undefined, {minimumFractionDigits:2,maximumFractionDigits:2});
@@ -8834,8 +8922,250 @@ let _drCharts = {};
 // ═══ AI COMMAND CENTER (dashboard) ═══════════════════════════════════════════
 let _dcTimer = null, _dcData = null, _dcThinkTimer = null;
 
-function dcStart() { dcLoad(); clearInterval(_dcTimer); _dcTimer = setInterval(dcLoad, 20000); }
-function dcStop()  { clearInterval(_dcTimer); _dcTimer = null; }
+// ═══ DASHBOARD AI SCENES (all driven by live data) ═══════════════════════════
+let _dcTick = null, _dcPulseT = null, _dcNeural = null, _dcSpark = {}, _dcTerm = {seen: new Set(), queue: [], lines: [], typing: false, narr: 0, timer: null};
+const _TFS = {'15m': 900, '1h': 3600, '4h': 14400, '1d': 86400};
+const _dcFmtLeft = s => s >= 3600 ? `${Math.floor(s / 3600)}h${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}` : `${Math.floor(s / 60)}m${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const _dcLeft = tf => { const p = _TFS[tf] || 3600; return p - (Date.now() / 1000) % p; };
+
+function dcScenesStart() {
+  dcPulse(); clearInterval(_dcPulseT); _dcPulseT = setInterval(dcPulse, 20000);
+  clearInterval(_dcTick); _dcTick = setInterval(dcClock, 1000);
+  dcNeuralStart();
+  clearInterval(_dcTerm.timer); _dcTerm.timer = setInterval(dcNarrate, 5000);
+}
+function dcScenesStop() {
+  clearInterval(_dcPulseT); clearInterval(_dcTick); clearInterval(_dcTerm.timer);
+  if (_dcNeural) { cancelAnimationFrame(_dcNeural.raf); _dcNeural = null; }
+}
+
+// ── live price tape ──
+async function dcPulse() {
+  const d = await apiFetch('/api/crypto/pulse');
+  const el = document.getElementById('dc-tape-inner');
+  if (!el || !d || d.error || !d.tickers) return;
+  const items = d.tickers.map(t => `<span class="dc-tk"><b>${_apEsc(t.base)}</b><span class="p">${Number(t.price).toLocaleString(undefined, {maximumFractionDigits: t.price < 1 ? 5 : 2})}</span>` +
+    `<span class="c" style="color:${t.chg >= 0 ? 'var(--green)' : 'var(--red)'}">${t.chg >= 0 ? '▲' : '▼'} ${Math.abs(t.chg).toFixed(2)}%</span></span>`).join('');
+  el.innerHTML = items + items;               // twice → seamless loop
+  el.style.animationDuration = Math.max(30, d.tickers.length * 5) + 's';
+}
+
+// ── neural background ──
+function dcNeuralStart() {
+  const c = document.getElementById('dc-neural');
+  if (!c || _dcNeural || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const ctx = c.getContext('2d');
+  const st = {raf: 0, nodes: []};
+  _dcNeural = st;
+  const size = () => { const r = c.getBoundingClientRect(), k = window.devicePixelRatio || 1; c.width = r.width * k; c.height = r.height * k; ctx.setTransform(k, 0, 0, k, 0, 0); st.w = r.width; st.h = r.height; };
+  size();
+  for (let i = 0; i < 42; i++) st.nodes.push({x: Math.random() * st.w, y: Math.random() * st.h, vx: (Math.random() - .5) * .25, vy: (Math.random() - .5) * .25});
+  const frame = () => {
+    if (_dcNeural !== st) return;
+    if (!document.hidden) {
+      if (Math.abs(c.getBoundingClientRect().width - st.w) > 2) size();
+      ctx.clearRect(0, 0, st.w, st.h);
+      for (const n of st.nodes) {
+        n.x += n.vx; n.y += n.vy;
+        if (n.x < 0 || n.x > st.w) n.vx *= -1;
+        if (n.y < 0 || n.y > st.h) n.vy *= -1;
+      }
+      for (let i = 0; i < st.nodes.length; i++) for (let j = i + 1; j < st.nodes.length; j++) {
+        const a = st.nodes[i], b = st.nodes[j], dx = a.x - b.x, dy = a.y - b.y, dist = Math.hypot(dx, dy);
+        if (dist < 120) { ctx.strokeStyle = `rgba(139,92,246,${(1 - dist / 120) * .35})`; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+      }
+      for (const n of st.nodes) { ctx.fillStyle = 'rgba(34,211,238,.7)'; ctx.beginPath(); ctx.arc(n.x, n.y, 1.6, 0, 6.3); ctx.fill(); }
+    }
+    st.raf = requestAnimationFrame(frame);
+  };
+  frame();
+}
+
+// ── 1s clock: countdown rings + state line ──
+function dcClock() {
+  let soonest = null;
+  document.querySelectorAll('.dc-ring[data-tf]').forEach(r => {
+    const tf = r.dataset.tf, p = _TFS[tf] || 3600, left = _dcLeft(tf);
+    r.style.setProperty('--p', ((p - left) / p * 100).toFixed(1));
+    r.querySelector('span').innerHTML = _dcFmtLeft(left) + '<br><small style="color:var(--text3)">' + tf + '</small>';
+    soonest = soonest == null ? left : Math.min(soonest, left);
+  });
+  const sub = document.getElementById('dc-state-sub');
+  if (sub && soonest != null) sub.textContent = `next candle decision in ${_dcFmtLeft(soonest)}`;
+}
+
+// ── AI state ──
+function dcState(d) {
+  const risk = d.risk, ap = d.autopilot.config, st = d.autopilot.state, g = d.guard || {};
+  const dm = ap.enabled ? ap.mode : (d.binance_connected ? 'live' : 'demo');
+  const open = (d.bots || []).filter(b => b.position).length, active = (d.bots || []).filter(b => b.status === 'active').length;
+  let txt, idle = false, col = 'var(--cyan)';
+  if (risk.manual_halt || risk.modes[dm].halted) { txt = 'PAUSED · ' + (risk.manual_halt ? 'KILL SWITCH' : 'DAILY STOP'); idle = true; col = 'var(--red)'; }
+  else if (g.paused) { txt = 'PAUSED BY AI GUARD'; idle = true; col = 'var(--amber)'; }
+  else if (st.scanning) txt = 'SCANNING THE MARKET';
+  else if (open) txt = `IN TRADE · ${open} POSITION${open > 1 ? 'S' : ''} MANAGED`;
+  else if (active) txt = `WATCHING ${active} MARKET${active > 1 ? 'S' : ''}`;
+  else { txt = 'STANDBY'; idle = true; col = 'var(--text3)'; }
+  const el = document.getElementById('dc-state');
+  if (el) { el.textContent = txt; el.style.color = col; }
+  const eq = document.getElementById('dc-eq');
+  if (eq) eq.className = 'dc-eq' + (idle ? ' idle' : '');
+}
+
+// ── research radar ──
+function dcRadar(d) {
+  const st = d.autopilot.state, board = (st.leaderboard || []).slice(0, 12);
+  const picks = new Set((st.picks || []).map(p => p.symbol));
+  const pickBy = Object.fromEntries((st.picks || []).map(p => [p.symbol, p]));
+  const svg = document.getElementById('dc-radar-blips');
+  if (svg) svg.innerHTML = board.map((c, i) => {
+    const ang = (i / Math.max(1, board.length)) * Math.PI * 2 - Math.PI / 2 + 0.25;
+    const r = 22 + (board.length > 1 ? i / (board.length - 1) : 0) * 84;   // rank 1 nearest the centre
+    const x = 120 + Math.cos(ang) * r, y = 120 + Math.sin(ang) * r;
+    const col = c.direction === 'UP' ? '#22c55e' : '#ef4444';
+    const delay = (((ang + Math.PI / 2) / (Math.PI * 2)) * 4).toFixed(2);
+    const pick = picks.has(c.symbol);
+    return `${pick ? `<circle class="dc-blip-pick" cx="${x}" cy="${y}" r="5" fill="none" stroke="#c4b5fd" stroke-width="1.5"/>` : ''}
+      <g class="dc-blip" style="animation-delay:${delay}s"><circle cx="${x}" cy="${y}" r="${pick ? 4.5 : 3.2}" fill="${col}"/>
+      <text x="${x + 6}" y="${y + 3}" fill="${pick ? '#e9d5ff' : '#94a3b8'}" font-size="${pick ? 8.5 : 7}" font-weight="${pick ? 800 : 600}" font-family="ui-monospace,Menlo,monospace">${_apEsc(_apCoin(c.symbol))}</text></g>`;
+  }).join('');
+  const list = document.getElementById('dc-radar-list');
+  if (list) list.innerHTML = board.length ? board.slice(0, 7).map((c, i) => {
+    const p = pickBy[c.symbol], col = c.direction === 'UP' ? 'var(--green)' : 'var(--red)';
+    return `<div class="dc-rl"><span class="n">${i + 1}</span><b style="color:${p ? '#e9d5ff' : 'var(--text)'}">${_apEsc(_apCoin(c.symbol))}</b>
+      <span class="bar"><i style="width:${Math.min(100, c.score)}%;background:linear-gradient(90deg,${col},var(--cyan))"></i></span>
+      <span style="color:${col};font-size:10.5px;text-align:right">${c.direction === 'UP' ? '▲' : '▼'} ${Math.round(c.score)}</span>
+      ${p ? `<span class="pick">🤖 AI PICK · ${_apEsc(p.strategy.replace(/_/g, ' '))} ${_apEsc(p.tf)}</span>` : ''}</div>`;
+  }).join('') : '<div class="ap-empty">No scan yet — switch on the autopilot or press ↻.</div>';
+  const sub = document.getElementById('dc-radar-sub');
+  if (sub) sub.textContent = st.last_scan ? `${(st.leaderboard || []).length} coins ranked · ${st.last_scan.slice(11, 16)} UTC` : '';
+  const note = document.getElementById('dc-radar-note');
+  if (note) note.innerHTML = `Closer to the centre = stronger momentum (trend, ADX, volume). <span style="color:#c4b5fd">Pulsing</span> = picked after a backtest on its own history.` +
+    (st.next_scan ? ` Next scan ${_apEsc(String(st.next_scan).slice(11, 16))} UTC.` : '');
+}
+async function dcScan() {
+  const r = await apiFetch('/api/autopilot/scan', {method: 'POST'});
+  if (r.error) { toast(r.error, false); return; }
+  toast(r.note || 'AI scan started — results in about a minute', true);
+  dcThink('ai', 'Manual scan requested — ranking momentum, then backtesting the tested strategies on each candidate…');
+  setTimeout(dcLoad, 4000);
+}
+
+// ── trading floor ──
+function dcFloor(d) {
+  const el = document.getElementById('dc-floor');
+  if (!el) return;
+  const bots = (d.bots || []).filter(b => b.status === 'active');
+  const sub = document.getElementById('dc-floor-sub');
+  if (sub) sub.textContent = bots.length ? `${bots.length} agent${bots.length > 1 ? 's' : ''} · ${bots.filter(b => b.position).length} in trade` : '';
+  if (!bots.length) { el.innerHTML = '<div class="ap-empty">No agents running — switch on the AI Autopilot or start a bot.</div>'; return; }
+  el.innerHTML = bots.map(b => {
+    const p = b.position, long = p && p.side === 'BUY';
+    const st = p
+      ? `<b style="color:${long ? 'var(--green)' : 'var(--red)'}">● IN TRADE ${long ? 'LONG' : 'SHORT'}</b> · uPnL <b style="color:${(p.upnl || 0) >= 0 ? 'var(--green)' : 'var(--red)'}">${_apMoney(p.upnl || 0)}</b><br>SL ${_apNum(p.sl, 5)} · TP ${_apNum(p.tp, 5)}${b.mode === 'live' ? (p.sl_on_exchange ? ' · stop on Binance ✓' : ' · <span style="color:var(--red)">stop missing</span>') : ''}`
+      : `<b style="color:var(--cyan)">● WATCHING</b> — ${_apEsc(b.note || 'waiting for a closed-candle signal')}`;
+    return `<div class="dc-agent${p ? ' inpos' : ''}">
+      <div class="dc-agent-top"><div class="dc-agent-coin">${_apEsc(_apCoin(b.symbol))}<span>${_apEsc((b.strategy || '').replace(/_/g, ' '))}</span>
+        <div class="dc-agent-tags"><span class="ap-tag ${b.mode === 'live' ? 'live' : 'demo'}" style="margin:0">${_apEsc((b.mode || '').toUpperCase())}</span>${b.autopilot ? '<span class="ap-tag ai" style="margin:0">AI</span>' : ''}</div></div>
+        <div class="dc-ring" data-tf="${_apEsc(b.tf)}"><span>—</span></div></div>
+      <canvas class="dc-spark" data-sym="${_apEsc(b.symbol)}" data-entry="${p ? p.entry : ''}" data-sl="${p ? p.sl : ''}" data-tp="${p ? (p.tp || '') : ''}"></canvas>
+      <div class="dc-agent-st">${st}</div></div>`;
+  }).join('');
+  dcClock();
+  el.querySelectorAll('.dc-spark').forEach(dcSparkDraw);
+}
+
+async function dcSparkDraw(cv) {
+  const sym = cv.dataset.sym;
+  let c = _dcSpark[sym];
+  if (!c || Date.now() - c.t > 60000) {
+    const rows = await apiFetch(`/api/crypto/ohlcv?symbol=${encodeURIComponent(sym)}&timeframe=1h&limit=48`);
+    if (!Array.isArray(rows) || !rows.length) return;
+    c = _dcSpark[sym] = {t: Date.now(), closes: rows.map(r => Array.isArray(r) ? r[4] : r.c)};
+  }
+  if (!cv.isConnected) return;
+  const k = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * k; cv.height = h * k;
+  const ctx = cv.getContext('2d'); ctx.setTransform(k, 0, 0, k, 0, 0);
+  const lv = ['entry', 'sl', 'tp'].map(x => parseFloat(cv.dataset[x])).filter(v => !isNaN(v));
+  const all = c.closes.concat(lv), lo = Math.min(...all), hi = Math.max(...all), rng = hi - lo || 1;
+  const Y = v => h - 3 - (v - lo) / rng * (h - 6), X = i => i / (c.closes.length - 1) * w;
+  const up = c.closes[c.closes.length - 1] >= c.closes[0], col = up ? '34,197,94' : '239,68,68';
+  const grad = ctx.createLinearGradient(0, 0, 0, h); grad.addColorStop(0, `rgba(${col},.28)`); grad.addColorStop(1, `rgba(${col},0)`);
+  ctx.beginPath(); c.closes.forEach((v, i) => i ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v)));
+  ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath(); ctx.fillStyle = grad; ctx.fill();
+  ctx.beginPath(); c.closes.forEach((v, i) => i ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v)));
+  ctx.strokeStyle = `rgb(${col})`; ctx.lineWidth = 1.6; ctx.stroke();
+  const line = (v, color) => { if (isNaN(v)) return; ctx.setLineDash([4, 3]); ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, Y(v)); ctx.lineTo(w, Y(v)); ctx.stroke(); ctx.setLineDash([]); };
+  line(parseFloat(cv.dataset.entry), 'rgba(255,255,255,.6)'); line(parseFloat(cv.dataset.sl), 'rgba(239,68,68,.9)'); line(parseFloat(cv.dataset.tp), 'rgba(34,197,94,.9)');
+  const lx = X(c.closes.length - 1), ly = Y(c.closes[c.closes.length - 1]);
+  ctx.fillStyle = `rgb(${col})`; ctx.beginPath(); ctx.arc(lx - 2, ly, 2.6, 0, 6.3); ctx.fill();
+}
+
+// ── thought stream ──
+function dcThink(kind, text, time) {
+  _dcTerm.queue.push({kind, text, time: time || new Date().toISOString().slice(11, 19)});
+  if (!_dcTerm.typing) _dcTypeNext();
+}
+function _dcTypeNext() {
+  const term = document.getElementById('dc-term');
+  const item = _dcTerm.queue.shift();
+  if (!term || !item) { _dcTerm.typing = false; return; }
+  _dcTerm.typing = true;
+  const row = document.createElement('div');
+  row.innerHTML = `<span class="t">${_apEsc(item.time)}</span> <span class="${item.kind}">›</span> <span class="x"></span><span class="cur"></span>`;
+  term.appendChild(row);
+  while (term.children.length > 80) term.removeChild(term.firstChild);
+  const x = row.querySelector('.x'), cur = row.querySelector('.cur');
+  let i = 0;
+  const step = () => {
+    i += 3;
+    x.textContent = item.text.slice(0, i);
+    term.scrollTop = term.scrollHeight;
+    if (i < item.text.length) setTimeout(step, 14);
+    else { cur.remove(); setTimeout(_dcTypeNext, 180); }
+  };
+  step();
+}
+function dcThoughts(d) {
+  const st = d.autopilot.state, g = d.guard || {};
+  const ev = [
+    ...(st.log || []).map(x => ({t: x.time, k: 'ai', m: '[autopilot] ' + x.msg})),
+    ...(d.risk.events || []).map(x => ({t: String(x.time).slice(0, 16), k: /halt|limit|kill/i.test(x.msg) ? 'bad' : 'ok', m: '[risk] ' + x.msg})),
+    ...(g.log || []).map(x => ({t: x.time, k: 'warn', m: '[guard] ' + x.msg})),
+  ].sort((a, b) => a.t < b.t ? -1 : 1);
+  const fresh = ev.filter(e => !_dcTerm.seen.has(e.t + e.m));
+  ev.forEach(e => _dcTerm.seen.add(e.t + e.m));
+  (_dcTerm.lines.length ? fresh : fresh.slice(-8)).forEach(e => dcThink(e.k, e.m, e.t.slice(5)));
+  _dcTerm.lines = ev;
+  _dcTerm.data = d;
+}
+function dcNarrate() {
+  const d = _dcTerm.data;
+  if (!d || document.hidden) return;
+  const st = d.autopilot.state, g = d.guard || {}, r = d.risk, bots = (d.bots || []).filter(b => b.status === 'active');
+  const lines = [];
+  const lead = (st.leaderboard || [])[0];
+  if (lead) lines.push(['ai', `Momentum scan: ${(st.leaderboard || []).length} liquid coins ranked — leader ${_apCoin(lead.symbol)} ${Math.round(lead.score)} (${lead.direction}, 7d ${lead.roc_7d > 0 ? '+' : ''}${lead.roc_7d}%, ADX ${lead.adx}).`]);
+  bots.forEach(b => {
+    const left = _dcFmtLeft(_dcLeft(b.tf));
+    lines.push(b.position
+      ? ['ok', `Managing ${_apCoin(b.symbol)} ${b.position.side === 'BUY' ? 'LONG' : 'SHORT'}: price ${_apNum(b.price, 6)}, stop ${_apNum(b.position.sl, 6)}, target ${_apNum(b.position.tp, 6)}, uPnL ${_apMoney(b.position.upnl || 0)}.`]
+      : ['ai', `${_apCoin(b.symbol)} · ${(b.strategy || '').replace(/_/g, ' ')} ${b.tf}: ${b.note || 'no signal on the last closed candle'} — next candle in ${left}.`]);
+  });
+  if (g.btc) lines.push(['ai', `Market check: BTC ${g.btc.chg_1h > 0 ? '+' : ''}${g.btc.chg_1h}% 1h, ${g.btc.chg_4h > 0 ? '+' : ''}${g.btc.chg_4h}% 4h${g.fear_greed ? `, Fear & Greed ${g.fear_greed.score} (${g.fear_greed.label})` : ''}.`]);
+  if (g.headline) lines.push([g.level === 'clear' ? 'ok' : 'warn', `AI Guard: ${g.headline}.`]);
+  const mode = d.autopilot.config.enabled ? d.autopilot.config.mode : (d.binance_connected ? 'live' : 'demo');
+  const m = r.modes[mode] || {}, used = (d.open_positions || {})[mode] || 0;
+  lines.push(['ok', `Risk manager (${mode}): ${used}/${r.config.max_positions} position slots used, daily loss budget ${m.loss_budget_used_pct ?? 0}% used, ${r.config.risk_pct}% risk per trade.`]);
+  if (d.brain && d.brain.market_insight) lines.push(['ai', `AI Brain: ${String(d.brain.market_insight).slice(0, 180)}`]);
+  if (!lines.length) return;
+  const [k, t] = lines[_dcTerm.narr++ % lines.length];
+  dcThink(k, t);
+}
+
+function dcStart() { dcLoad(); clearInterval(_dcTimer); _dcTimer = setInterval(dcLoad, 20000); dcScenesStart(); }
+function dcStop()  { clearInterval(_dcTimer); _dcTimer = null; dcScenesStop(); }
 
 async function dcLoad() {
   const d = await apiFetch('/api/autopilot/status');
@@ -8948,26 +9278,8 @@ function dcRender(d) {
     ? `🧠 AI Brain advice until ${new Date(g.llm.expires * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}: risk x${g.llm.risk_multiplier}${g.llm.avoid && g.llm.avoid.length ? ', avoid ' + _apEsc(g.llm.avoid.join(', ')) : ''}${g.llm.reason ? ' — ' + _apEsc(g.llm.reason) : ''} <a href="#" onclick="dcClearAi();return false" style="color:var(--cyan)">clear</a>`
     : 'The guard can only pause entries or lower risk — never raise it. Shock pause: BTC ±4% in 1h or ±7% in 4h.');
 
-  // positions
-  const pos = open.map(b => {
-    const p = b.position, long = p.side === 'BUY';
-    const price = b.price || p.entry;
-    const lo = Math.min(p.sl, p.tp || p.sl), hi = Math.max(p.sl, p.tp || p.sl);
-    const at = hi > lo ? Math.max(0, Math.min(100, (price - lo) / (hi - lo) * 100)) : 50;
-    const left = long ? 'SL' : 'TP', right = long ? 'TP' : 'SL';
-    return `<div class="dc-posrow">
-      <div style="min-width:0"><div class="sym">${long ? '🟢' : '🔴'} ${_apEsc(_apCoin(b.symbol))} <span class="ap-tag ${b.mode === 'live' ? 'live' : 'demo'}">${_apEsc(b.mode.toUpperCase())}</span>${b.autopilot ? '<span class="ap-tag ai">AI</span>' : ''}</div>
-        <div class="meta">${long ? 'LONG' : 'SHORT'} ${_apNum(p.qty)} @ ${_apNum(p.entry, 6)} · now ${_apNum(price, 6)} · ${_apEsc((b.strategy || '').replace(/_/g, ' '))} ${_apEsc(b.tf)}</div></div>
-      <div><div class="pnl" style="color:${_dcCol(p.upnl)}">${_apMoney(p.upnl || 0)}</div><div style="font-size:10px;color:var(--text3);text-align:right">risk ${_apMoney(p.risk_usd)}${b.mode === 'live' ? (p.sl_on_exchange ? ' · SL ✓' : ' · <span style="color:var(--red)">SL ✗</span>') : ''}</div></div>
-      ${p.tp ? `<div class="dc-track"><i style="left:calc(${at}% - 1px)"></i></div><div class="dc-track-l"><span>${left} ${_apNum(lo, 6)}</span><span>${right} ${_apNum(hi, 6)}</span></div>` : ''}
-    </div>`;
-  });
-  const watch = active.filter(b => !b.position).slice(0, 6).map(b =>
-    `<div class="dc-watch"><span><span class="ap-led ${_apEsc(b.health)}" style="display:inline-block;width:8px;height:8px;margin:0 6px 0 0;vertical-align:0"></span>${_apEsc(_apCoin(b.symbol))} · ${_apEsc((b.strategy || '').replace(/_/g, ' '))} ${_apEsc(b.tf)}</span>
-     <span style="color:var(--text3);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%">${_apEsc(b.note || 'waiting for a signal')}</span></div>`);
-  _dcSet('dc-positions', (pos.length ? pos.join('') : '<div class="ap-empty" style="margin-bottom:10px">No open positions — the bots are waiting for a signal on a closed candle.</div>')
-    + (watch.length ? `<div style="font-size:9.5px;letter-spacing:1.5px;color:var(--text3);margin:6px 0 2px">WATCHING</div>${watch.join('')}` : ''));
-  _dcSet('dc-pos-sub', open.length ? `${open.length} open` : nextTxt);
+  // research radar, trading floor, AI state
+  dcRadar(d); dcFloor(d); dcState(d);
 
   // brain
   let bh;
@@ -8988,13 +9300,8 @@ function dcRender(d) {
   _dcSet('dc-brain', bh);
   _dcSet('dc-brain-sub', br.analyses ? `${br.analyses} analyses` : '');
 
-  // feed
-  const feed = [
-    ...(st.log || []).map(x => ({t: x.time, m: '🤖 ' + x.msg})),
-    ...(risk.events || []).map(x => ({t: String(x.time).slice(0, 16), m: '🛡 ' + x.msg})),
-    ...(g.log || []).map(x => ({t: x.time, m: x.msg})),
-  ].sort((a, b) => a.t < b.t ? 1 : -1).slice(0, 25);
-  _dcSet('dc-feed', feed.length ? feed.map(x => `<div><b>${_apEsc(x.t)}</b>${_apEsc(x.m)}</div>`).join('') : '<div>No events yet — switch on the autopilot.</div>');
+  // thought stream
+  dcThoughts(d);
 }
 
 async function dcKill() {

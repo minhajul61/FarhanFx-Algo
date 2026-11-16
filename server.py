@@ -1636,6 +1636,42 @@ def _get_pub_mkt():
     return _pub_mkt
 
 
+_pulse_cache: dict = {"t": 0.0, "tickers": {}}
+_PULSE_MAJORS = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "LINK", "SUI"]
+
+
+@app.get("/api/crypto/pulse")
+def crypto_pulse(current_user: dict = Depends(_get_current_user)):
+    """Live price strip for the dashboard: majors + the coins the bots and the
+    AI are looking at. One Binance call, cached 20s for every viewer."""
+    if _time.time() - _pulse_cache["t"] > 20:
+        pm = _get_pub_mkt()
+        try:
+            _pulse_cache["tickers"] = pm.fetch_tickers() if pm else {}
+            _pulse_cache["t"] = _time.time()
+        except Exception as e:
+            if not _pulse_cache["tickers"]:
+                return JSONResponse(status_code=502, content={"error": f"Market data unavailable: {str(e)[:120]}"})
+    tickers = _pulse_cache["tickers"]
+    wanted = list(_PULSE_MAJORS)
+    for b in _crypto_bots.values():
+        if b.get("username") == current_user["username"] and b.get("status") == "active":
+            wanted.append(str(b.get("symbol", "")).split("/")[0])
+    for row in (_autopilot.state.get("leaderboard") or [])[:8]:
+        wanted.append(str(row.get("symbol", "")).split("/")[0])
+    out, seen = [], set()
+    for base in wanted:
+        if not base or base in seen:
+            continue
+        seen.add(base)
+        t = tickers.get(f"{base}/USDT:USDT")
+        if t and t.get("last"):
+            out.append({"base": base, "price": t["last"], "chg": round(float(t.get("percentage") or 0), 2),
+                        "vol": t.get("quoteVolume")})
+    return {"tickers": out, "age": round(_time.time() - _pulse_cache["t"], 1),
+            "server_time": int(_time.time() * 1000)}
+
+
 @app.get("/api/crypto/ohlcv")
 def crypto_ohlcv(symbol: str = "BTC/USDT:USDT", timeframe: str = "1h", limit: int = 100):
     pm = _get_pub_mkt()
