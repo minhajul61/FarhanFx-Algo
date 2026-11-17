@@ -3820,7 +3820,10 @@ function apStartPaint() {
   document.getElementById('ap-s-lvinfo').innerHTML = v ? `${v.risk_pct}% risk per trade · up to ${v.max_positions} trades at once · ` +
     `≈ <b style="color:var(--green)">${_apMoney(v.per_1000_day * bal / 1000)}/day</b> on average · worst drop in the 2-year test ` +
     `<b style="color:${v.max_dd > 40 ? 'var(--red)' : v.max_dd > 20 ? 'var(--amber)' : 'var(--green)'}">-${v.max_dd}% (−${_apMoney(bal * v.max_dd / 100)})</b>` : '';
-  const running = c.enabled && c.mode === mode && c.level === _apLevel && Math.abs((c.balance || 0) - bal) < 0.01;
+  // "running" only when the risk manager really uses this level too (it can be changed elsewhere)
+  const rc = (d.risk && d.risk.config) || {};
+  const rmMatches = v && Number(rc.risk_pct) === Number(v.risk_pct) && Number(rc.max_positions) === Number(v.max_positions);
+  const running = c.enabled && c.mode === mode && c.level === _apLevel && Math.abs((c.balance || 0) - bal) < 1 && rmMatches;
   const go = document.getElementById('ap-s-go');
   go.className = 'ap-btn ' + (mode === 'live' ? 'live' : 'primary');
   go.innerHTML = c.enabled ? '<i class="ti ti-refresh"></i> APPLY &amp; KEEP RUNNING' : (mode === 'live' ? '<i class="ti ti-bolt"></i> START AI — LIVE' : '<i class="ti ti-player-play"></i> START AI — DEMO');
@@ -3837,7 +3840,7 @@ async function apStartAI(confirmed) {
   if (mode === 'live' && !confirmed) { apAskLive(); return; }
   const r = await apiFetch('/api/autopilot/start', {method: 'POST', body: JSON.stringify({balance: bal, level: _apLevel, mode, confirm_live: mode === 'live'})});
   if (r.error) { toastErr(r.error); return; }
-  toast(`AI started (${mode.toUpperCase()}) with ${_apMoney(bal)} — ${_apLevel} risk. Scanning the market…`, true);
+  toast(r.note ? `AI started — ${r.note}` : `AI started (${mode.toUpperCase()}) with ${_apMoney(bal)} — ${_apLevel} risk. Scanning the market…`, true);
   setTimeout(apLoad, 400);
 }
 

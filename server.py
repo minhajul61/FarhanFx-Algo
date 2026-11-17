@@ -4074,6 +4074,12 @@ def _bot_step(bot):
     signal = _get_bot_signal(bot, closed)
     bot["last_error"] = None
     if not signal:
+        # say why nothing can happen even when a signal comes: every risk slot is taken
+        slots = int(_rm_for(uname).config["max_positions"])
+        held = _open_positions(mode, ex, uname)
+        if held >= slots:
+            bot["last_error"] = (f"⏸ Risk manager: all {held}/{slots} trade slots are in use — "
+                                 f"this bot's next signal is skipped until a trade closes")
         return
     bot["total_signals"] = bot.get("total_signals", 0) + 1
     bot["last_signal"] = signal
@@ -4658,15 +4664,18 @@ def autopilot_start(req: AutopilotStartReq, admin: dict = Depends(_require_admin
     if bal < 50:
         return JSONResponse(status_code=400, content={"error": "Balance must be at least $50"})
     changes = {"risk_pct": lvl["risk_pct"], "max_positions": lvl["max_positions"]}
+    note = None
     if req.mode == "demo":
         wallet = float(_rm.state["demo_wallet"])
         if abs(wallet - bal) > 0.01:
             if _open_positions("demo"):
-                return JSONResponse(status_code=400, content={"error":
-                    f"The demo wallet is ${wallet:,.2f} and demo trades are open — keep ${wallet:,.2f} "
-                    f"or wait for them to close before changing the balance"})
-            _rm.update_config({"demo_capital": bal})
-            _rm.reset_demo_wallet()
+                # open demo trades belong to the current wallet: keep it, still apply the level
+                note = (f"Demo trades are open, so the wallet stays at ${wallet:,.2f} until they close "
+                        f"— the {req.level} level is applied now")
+                bal = wallet
+            else:
+                _rm.update_config({"demo_capital": bal})
+                _rm.reset_demo_wallet()
     else:
         changes["capital_cap_usd"] = bal       # never size live trades from more than this
     _rm.update_config(changes)
@@ -4676,7 +4685,8 @@ def autopilot_start(req: AutopilotStartReq, admin: dict = Depends(_require_admin
     if not ok:
         return JSONResponse(status_code=400, content={"error": why})
     return {"success": True, "config": _autopilot.config, "risk": _rm.config,
-            "expect": {"per_day": round(lvl["per_1000_day"] * bal / 1000, 2), "max_dd_pct": lvl["max_dd"]}}
+            "expect": {"per_day": round(lvl["per_1000_day"] * bal / 1000, 2), "max_dd_pct": lvl["max_dd"]},
+            "note": note}
 
 
 @app.post("/api/autopilot/scan")

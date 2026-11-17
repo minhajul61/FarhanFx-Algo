@@ -314,6 +314,11 @@ def test_max_positions():
     check("only 3 positions opened", len(opened) == 3, len(opened))
     check("4th told why", "3/3 positions" in (server._crypto_bots["m3"].get("last_error") or ""),
           server._crypto_bots["m3"].get("last_error"))
+    SIGNAL["v"] = None
+    mkt.new_candle(100.0)
+    tick("m3")
+    check("a waiting bot keeps saying every slot is in use", "3/3 trade slots are in use" in (server._crypto_bots["m3"].get("last_error") or ""),
+          server._crypto_bots["m3"].get("last_error"))
 
 
 def test_daily_loss_limit():
@@ -1029,7 +1034,8 @@ def test_one_click_start():
     check("start: live needs explicit confirmation", getattr(bad, "status_code", 200) == 400)
     add_bot("open1", mode="demo")["open_side"] = "BUY"
     bad = server.autopilot_start(server.AutopilotStartReq(balance=900, level="balanced", mode="demo"), {"username": "admin"})
-    check("start: demo balance is not reset under open trades", getattr(bad, "status_code", 200) == 400 and server._rm.state["demo_wallet"] == 2500)
+    check("start: under open demo trades the wallet is kept but the level still applies",
+          bad.get("success") and server._rm.state["demo_wallet"] == 2500 and server._rm.config["max_positions"] == 8 and bad.get("note"), bad)
     server._autopilot.config["enabled"] = False
 
 
