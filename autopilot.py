@@ -38,28 +38,46 @@ FILE = "autopilot_state.json"
 # Strategies that made money in BOTH halves of a 1-year, 10-coin backtest
 # with fees, slippage and these exact stop/target settings (full_backtest.py
 # + stop/target sweep chosen on the first 8 months, confirmed on the last 4).
+# Deep research (strategy_research.py, Nov 2026): 2 years × 20 coins, 9 stop/
+# target settings, best setting chosen on the first 16 months (train) and then
+# judged on the last 8 months it never saw (test). Kept only when profitable
+# in both halves, on 8+ coins, and at 5+ of the 9 settings (not one lucky one).
+def _p(sl, rr):
+    return {"sl_atr": sl, "reward_r": rr, "tp_atr": 0.0, "trailing_atr": 0.0}
+
+
 APPROVED_PROFILES = {
-    "trend_breakout": {
-        "tf": "4h", "params": {"sl_atr": 2.0, "reward_r": 3.0, "tp_atr": 0.0, "trailing_atr": 0.0},
-        "evidence": "test +0.31R/trade, profitable on 8/10 coins in both halves, 330 trades",
+    "rsi_trend": {
+        "tf": "4h", "params": _p(3.0, 3.0),
+        "evidence": "2y/20 coins: train +0.35R, test +0.19R/trade (203 trades), 13/20 coins up in both halves, 9/9 settings",
     },
-    "bb_squeeze": {
-        "tf": "4h", "params": {"sl_atr": 1.5, "reward_r": 1.5, "tp_atr": 0.0, "trailing_atr": 0.0},
-        "evidence": "test +0.29R/trade, 6/10 coins profitable out of sample, 190 trades",
+    "ema_trend": {
+        "tf": "4h", "params": _p(2.0, 3.0),
+        "evidence": "2y/20 coins: train +0.22R, test +0.12R/trade (280 trades), 11/20 coins, 8/9 settings",
     },
     "fibonacci_retracement": {
-        "tf": "4h", "params": {"sl_atr": 1.5, "reward_r": 3.0, "tp_atr": 0.0, "trailing_atr": 0.0},
-        "evidence": "test +0.11R/trade, 5/10 coins profitable out of sample, 594 trades",
+        "tf": "4h", "params": _p(3.0, 3.0),
+        "evidence": "2y/20 coins: train +0.06R, test +0.06R/trade (514 trades), 11/20 coins, 6/9 settings",
     },
-    "super_breakout": {
-        "tf": "4h", "params": {"sl_atr": 3.0, "reward_r": 3.0, "tp_atr": 0.0, "trailing_atr": 0.0},
-        "evidence": "test +0.25R/trade, 147 trades (fewer signals)",
+    "trend_breakout": {
+        "tf": "1d", "params": _p(1.5, 2.0),
+        "evidence": "2y/20 coins daily: train +0.25R, test +0.28R/trade (115 trades), 10/20 coins, 7/9 settings",
     },
-    # strategy_research.py: positive on the unseen test half at all 9 stop/target settings
-    "smc_sweep": {
-        "tf": "4h", "params": {"sl_atr": 1.5, "reward_r": 2.0, "tp_atr": 0.0, "trailing_atr": 0.0},
-        "evidence": "test +0.35R/trade, profitable on 8/10 coins in both halves, 187 trades",
-    },
+}
+# smc_sweep passed the 20-coin research but lost money in the portfolio replay
+# on 20 coins it had never seen (-0.28R per trade), so it was removed.
+TF_SECONDS = {"15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
+
+# One-click start: the user picks a balance and one of these; the AI does the
+# rest. Numbers are from the portfolio replay (portfolio.py): the hunter with
+# these strategies on 40 coins, Mar 2025 - Nov 2026, compounded, fees included.
+RISK_LEVELS = {
+    "safe":       {"risk_pct": 0.5, "max_positions": 5, "label": "Safe",
+                   "per_1000_day": 0.53, "trades_day": 0.7, "max_dd": 13, "months_up": "11/18"},
+    "balanced":   {"risk_pct": 1.0, "max_positions": 8, "label": "Balanced",
+                   "per_1000_day": 1.41, "trades_day": 1.1, "max_dd": 34, "months_up": "10/18"},
+    "aggressive": {"risk_pct": 2.0, "max_positions": 10, "label": "Aggressive",
+                   "per_1000_day": 2.39, "trades_day": 1.3, "max_dd": 62, "months_up": "8/18"},
 }
 
 EXCLUDE_BASES = {
@@ -78,6 +96,9 @@ DEFAULT_CONFIG = {
     "validate_days": 180,
     "min_trades": 6,
     "strategies": list(APPROVED_PROFILES.keys()),
+    "max_atr_pct": 6.0,          # skip coins that move more per 4h candle than any tested coin
+    "level": "balanced",
+    "balance": 1000.0,
 }
 
 _lock = threading.RLock()
@@ -121,6 +142,15 @@ def _adx(h, l, c, n=14):
     for v in dx[n:]:
         adx = (adx * (n - 1) + v) / n
     return adx
+
+
+def atr_pct(ohlcv: list, n: int = 14) -> float | None:
+    """Average true range of the last n candles as % of the last close."""
+    if len(ohlcv) < n + 2 or not ohlcv[-1][4]:
+        return None
+    tr = [max(ohlcv[k][2] - ohlcv[k][3], abs(ohlcv[k][2] - ohlcv[k - 1][4]), abs(ohlcv[k][3] - ohlcv[k - 1][4]))
+          for k in range(len(ohlcv) - n, len(ohlcv))]
+    return round(sum(tr) / n / ohlcv[-1][4] * 100, 2)
 
 
 def momentum_score(ohlcv_4h: list) -> dict | None:
@@ -216,7 +246,8 @@ class Autopilot:
 
     def update_config(self, changes: dict):
         with _lock:
-            for k in ("scan_hours", "universe", "min_volume_usd", "candidates", "validate_days", "min_trades"):
+            for k in ("scan_hours", "universe", "min_volume_usd", "candidates", "validate_days", "min_trades",
+                      "max_atr_pct", "balance"):
                 if k in changes and changes[k] is not None:
                     self.config[k] = type(DEFAULT_CONFIG[k])(changes[k])
             if "strategies" in changes:
@@ -225,6 +256,9 @@ class Autopilot:
                     self.config["strategies"] = s
             self.config["scan_hours"] = min(24, max(1, self.config["scan_hours"]))
             self.config["candidates"] = min(15, max(3, self.config["candidates"]))
+            if changes.get("level") in RISK_LEVELS:
+                self.config["level"] = changes["level"]
+            self.config["max_atr_pct"] = min(50.0, max(1.0, self.config["max_atr_pct"]))
             self.save()
 
     def start(self):
@@ -367,33 +401,46 @@ class Autopilot:
         t0 = time.time()
         try:
             cfg = dict(self.config)
-            board, signals, last_bar = [], [], 0
+            board, signals, last_bar = [], [], {}
+            tfs = sorted({APPROVED_PROFILES[st]["tf"] for st in cfg["strategies"]} | {"4h"})
             for sym, vol in self._universe(cfg):
-                try:
-                    rows = self.hooks["ohlcv"](sym, "4h", self.HUNT_BARS)
-                except Exception:
-                    continue
+                rows_by = {}
+                for tf in tfs:
+                    try:
+                        rows_by[tf] = self.hooks["ohlcv"](sym, tf, self.HUNT_BARS)
+                    except Exception:
+                        rows_by[tf] = []
+                rows = rows_by["4h"]
                 if len(rows) < 120:
                     continue
-                last_bar = max(last_bar, rows[-1][0])
+                for tf, r in rows_by.items():
+                    if r:
+                        last_bar[tf] = max(last_bar.get(tf, 0), r[-1][0])
                 m = momentum_score(rows[-120:])
                 if m:
                     board.append({"symbol": sym, "volume_24h": round(vol), **m})
+                atrp = atr_pct(rows)
                 for strat in cfg["strategies"]:
                     prof = APPROVED_PROFILES[strat]
+                    r = rows_by.get(prof["tf"]) or []
+                    if len(r) < 60:
+                        continue
                     try:
-                        sig = self.hooks["signal"](strat, sym, prof["tf"], prof["params"], rows)
+                        sig = self.hooks["signal"](strat, sym, prof["tf"], prof["params"], r)
                     except Exception:
                         sig = None
                     if sig in ("BUY", "SELL"):
                         signals.append({"symbol": sym, "strategy": strat, "tf": prof["tf"], "side": sig,
-                                        "params": prof["params"], "bar": rows[-1][0],
+                                        "params": prof["params"], "bar": r[-1][0], "atr_pct": atrp,
                                         "momentum": (m or {}).get("score", 0), "trend": (m or {}).get("direction")})
             board.sort(key=lambda x: -x["score"])
-            fresh = [s for s in signals if s["bar"] == last_bar]
+            fresh = [s for s in signals if s["bar"] == last_bar.get(s["tf"])]
+            cap = float(cfg.get("max_atr_pct") or 0)
             for s in fresh:
+                wild = bool(cap and s.get("atr_pct") and s["atr_pct"] > cap)
                 try:
-                    e = self._edge(s["symbol"], s["strategy"], s["tf"], s["params"])
+                    e = {"ok": False, "trades": 0, "avg_r": 0} if wild else \
+                        self._edge(s["symbol"], s["strategy"], s["tf"], s["params"])
                 except Exception as ex:
                     e = {"ok": False, "trades": 0, "avg_r": 0, "error": str(ex)[:80]}
                 s["edge"] = e
@@ -401,24 +448,40 @@ class Autopilot:
                 s["rank"] = round(40 * min(1.0, max(-1.0, (e.get("avg_r") or 0) / 0.5)) + 0.4 * s["momentum"]
                                   + (15 if aligned else 0), 1)
                 s["direction"] = "UP" if s["side"] == "BUY" else "DOWN"
-                s["why"] = (f"{s['side']} signal on the {datetime.fromtimestamp(s['bar'] / 1000, tz=timezone.utc).strftime('%H:%M')} UTC "
+                s["why"] = (f"{s['side']} signal, but {s['symbol'].split('/')[0]} moves {s['atr_pct']:.1f}% per 4h candle — "
+                            f"tested coins move up to {cap:g}%, so its stop and target would be unrealistic; skipped") if wild else \
+                           (f"{s['side']} signal on the {datetime.fromtimestamp(s['bar'] / 1000, tz=timezone.utc).strftime('%H:%M')} UTC "
                             f"candle; {s['strategy'].replace('_', ' ')} on this coin, last {e.get('days', 180)}d: "
                             f"{e.get('trades', 0)} trades, {(e.get('avg_r') or 0):+.2f}R avg"
                             + ("" if e.get("ok") else " — no edge here, skipped")
                             + (f"; momentum {s['momentum']:.0f} {s['trend']}" if s.get("trend") else ""))
             tradeable = sorted([s for s in fresh if s["edge"].get("ok")], key=lambda s: -s["rank"])
-            new_candle = last_bar > int(self.state.get("hunted_bar") or 0)
-            # the backtest enters right after the candle closes — never chase an old signal
-            age_min = (time.time() * 1000 - (last_bar + 4 * 3600 * 1000)) / 60000 if last_bar else 0
-            too_late = age_min > self.MAX_SIGNAL_AGE_MIN
+            # Each timeframe's candle is acted on once, and only right after it
+            # closes — the backtest enters there, so an old signal is never chased.
+            hunted = dict(self.state.get("hunted") or {})
+            if self.state.get("hunted_bar"):
+                hunted["4h"] = max(int(hunted.get("4h") or 0), int(self.state["hunted_bar"]))
+            now_ms = time.time() * 1000
+            new_tfs, late_tfs = set(), set()
+            for tf, bar in last_bar.items():
+                if bar > int(hunted.get(tf) or 0):
+                    age = (now_ms - (bar + TF_SECONDS.get(tf, 14400) * 1000)) / 60000
+                    (late_tfs if age > self.MAX_SIGNAL_AGE_MIN else new_tfs).add(tf)
+            new_candle = "4h" in new_tfs or "4h" in late_tfs
             actions, active = [], []
             if apply and cfg["enabled"]:
-                actions, active = self.hooks["open"](tradeable if (new_candle and not too_late) else [], cfg)
-                if new_candle and too_late and tradeable:
-                    actions.insert(0, f"Candle closed {age_min:.0f} min ago — too late to enter its signals, waiting for the next candle")
+                go = [s for s in tradeable if s["tf"] in new_tfs]
+                actions, active = self.hooks["open"](go, cfg)
+                late = [s for s in tradeable if s["tf"] in late_tfs]
+                if late:
+                    actions.insert(0, f"{', '.join(sorted({s['tf'] for s in late}))} candle closed more than "
+                                      f"{self.MAX_SIGNAL_AGE_MIN} min ago — too late to enter its signals, waiting for the next candle")
             with _lock:
-                if apply and cfg["enabled"] and new_candle:
-                    self.state["hunted_bar"] = last_bar
+                if apply and cfg["enabled"]:
+                    for tf in new_tfs | late_tfs:
+                        hunted[tf] = last_bar[tf]
+                    self.state["hunted"] = hunted
+                    self.state["hunted_bar"] = int(hunted.get("4h") or 0)
                 self.state["leaderboard"] = board[:20]
                 self.state["signals"] = [{k: v for k, v in s.items() if k != "params"} for s in
                                          sorted(fresh, key=lambda s: -s.get("rank", 0))][:30]
@@ -429,7 +492,7 @@ class Autopilot:
                 self.state["scan_seconds"] = round(time.time() - t0, 1)
                 self._log(f"Scanned {len(board)} coins × {len(cfg['strategies'])} strategies: "
                           f"{len(fresh)} fresh signal(s), {len(tradeable)} with an edge"
-                          + ("" if new_candle or not (apply and cfg["enabled"]) else " — this candle was already traded"))
+                          + ("" if new_candle or not (apply and cfg["enabled"]) else " — this candle was already handled"))
                 for a in actions:
                     self._log(a)
                 self.save()
@@ -440,7 +503,7 @@ class Autopilot:
                 self.save()
 
     # ── coin picker for one strategy (ALGO BOTS "AI picks the pair") ─────────
-    PICK_DAYS = {"15m": 45, "1h": 120, "4h": 180, "1d": 365}
+    PICK_DAYS = {"15m": 45, "1h": 120, "4h": 180, "1d": 730}
 
     def _board(self, max_age=1800):
         """Momentum leaderboard of the liquid universe, cached 30 min."""
@@ -537,4 +600,4 @@ class Autopilot:
     def snapshot(self) -> dict:
         with _lock:
             return {"config": dict(self.config), "state": dict(self.state),
-                    "profiles": APPROVED_PROFILES}
+                    "profiles": APPROVED_PROFILES, "levels": RISK_LEVELS}

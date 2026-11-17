@@ -143,6 +143,77 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
 .ap-btn.danger{color:var(--red);border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.07)}
 .ap-btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
 .ap-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.ap-start{margin-bottom:16px}
+.ap-start-row{display:grid;grid-template-columns:200px 160px 1fr;gap:14px;align-items:end}
+.ap-start label{display:block;font-size:9.5px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px}
+.ap-start input,.ap-start select{width:100%;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:var(--font);font-size:14px;font-weight:700}
+.ap-levels{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+.ap-level{--lc:var(--cyan);position:relative;overflow:hidden;border:1px solid var(--border);border-radius:12px;padding:14px 10px;cursor:pointer;background:var(--bg2);
+  color:var(--text2);font-family:var(--font);font-size:13px;font-weight:800;letter-spacing:2px;text-transform:uppercase;transition:all .2s}
+.ap-level.lv-safe{--lc:var(--green)}.ap-level.lv-balanced{--lc:var(--cyan)}.ap-level.lv-aggressive{--lc:var(--red)}
+.ap-level:hover{transform:translateY(-1px);border-color:var(--lc);color:var(--text)}
+.ap-level.sel{color:#fff;border-color:var(--lc);background:linear-gradient(135deg,color-mix(in srgb,var(--lc) 28%,transparent),color-mix(in srgb,var(--lc) 6%,transparent));
+  box-shadow:0 0 0 1px var(--lc) inset,0 0 22px color-mix(in srgb,var(--lc) 40%,transparent);text-shadow:0 0 12px var(--lc)}
+.ap-level.sel::after{content:"";position:absolute;top:0;bottom:0;width:40%;left:-100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.12),transparent);animation:pnlScan 2.8s ease-in-out infinite}
+.as-lvinfo{font-size:11px;color:var(--text2);margin-top:10px;line-height:1.6}
+.ap-start-note{font-size:10.5px;color:var(--text3);margin-top:12px;line-height:1.55}
+
+/* ── Start-AI card: live "AI is trading" look ── */
+.ap-start{position:relative;overflow:hidden;isolation:isolate}
+.ap-start::before{content:"";position:absolute;inset:-1px;border-radius:16px;padding:1px;z-index:-1;opacity:0;transition:opacity .4s;
+  background:conic-gradient(from var(--as-a,0deg),transparent 0 60%,var(--cyan) 75%,var(--accent) 85%,transparent 100%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:asSpin 4s linear infinite}
+.ap-start.run::before{opacity:1}
+.ap-start.run{background:radial-gradient(120% 140% at 0% 0%,rgba(16,185,129,.08),transparent 55%),radial-gradient(120% 140% at 100% 0%,rgba(139,92,246,.10),transparent 55%),var(--card)}
+.ap-start .as-scan{position:absolute;top:0;left:-40%;width:40%;height:2px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:0}
+.ap-start.run .as-scan{opacity:1;animation:dcScanLine 3.2s ease-in-out infinite}
+@property --as-a{syntax:'<angle>';inherits:false;initial-value:0deg}
+@keyframes asSpin{to{--as-a:360deg}}
+.as-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.as-head h3{margin:0!important}
+.as-pill{display:inline-flex;align-items:center;gap:7px;font-size:10px;font-weight:800;letter-spacing:1.5px;padding:5px 10px;border-radius:99px;border:1px solid var(--border);color:var(--text3);background:var(--bg2)}
+.as-pill i{width:7px;height:7px;border-radius:50%;background:var(--text3)}
+.as-pill.on{color:var(--green);border-color:rgba(16,185,129,.45);background:rgba(16,185,129,.1)}
+.as-pill.on i{background:var(--green);box-shadow:0 0 10px var(--green);animation:pulse 1.2s infinite}
+.as-pill.live{color:#fbbf24;border-color:rgba(251,191,36,.5);background:rgba(251,191,36,.1)}
+.as-pill.live i{background:#fbbf24;box-shadow:0 0 10px #fbbf24;animation:pulse 1s infinite}
+.as-eq{display:inline-flex;gap:2px;align-items:flex-end;height:14px}
+.as-eq b{width:3px;background:var(--cyan);border-radius:2px;height:3px}
+.ap-start.run .as-eq b{animation:dcEq 1s ease-in-out infinite}
+.ap-start.run .as-eq b:nth-child(2){animation-delay:.15s}.ap-start.run .as-eq b:nth-child(3){animation-delay:.3s}.ap-start.run .as-eq b:nth-child(4){animation-delay:.45s}
+.as-next{margin-left:auto;font-size:10.5px;color:var(--text3);font-family:var(--mono,monospace);letter-spacing:.5px}
+.as-next b{color:var(--cyan);font-size:13px}
+.as-sum{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.as-sum div{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:10px 12px}
+.as-sum span{display:block;font-size:9px;letter-spacing:1.4px;color:var(--text3);text-transform:uppercase}
+.as-sum b{display:block;font-size:17px;font-weight:800;margin-top:4px;transition:color .3s}
+.as-lane{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.as-trade{position:relative;overflow:hidden;display:grid;grid-template-columns:auto 1fr 150px;gap:14px;align-items:center;padding:11px 14px;border-radius:12px;border:1px solid var(--border);background:var(--bg2);animation:tgRowIn .35s ease both}
+.as-trade::after{content:"";position:absolute;top:0;bottom:0;width:30%;left:-100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.05),transparent);animation:pnlScan 3.5s ease-in-out infinite}
+.as-trade.BUY{border-left:3px solid var(--green)}.as-trade.SELL{border-left:3px solid var(--red)}
+.as-trade.win{animation:tgRowIn .35s ease both,pulse-glow-buy 2.6s ease-in-out infinite}
+.as-trade.lose{animation:tgRowIn .35s ease both,pulse-glow-sell 2.6s ease-in-out infinite}
+.as-coin{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;letter-spacing:.3px;background:linear-gradient(135deg,rgba(139,92,246,.25),rgba(34,211,238,.15));border:1px solid var(--border2)}
+.as-meta .t{font-weight:800;font-size:13px;display:flex;gap:8px;align-items:center}
+.as-side{font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px}
+.as-side.BUY{color:var(--green);background:rgba(16,185,129,.14)}.as-side.SELL{color:var(--red);background:rgba(239,68,68,.14)}
+.as-meta .st{font-size:10px;color:#c4b5fd;letter-spacing:.8px;text-transform:uppercase;margin-top:2px}
+.as-track{position:relative;height:6px;border-radius:99px;margin:12px 0 4px;background:linear-gradient(90deg,rgba(239,68,68,.55),rgba(255,255,255,.08) 50%,rgba(16,185,129,.55))}
+.as-track .en{position:absolute;top:-3px;width:2px;height:12px;background:var(--text3);border-radius:2px}
+.as-track .px{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;transform:translate(-50%,-50%);background:#fff;box-shadow:0 0 0 3px rgba(34,211,238,.35),0 0 14px var(--cyan);transition:left .9s cubic-bezier(.2,.8,.2,1)}
+.as-lbl{display:flex;justify-content:space-between;font-size:9.5px;color:var(--text3);font-family:var(--mono,monospace)}
+.as-pnl{text-align:right}
+.as-pnl b{display:block;font-size:19px;font-weight:800}
+.as-pnl b.up{color:var(--green);animation:pnlGlowGreen 2.4s infinite}.as-pnl b.dn{color:var(--red);animation:pnlGlowRed 2.4s infinite}
+.as-pnl b.pop{animation:pnlPop .45s ease}
+.as-pnl small{font-size:10px;color:var(--text3)}
+.as-idle{display:flex;align-items:center;gap:14px;padding:14px;border-radius:12px;border:1px dashed var(--border2);background:var(--bg2);margin-bottom:14px;font-size:11.5px;color:var(--text2);line-height:1.5}
+.as-radar{width:44px;height:44px;border-radius:50%;flex:none;position:relative;border:1px solid rgba(34,211,238,.35);background:radial-gradient(circle,rgba(34,211,238,.12) 0 2px,transparent 3px),repeating-radial-gradient(circle,transparent 0 9px,rgba(34,211,238,.12) 10px)}
+.as-radar::after{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(rgba(34,211,238,.55),transparent 30%);animation:dcSweep 2.6s linear infinite}
+.ap-btn.running{background:linear-gradient(135deg,rgba(16,185,129,.25),rgba(34,211,238,.15));border-color:rgba(16,185,129,.5);color:var(--green);opacity:1!important;cursor:default}
+.ap-btn.running i{animation:apSpin 2s linear infinite}
+@media (max-width:700px){.as-sum{grid-template-columns:1fr 1fr}.as-trade{grid-template-columns:auto 1fr}.as-pnl{grid-column:1/-1;text-align:left;display:flex;gap:10px;align-items:baseline}.as-next{margin-left:0;width:100%}}
+@media (max-width:700px){.ap-start-row{grid-template-columns:1fr 1fr}.ap-start-row>div:last-child{grid-column:1/-1}.ap-level{font-size:11px;letter-spacing:1px;padding:12px 4px}}
 .ap-stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;position:relative;overflow:hidden}
 .ap-stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(var(--accent),var(--cyan))}
 .ap-stat .k{font-size:9.5px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase}
@@ -1124,11 +1195,30 @@ tr:hover td{background:rgba(139,92,246,0.07)}
             <div class="ap-think" id="ap-think">waiting for data<span class="cur"></span></div>
           </div>
           <div class="ap-actions">
-            <button class="ap-btn primary" id="ap-btn-demo" onclick="apToggle(true,'demo')"><i class="ti ti-player-play"></i> START DEMO</button>
-            <button class="ap-btn live" id="ap-btn-live" onclick="apAskLive()"><i class="ti ti-bolt"></i> GO LIVE</button>
             <button class="ap-btn" id="ap-btn-stop" onclick="apToggle(false)"><i class="ti ti-player-pause"></i> PAUSE AUTOPILOT</button>
             <button class="ap-btn" onclick="apScan()"><i class="ti ti-radar-2"></i> SCAN NOW</button>
           </div>
+        </div>
+
+        <div class="ap-card ap-start" id="ap-start">
+          <div class="as-scan"></div>
+          <div class="as-head">
+            <h3><i class="ti ti-rocket"></i> AI Auto-Trade</h3>
+            <span class="as-pill" id="ap-s-pill"><i></i><span>READY</span></span>
+            <span class="as-eq"><b></b><b></b><b></b><b></b></span>
+            <span class="as-next" id="ap-s-next"></span>
+          </div>
+          <div id="ap-s-live"></div>
+          <div class="ap-start-row">
+            <div><label>Balance (USDT)</label><input type="number" id="ap-s-bal" min="50" step="50" value="1000" oninput="apStartPaint()"/></div>
+            <div><label>Account</label><select id="ap-s-mode" onchange="apStartPaint()"><option value="demo">Demo (no real money)</option><option value="live">Live — Binance Futures</option></select></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="ap-btn primary" id="ap-s-go" style="flex:1;justify-content:center;padding:12px 16px" onclick="apStartAI()"><i class="ti ti-player-play"></i> START AI</button>
+            </div>
+          </div>
+          <div class="ap-levels" id="ap-s-levels"></div>
+          <div class="as-lvinfo" id="ap-s-lvinfo"></div>
+          <div class="ap-start-note" id="ap-s-note"></div>
         </div>
 
         <div class="ap-grid">
@@ -1171,7 +1261,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
             <div class="ap-log" id="ap-log"></div>
           </div>
           <div class="ap-card">
-            <h3><i class="ti ti-certificate"></i> Approved strategies (1-year backtest)</h3>
+            <h3><i class="ti ti-certificate"></i> Approved strategies (2-year, 20-coin backtest)</h3>
             <div id="ap-profiles" style="font-size:11.5px;line-height:1.6;color:var(--text2)"></div>
           </div>
         </div>
@@ -2132,35 +2222,11 @@ tr:hover td{background:rgba(139,92,246,0.07)}
               <div class="field" style="margin-bottom:6px">
                 <label>Strategy</label>
                 <select id="bot-strategy" onchange="botStrategyChange()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-family:var(--font);font-size:12px;width:100%">
-                  <optgroup label="✅ Tested — can run LIVE on 4h">
-                  <option value="trend_breakout" selected>Trend Breakout — test +0.31R/trade, 8/10 coins</option>
-                  <option value="bb_squeeze">BB Squeeze — test +0.29R/trade</option>
-                  <option value="super_breakout">Super Breakout — test +0.25R/trade</option>
-                  <option value="fibonacci_retracement">Fibonacci Golden Zone — test +0.11R/trade</option>
-                  <option value="smc_sweep">SMC Liquidity Sweep (trend) — test +0.35R/trade, 8/10 coins</option>
-                  </optgroup>
-                  <optgroup label="⚠ Demo only — lost money in the 1-year backtest">
-                  <option value="vwap_bands">VWAP Bands mean-reversion</option>
-                  <option value="ifvg">Inverse FVG</option>
-                  <option value="ob_fvg">Order Block + FVG</option>
-                  <option value="false_breakout">False Breakout Trap</option>
-                  <option value="rsi">RSI mean-reversion</option>
-                  <option value="orb">Opening Range Breakout</option>
-                  <option value="bos_choch">BOS / CHoCH</option>
-                  <option value="inducement_continuation">Inducement Continuation</option>
-                  <option value="vwap_rsi">VWAP + RSI</option>
-                  <option value="macd_cross">MACD crossover</option>
-                  <option value="rsi_divergence">RSI divergence</option>
-                  <option value="bpr">BPR (Balanced Price Range)</option>
-                  <option value="liquidity_sweep">Liquidity Sweep</option>
-                  <option value="silver_bullet">Silver Bullet (ICT)</option>
-                  <option value="volume_profile">Volume Profile</option>
-                  <option value="fvg">Fair Value Gap</option>
-                  <option value="bb_rsi_strict">BB + RSI strict</option>
-                  <option value="pa_engulf">Price action engulfing (trend)</option>
-                  <option value="rsi_trend">RSI pullback (trend)</option>
-                  <option value="ema_trend">EMA 20/50 cross (trend)</option>
-                  <option value="macd_trend">MACD cross (trend)</option>
+                  <optgroup label="✅ Passed the 2-year, 20-coin backtest — demo or LIVE">
+                  <option value="rsi_trend" selected>RSI Pullback (trend) · 4h — test +0.19R/trade</option>
+                  <option value="ema_trend">EMA 20/50 Cross (trend) · 4h — test +0.12R/trade</option>
+                  <option value="fibonacci_retracement">Fibonacci Golden Zone · 4h — test +0.06R/trade</option>
+                  <option value="trend_breakout">Trend Breakout (daily) · 1d — test +0.28R/trade</option>
                   </optgroup>
                 </select>
               </div>
@@ -2248,12 +2314,10 @@ tr:hover td{background:rgba(139,92,246,0.07)}
                 </select>
                 <select id="cx-hist-strategy" onchange="algoLoadHistory()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:10px;font-family:var(--font)">
                   <option value="all">All Strategies</option>
-                  <option value="rsi">RSI</option>
-                  <option value="macd_cross">MACD Cross</option>
-                  <option value="bb_squeeze">BB Squeeze</option>
-                  <option value="false_breakout">False Breakout</option>
-                  <option value="trend_breakout">Trend Breakout</option>
-                  <option value="vwap_bands">VWAP Bands</option>
+                  <option value="rsi_trend">RSI Pullback (trend)</option>
+                  <option value="ema_trend">EMA 20/50 Cross (trend)</option>
+                  <option value="fibonacci_retracement">Fibonacci Golden Zone</option>
+                  <option value="trend_breakout">Trend Breakout (daily)</option>
                 </select>
                 <select id="algo-hist-filter" onchange="algoLoadHistory()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:10px;font-family:var(--font)">
                   <option value="all">All Status</option>
@@ -3525,12 +3589,11 @@ function apRender(d) {
   core.className = 'ap-core ' + (!c.enabled || s.cls === 'halt' ? 'off' : (c.mode === 'live' ? 'live' : '')) + (st.scanning ? ' busy' : '');
   const chip = document.getElementById('ap-chip'); chip.className = 'ap-chip ' + s.cls;
   document.getElementById('ap-chip-txt').textContent = s.txt;
-  document.getElementById('ap-btn-demo').disabled = c.enabled && c.mode === 'demo';
-  document.getElementById('ap-btn-live').disabled = c.enabled && c.mode === 'live';
   document.getElementById('ap-btn-stop').disabled = !c.enabled;
+  apStartInit(d);
   document.getElementById('ap-sub').textContent = c.enabled
-    ? `Signal hunter ${c.mode.toUpperCase()} · scans ${st.coins_scanned || c.universe} coins × ${(c.strategies || []).length} strategies every 4h candle · ${r.config.max_positions} slots · next ${st.next_scan || 'soon'}`
-    : 'Every 4h candle the AI scans the liquid crypto market with the tested strategies and trades fresh buy/sell signals on coins where that strategy has an edge — up to ' + r.config.max_positions + ' positions, under the risk manager.';
+    ? `Signal hunter ${c.mode.toUpperCase()} · scans ${st.coins_scanned || c.universe} coins × ${(c.strategies || []).length} strategies on every 4h and daily candle · ${r.config.max_positions} slots · next ${st.next_scan || 'soon'}`
+    : 'On every 4h and daily candle the AI scans the liquid crypto market with the tested strategies and trades fresh buy/sell signals on coins where that strategy has an edge — up to ' + r.config.max_positions + ' positions, under the risk manager.';
   const lastLog = (st.log || []).slice(-1)[0];
   _apType(st.scanning ? 'scanning every liquid coin · reading the closed candle · checking each signal\'s edge…' : (lastLog ? lastLog.msg : 'idle — press SCAN NOW for a preview'));
 
@@ -3640,6 +3703,144 @@ function apBannerRender(d) {
 }
 async function apBannerLoad() { const d = await apiFetch('/api/autopilot/status'); if (d && !d.error) apBannerRender(d); }
 
+
+// ── one-click start: balance + risk level, the AI does the rest ─────────────
+let _apLevel = null, _apStartReady = false;
+function apStartInit(d) {
+  const c = d.autopilot.config;
+  if (!_apStartReady) {
+    _apStartReady = true;
+    _apLevel = c.level || 'balanced';
+    const mode = c.enabled ? c.mode : 'demo';
+    document.getElementById('ap-s-mode').value = mode;
+    document.getElementById('ap-s-bal').value = Math.round(mode === 'demo' ? d.risk.modes.demo.capital || c.balance || 1000 : (c.balance || 1000));
+  }
+  apStartPaint();
+  apStartLive(d);
+}
+
+// live lane inside the Start card: open AI trades moving between stop and target
+let _asPx = {}, _asPxTimer = null, _asClock = null, _asLastPnl = {};
+function _asFmt(v) { if (v == null) return '—'; const a = Math.abs(v); return a >= 100 ? v.toFixed(2) : a >= 1 ? v.toFixed(4) : v.toPrecision(4); }
+function apStartLive(d) {
+  const c = d.autopilot.config, st = d.autopilot.state, r = d.risk;
+  const card = document.getElementById('ap-start');
+  const on = c.enabled && !r.manual_halt;
+  card.classList.toggle('run', on);
+  const pill = document.getElementById('ap-s-pill');
+  pill.className = 'as-pill ' + (on ? (c.mode === 'live' ? 'live' : 'on') : '');
+  pill.lastElementChild.textContent = on ? `AI RUNNING · ${c.mode.toUpperCase()}${st.scanning ? ' · SCANNING' : ''}` : (r.manual_halt ? 'KILL SWITCH ON' : 'READY');
+  const trades = (d.bots || []).filter(b => b.position && b.autopilot);
+  const box = document.getElementById('ap-s-live');
+  if (!on && !trades.length) {
+    box.innerHTML = `<div class="as-idle"><div class="as-radar"></div><div><b style="color:var(--text)">AI is waiting for you.</b> Set a balance and a risk level, press START — it scans the 40 most liquid coins on every 4h and daily candle close and opens the trades by itself.</div></div>`;
+  } else {
+    const m = r.modes[c.mode] || r.modes.demo;
+    const lvl = (d.autopilot.levels || {})[c.level] || {};
+    box.innerHTML = `
+      <div class="as-sum">
+        <div><span>Open P/L</span><b id="as-open-pnl">—</b></div>
+        <div><span>Today realized</span><b style="color:${(m.realized_today || 0) >= 0 ? 'var(--green)' : 'var(--red)'}">${_apMoney(m.realized_today || 0)}</b></div>
+        <div><span>Trades running</span><b>${trades.length} <small style="font-size:11px;color:var(--text3)">/ ${r.config.max_positions}</small></b></div>
+        <div><span>Balance · ${_apEsc(lvl.label || c.level || '')}</span><b>${_apMoney(m.capital)}</b></div>
+      </div>
+      <div class="as-lane">${trades.length ? trades.map(b => {
+        const p = b.position;
+        return `<div class="as-trade ${p.side}" data-id="${b.id}" data-sym="${_apCoin(b.symbol)}" data-side="${p.side}" data-entry="${p.entry}" data-qty="${p.qty}" data-sl="${p.sl}" data-tp="${p.tp}" data-risk="${p.risk_usd || 0}" data-px="${b.price || p.entry}">
+          <div class="as-coin">${_apEsc(_apCoin(b.symbol)).slice(0, 5)}</div>
+          <div class="as-meta">
+            <div class="t">${_apEsc(_apCoin(b.symbol))} <span class="as-side ${p.side}">${p.side === 'BUY' ? 'LONG' : 'SHORT'}</span></div>
+            <div class="st">${_apEsc((b.strategy || '').replace(/_/g, ' '))} · ${_apEsc(b.tf || '')}</div>
+            <div class="as-track"><i class="en"></i><i class="px"></i></div>
+            <div class="as-lbl"><span>SL ${_asFmt(p.sl)}</span><span class="nw">now —</span><span>TP ${_asFmt(p.tp)}</span></div>
+          </div>
+          <div class="as-pnl"><b>—</b><small></small></div>
+        </div>`; }).join('') : `<div class="as-idle"><div class="as-radar"></div><div><b style="color:var(--text)">No trade open right now.</b> The AI only enters a fresh signal on a coin where that strategy has made money — it is watching the market for the next candle close.</div></div>`}
+      </div>`;
+  }
+  apStartTick();
+  if (!_asPxTimer) _asPxTimer = setInterval(apStartPrices, 10000);
+  if (!_asClock) _asClock = setInterval(apStartClock, 1000);
+  apStartClock();
+}
+async function apStartPrices() {
+  if (!document.querySelector('.as-trade')) return;
+  if (!document.getElementById('page-autopilot').classList.contains('active')) return;
+  const r = await apiFetch('/api/crypto/pulse');
+  if (!r || r.error) return;
+  (r.tickers || []).forEach(t => { _asPx[t.base] = t.price; });
+  apStartTick();
+}
+function apStartTick() {
+  let total = 0, any = false;
+  document.querySelectorAll('.as-trade').forEach(el => {
+    const ds = el.dataset, side = ds.side, entry = +ds.entry, qty = +ds.qty, sl = +ds.sl, tp = +ds.tp, risk = +ds.risk;
+    const px = _asPx[ds.sym] || +ds.px;
+    const pnl = (px - entry) * qty * (side === 'BUY' ? 1 : -1);
+    total += pnl; any = true;
+    const lo = Math.min(sl, tp), hi = Math.max(sl, tp);
+    const pos = v => {                         // left = stop, right = target, whatever the side
+      const f = (v - lo) / (hi - lo || 1);
+      return Math.max(0, Math.min(100, (side === 'BUY' ? f : 1 - f) * 100));
+    };
+    el.querySelector('.px').style.left = pos(px) + '%';
+    el.querySelector('.en').style.left = pos(entry) + '%';
+    el.querySelector('.nw').textContent = 'now ' + _asFmt(px);
+    const b = el.querySelector('.as-pnl b');
+    const txt = (pnl >= 0 ? '+' : '-') + '$' + Math.abs(pnl).toFixed(2);
+    if (_asLastPnl[ds.id] !== txt) { b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); _asLastPnl[ds.id] = txt; }
+    b.textContent = txt;
+    b.className = (pnl >= 0 ? 'up' : 'dn') + ' pop';
+    el.querySelector('.as-pnl small').textContent = risk ? `${(pnl / risk >= 0 ? '+' : '')}${(pnl / risk).toFixed(2)}R · risk $${risk.toFixed(2)}` : '';
+    el.classList.toggle('win', pnl > 0); el.classList.toggle('lose', pnl < 0);
+  });
+  const t = document.getElementById('as-open-pnl');
+  if (t) { t.textContent = any ? (total >= 0 ? '+' : '-') + '$' + Math.abs(total).toFixed(2) : '$0'; t.style.color = total >= 0 ? 'var(--green)' : 'var(--red)'; }
+}
+function apStartClock() {
+  const el = document.getElementById('ap-s-next'); if (!el || !_apData) return;
+  const c = _apData.autopilot.config, st = _apData.autopilot.state;
+  if (!c.enabled) { el.innerHTML = ''; return; }
+  const n = st.next_scan ? Date.parse(String(st.next_scan).replace(' UTC', 'Z').replace(' ', 'T')) : NaN;
+  if (isNaN(n)) { el.innerHTML = 'next scan <b>soon</b>'; return; }
+  let sec = Math.max(0, Math.round((n - Date.now()) / 1000));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s2 = sec % 60;
+  el.innerHTML = sec ? `next market scan in <b>${h ? h + ':' : ''}${String(m).padStart(2, '0')}:${String(s2).padStart(2, '0')}</b>` : 'next market scan <b>now</b>';
+}
+
+function apPickLevel(k) { _apLevel = k; apStartPaint(); }
+function apStartPaint() {
+  const d = _apData; if (!d) return;
+  const L = d.autopilot.levels || {}, c = d.autopilot.config;
+  const bal = Math.max(0, parseFloat(document.getElementById('ap-s-bal').value) || 0);
+  const mode = document.getElementById('ap-s-mode').value;
+  document.getElementById('ap-s-levels').innerHTML = Object.entries(L).map(([k, v]) =>
+    `<button type="button" class="ap-level lv-${k} ${k === _apLevel ? 'sel' : ''}" onclick="apPickLevel('${k}')">${_apEsc(v.label)}</button>`).join('');
+  const v = L[_apLevel];
+  document.getElementById('ap-s-lvinfo').innerHTML = v ? `${v.risk_pct}% risk per trade · up to ${v.max_positions} trades at once · ` +
+    `≈ <b style="color:var(--green)">${_apMoney(v.per_1000_day * bal / 1000)}/day</b> on average · worst drop in the 2-year test ` +
+    `<b style="color:${v.max_dd > 40 ? 'var(--red)' : v.max_dd > 20 ? 'var(--amber)' : 'var(--green)'}">-${v.max_dd}% (−${_apMoney(bal * v.max_dd / 100)})</b>` : '';
+  const running = c.enabled && c.mode === mode && c.level === _apLevel && Math.abs((c.balance || 0) - bal) < 0.01;
+  const go = document.getElementById('ap-s-go');
+  go.className = 'ap-btn ' + (mode === 'live' ? 'live' : 'primary');
+  go.innerHTML = c.enabled ? '<i class="ti ti-refresh"></i> APPLY &amp; KEEP RUNNING' : (mode === 'live' ? '<i class="ti ti-bolt"></i> START AI — LIVE' : '<i class="ti ti-player-play"></i> START AI — DEMO');
+  go.disabled = running || bal < 50;
+  if (running) { go.className = 'ap-btn running'; go.innerHTML = '<i class="ti ti-loader-2"></i> AI RUNNING'; }
+  document.getElementById('ap-s-note').innerHTML =
+    `The AI picks the coins (40 most liquid, too-wild coins skipped), the strategy, BUY or SELL, the size, the stop loss and the take profit, and closes the trade — you only set the balance and the risk. ` +
+    `Profit per day is the average from a 2-year replay of exactly this system (fees included); real days vary a lot and some months lose. ` +
+    `Profit grows with the balance, not with trading more: higher risk makes the bigger drops much bigger.`;
+}
+async function apStartAI(confirmed) {
+  const bal = parseFloat(document.getElementById('ap-s-bal').value) || 0;
+  const mode = document.getElementById('ap-s-mode').value;
+  if (mode === 'live' && !confirmed) { apAskLive(); return; }
+  const r = await apiFetch('/api/autopilot/start', {method: 'POST', body: JSON.stringify({balance: bal, level: _apLevel, mode, confirm_live: mode === 'live'})});
+  if (r.error) { toastErr(r.error); return; }
+  toast(`AI started (${mode.toUpperCase()}) with ${_apMoney(bal)} — ${_apLevel} risk. Scanning the market…`, true);
+  setTimeout(apLoad, 400);
+}
+
 async function apToggle(on, mode) {
   const r = await apiFetch('/api/autopilot/toggle', {method: 'POST', body: JSON.stringify({enabled: on, mode: mode || (_apData ? _apData.autopilot.config.mode : 'demo'), confirm_live: mode === 'live'})});
   if (r.error) { toastErr(r.error); return; }
@@ -3648,7 +3849,8 @@ async function apToggle(on, mode) {
 }
 function apAskLive() {
   const r = _apData ? _apData.risk : null;
-  const c = r ? r.config : {};
+  const c = Object.assign({}, r ? r.config : {}, (_apData && _apData.autopilot.levels || {})[_apLevel] || {});
+  c.capital_cap_usd = parseFloat(document.getElementById('ap-s-bal').value) || c.capital_cap_usd;
   document.getElementById('ap-live-text').innerHTML =
     `The autopilot will trade your <b>Binance USDT-M Futures</b> account.<br><br>` +
     `• Up to <b>${c.max_positions}</b> positions, each risking <b>${c.risk_pct}%</b> of ${c.capital_cap_usd > 0 ? 'at most $' + c.capital_cap_usd : 'your whole futures balance'}<br>` +
@@ -3661,7 +3863,7 @@ function apAskLive() {
 async function apGoLive() {
   if (!document.getElementById('ap-live-ok').checked) { toastErr('Tick the box to confirm'); return; }
   document.getElementById('ap-live-modal').style.display = 'none';
-  apToggle(true, 'live');
+  apStartAI(true);
 }
 async function apScan() {
   const r = await apiFetch('/api/autopilot/scan', {method: 'POST'});
@@ -9482,9 +9684,9 @@ async function labInit() {
     const tested = d.builtin.filter(s => s.tested_tf).map(s => `<option value="${s.id}">✅ ${_apEsc(s.id.replace(/_/g, ' '))} (tested ${s.tested_tf})</option>`).join('');
     const other = d.builtin.filter(s => !s.tested_tf).map(s => `<option value="${s.id}">${_apEsc(s.id.replace(/_/g, ' '))}</option>`).join('');
     const mine = d.custom.map(c => `<option value="${c.id}">🛠 ${_apEsc(c.name)}</option>`).join('');
-    return `<optgroup label="Tested — passed the 1-year backtest">${tested}</optgroup>` +
+    return `<optgroup label="Tested — passed the 2-year, 20-coin backtest">${tested}</optgroup>` +
            (mine ? `<optgroup label="My strategies">${mine}</optgroup>` : '') +
-           `<optgroup label="Other built-in (lost money in the 1-year backtest)">${other}</optgroup>` +
+           (other ? `<optgroup label="Other built-in">${other}</optgroup>` : '') +
            (withNew ? '<option value="custom:new">🛠 The strategy in the builder (unsaved)</option>' : '');
   };
   for (const [id, withNew] of [['lab-t-strategy', true], ['lab-f-strategy', true]]) {
@@ -9516,8 +9718,7 @@ function labStrategyChanged(prefix) {
   const b = _lab && _lab.builtin.find(x => x.id === st);
   let sl = 2, rr = 2, text = '';
   if (b && b.tested_tf) {
-    const prof = {trend_breakout: [2, 3], bb_squeeze: [1.5, 1.5], super_breakout: [3, 3], fibonacci_retracement: [1.5, 3], smc_sweep: [1.5, 2]}[st] || [2, 2];
-    [sl, rr] = prof;
+    [sl, rr] = [b.sl_atr || 2, b.reward_r || 2];
     document.getElementById('lab-t-tf').value = b.tested_tf;
     text = `✅ ${_apEsc(b.evidence || '')}`;
   } else if (st.startsWith('custom:') && st !== 'custom:new') {
@@ -9528,7 +9729,7 @@ function labStrategyChanged(prefix) {
     if (def) { sl = def.sl_atr; rr = def.reward_r; }
     text = '🛠 Tests whatever is in the Build tab right now (no need to save first).';
   } else {
-    text = '⚠ This built-in strategy lost money in the 1-year backtest with default settings — try other timeframes or stops here.';
+    text = '⚠ Not a tested strategy — try other timeframes or stops here.';
   }
   document.getElementById('lab-t-sl').value = sl;
   document.getElementById('lab-t-rr').value = rr;
@@ -11403,57 +11604,20 @@ function _renderBrainStatus(data) {
 }
 
 // ── ALGO BOTS ─────────────────────────────────────────────────────────────────
-// Numbers below come from full_backtest.py (backtest_report.json): 1 year,
-// 10 coins, fees + slippage + stop loss, split 8 months / 4 months. Only the
-// 4 tested profiles made money out of sample; the server refuses LIVE for
-// everything else, so demo is the only place to experiment with them.
+// Numbers below come from strategy_research.py: 2 years, 20 coins, fees +
+// slippage + stop loss, best setting picked on the first 16 months and judged
+// on the last 8. Only these strategies passed; the rest were removed.
 const _TESTED = {
-  trend_breakout:        { tf: '4h', sl_atr: 2.0, reward_r: 3.0, note: 'Tested: test +0.31R per trade, profitable on 8/10 coins in both halves (330 trades).' },
-  bb_squeeze:            { tf: '4h', sl_atr: 1.5, reward_r: 1.5, note: 'Tested: test +0.29R per trade, 6/10 coins profitable out of sample (190 trades).' },
-  super_breakout:        { tf: '4h', sl_atr: 3.0, reward_r: 3.0, note: 'Tested: test +0.25R per trade (147 trades — fewer signals).' },
-  fibonacci_retracement: { tf: '4h', sl_atr: 1.5, reward_r: 3.0, note: 'Tested: test +0.11R per trade, 5/10 coins profitable out of sample (594 trades).' },
-  smc_sweep:             { tf: '4h', sl_atr: 1.5, reward_r: 2.0, note: 'Tested: test +0.35R per trade, profitable on 8/10 coins in both halves (187 trades); positive on the test half at every stop/target setting tried.' },
-};
-const _BT_LOST = {
-  vwap_bands: '4h: train −0.03R, test +0.12R', ifvg: '4h: train −0.01R, test +0.08R',
-  ob_fvg: '4h: train −0.06R, test +0.11R', false_breakout: '4h: train −0.07R, test +0.03R',
-  rsi: '4h: train −0.07R, test +0.03R', orb: '4h: train −0.04R, test −0.02R',
-  bos_choch: '4h: train −0.05R, test −0.03R', inducement_continuation: '1h: train −0.07R, test −0.10R',
-  vwap_rsi: '1h: train −0.08R, test −0.10R', macd_cross: '1h: train −0.10R, test −0.08R',
-  rsi_divergence: '1h: train −0.11R, test −0.07R', bpr: '4h: train +0.03R, test −0.21R',
-  liquidity_sweep: '4h: train −0.10R, test −0.10R', silver_bullet: '4h: train −0.09R, test −0.13R',
-  volume_profile: '4h: train −0.06R, test −0.16R', fvg: '4h: train −0.11R, test −0.11R',
-  bb_rsi_strict: '4h: train +0.08R, test −0.33R',
-  pa_engulf: '4h: train −0.01R, test +0.34R', rsi_trend: '4h: train −0.01R, test +0.32R',
-  ema_trend: '4h: train −0.07R, test +0.31R', macd_trend: '4h: train −0.14R, test −0.05R',
+  rsi_trend: { tf: '4h', sl_atr: 3.0, reward_r: 3.0, note: 'Tested: 2y/20 coins: train +0.35R, test +0.19R/trade (203 trades), 13/20 coins up in both halves, 9/9 settings.' },
+  ema_trend: { tf: '4h', sl_atr: 2.0, reward_r: 3.0, note: 'Tested: 2y/20 coins: train +0.22R, test +0.12R/trade (280 trades), 11/20 coins, 8/9 settings.' },
+  fibonacci_retracement: { tf: '4h', sl_atr: 3.0, reward_r: 3.0, note: 'Tested: 2y/20 coins: train +0.06R, test +0.06R/trade (514 trades), 11/20 coins, 6/9 settings.' },
+  trend_breakout: { tf: '1d', sl_atr: 1.5, reward_r: 2.0, note: 'Tested: 2y/20 coins daily: train +0.25R, test +0.28R/trade (115 trades), 10/20 coins, 7/9 settings.' },
 };
 const _strategyHints = {
   trend_breakout: 'Donchian(55) breakout taken only in the direction of the EMA(150) trend.',
-  bb_squeeze: 'Bollinger(30, 2.5σ) band touch with RSI and volume confirmation.',
-  super_breakout: '200 EMA consolidation box, then a big-candle breakout out of the box.',
   fibonacci_retracement: 'Pullback into the 38.2–61.8% retracement of the last swing, with RSI confirming the trend.',
-  vwap_bands: 'Fades price back to a rolling VWAP after it tags a ±2.5σ band.',
-  ifvg: 'A violated fair value gap that flips from support to resistance (or back).',
-  ob_fvg: 'Order block and fair value gap in the same zone.',
-  false_breakout: 'Inside-bar breakout that fails and reverses.',
-  rsi: 'RSI(7) oversold → buy, overbought → sell.',
-  orb: 'Breakout of the first 30 minutes\' range.',
-  bos_choch: 'Break of structure (continuation) / change of character (reversal).',
-  inducement_continuation: 'Trend continuation after a small sweep of the last swing.',
-  vwap_rsi: 'Price near VWAP with RSI below 40 (buy) or above 60 (sell).',
-  macd_cross: 'MACD(12,17,9) histogram crosses zero.',
-  rsi_divergence: 'Price and RSI disagree at a new high or low.',
-  bpr: 'Overlap of a violated FVG and a new opposite FVG.',
-  liquidity_sweep: 'Spike through a swing high/low that closes back inside.',
-  silver_bullet: 'Fair value gap formed during the New York / London kill zone.',
-  volume_profile: 'Trades between low- and high-volume price nodes.',
-  fvg: 'Three-candle fair value gap, traded on the revisit.',
-  bb_rsi_strict: 'Lower band + RSI ≤ 30 → buy; upper band + RSI ≥ 70 → sell.',
   ema_trend: 'EMA 20 crosses EMA 50, only in the direction of the EMA 200 trend.',
   rsi_trend: 'Pullback in a trend: above EMA 200 and RSI(14) turns back up through 40 → buy; mirror below EMA 200 through 60 → sell.',
-  smc_sweep: 'SMC liquidity sweep: the candle takes the 20-bar low (or high) and closes back inside, only with the EMA 200 trend.',
-  pa_engulf: 'Price action: engulfing candle after a pullback to EMA 50, only when EMA 50 and price agree with EMA 200.',
-  macd_trend: 'MACD histogram crosses zero in the direction of the EMA 200 trend (flat crosses ignored).',
 };
 
 function applyBotPreset() {
@@ -11462,7 +11626,7 @@ function applyBotPreset() {
   const set = (id, val) => { const e = document.getElementById(id); if (e) e.value = val; };
   set('bot-strategy', name);
   botStrategyChange(true);
-  toast(`Tested preset — ${name.replace(/_/g, ' ').toUpperCase()} on 4h, stop ${_TESTED[name].sl_atr} ATR, target ${_TESTED[name].reward_r}R`, true);
+  toast(`Tested preset — ${name.replace(/_/g, ' ').toUpperCase()} on ${_TESTED[name].tf}, stop ${_TESTED[name].sl_atr} ATR, target ${_TESTED[name].reward_r}R`, true);
 }
 
 function _botLiveOk() {
@@ -11482,7 +11646,7 @@ function botModeChange() {
     hint.textContent = 'LIVE: real orders on Binance with a stop loss on every trade. Uses the tested stop/target and the Risk Manager\'s live wallet.';
     hint.style.borderLeftColor = 'var(--red)';
   } else {
-    hint.textContent = '⚠ This strategy/timeframe lost money in the 1-year backtest — the server will refuse LIVE. Pick a ✅ tested strategy on 4h, or use Demo.';
+    hint.textContent = '⚠ This strategy/timeframe did not pass the 2-year backtest — the server will refuse LIVE. Pick a ✅ tested strategy on its tested timeframe, or use Demo.';
     hint.style.borderLeftColor = 'var(--amber)';
   }
 }
@@ -11506,7 +11670,7 @@ function botStrategyChange(applyTested = true) {
       ? `<span style="color:#c4b5fd">🛠 Your strategy — demo only.${cu.last_test ? ` Last Strategy Lab test: ${_apEsc(cu.last_test.verdict.toUpperCase())} (${cu.last_test.test_r != null ? (cu.last_test.test_r >= 0 ? '+' : '') + cu.last_test.test_r + 'R' : '—'}, ${_apEsc(cu.last_test.tf)})` : ' Not tested in the Strategy Lab yet.'}</span>`
       : t
       ? (t.tf === tf ? `<span style="color:var(--green)">✅ ${t.note}</span>` : `<span style="color:var(--amber)">⚠ Only tested on ${t.tf} — ${tf} runs in demo only.</span>`)
-      : `<span style="color:var(--amber)">⚠ Demo only — lost money in the 1-year backtest (best ${_BT_LOST[st] || 'n/a'}).</span>`;
+      : `<span style="color:var(--amber)">⚠ Not a tested strategy — demo only.</span>`;
     hint.innerHTML = `${_apEsc(cu ? cu.description : (_strategyHints[st] || ''))}<br>${result}`;
   }
   botModeChange();

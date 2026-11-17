@@ -113,12 +113,53 @@ def macd_trend(ohlcv):
     return None
 
 
+def tsmom(ohlcv):
+    """Time-series momentum (daily): the 20-candle return turns positive while
+    price is above a rising EMA 50 → BUY; turns negative below a falling
+    EMA 50 → SELL. Fires on the candle the return crosses zero."""
+    o, h, l, c, v = _cols(ohlcv)
+    if len(c) < 80:
+        return None
+    e50 = _ema(c, 50)
+    r_now, r_prev = c[-1] / c[-21] - 1, c[-2] / c[-22] - 1
+    rising, falling = e50[-1] > e50[-6], e50[-1] < e50[-6]
+    if r_prev <= 0 < r_now and c[-1] > e50[-1] and rising:
+        return "BUY"
+    if r_prev >= 0 > r_now and c[-1] < e50[-1] and falling:
+        return "SELL"
+    return None
+
+
+# ── 1h entries in the direction of the 4h trend ────────────────────────────
+# On 1h candles EMA 800 ≈ the 4h EMA 200. These only fire when the 1h setup
+# agrees with BOTH the 1h trend (EMA 200) and the 4h trend (EMA 800).
+def _htf_ok(c, side):
+    if len(c) < 820:
+        return False
+    e200, e800 = _ema(c, 200)[-1], _ema(c, 800)[-1]
+    return (c[-1] > e200 and c[-1] > e800 and e200 > e800) if side == "BUY" else \
+           (c[-1] < e200 and c[-1] < e800 and e200 < e800)
+
+
+def _with_htf(fn):
+    def wrapped(ohlcv):
+        s = fn(ohlcv)
+        return s if s and _htf_ok([x[4] for x in ohlcv], s) else None
+    wrapped.__doc__ = (fn.__doc__ or "") + " Only with the 4h trend (1h EMA 800)."
+    return wrapped
+
+
 STRATEGIES = {
     "ema_trend": ema_trend,
     "rsi_trend": rsi_trend,
     "smc_sweep": smc_sweep,
     "pa_engulf": pa_engulf,
     "macd_trend": macd_trend,
+    "smc_sweep_htf": _with_htf(smc_sweep),
+    "rsi_trend_htf": _with_htf(rsi_trend),
+    "pa_engulf_htf": _with_htf(pa_engulf),
+    "ema_trend_htf": _with_htf(ema_trend),
+    "tsmom": tsmom,
 }
 LABELS = {
     "ema_trend": "EMA 20/50 cross with the EMA 200 trend",
@@ -126,8 +167,18 @@ LABELS = {
     "smc_sweep": "SMC liquidity sweep with the trend",
     "pa_engulf": "Price action: engulfing at EMA 50 in the trend",
     "macd_trend": "MACD zero cross with the EMA 200 trend",
+    "smc_sweep_htf": "SMC liquidity sweep, 1h entry with the 4h trend",
+    "rsi_trend_htf": "RSI pullback, 1h entry with the 4h trend",
+    "pa_engulf_htf": "Price action engulfing, 1h entry with the 4h trend",
+    "ema_trend_htf": "EMA 20/50 cross, 1h entry with the 4h trend",
+    "tsmom": "Time-series momentum: 20-candle return turns with the EMA 50 trend",
 }
 LOOKBACK = 260
+LOOKBACK_BY = {k: 900 for k in STRATEGIES if k.endswith("_htf")}
+
+
+def lookback(name):
+    return LOOKBACK_BY.get(name, LOOKBACK)
 
 
 def signal(name, ohlcv):

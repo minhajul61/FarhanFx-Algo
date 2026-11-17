@@ -206,7 +206,7 @@ def fresh(equity=1000.0, mode="live"):
 
 
 def add_bot(bid="b1", mode="live", sym="TEST/USDT:USDT", **kw):
-    bot = server._strategy_bot_template("trend_breakout", sym, TF, {"sl_atr": 2.0, "reward_r": 3.0, **kw})
+    bot = server._strategy_bot_template("rsi_trend", sym, TF, {"sl_atr": 2.0, "reward_r": 3.0, **kw})
     bot.update({"id": bid, "username": "admin", "exchange": "binance", "mode": mode, "status": "active",
                 "leverage": 10, "margin_mode": "isolated", "trades": [], "total_signals": 0,
                 "demo_balance": 1000, "demo_equity": 1000, "open_amount": 0, "open_trade_count": 0})
@@ -471,8 +471,8 @@ def test_untested_strategy_blocked_live():
     bot["strategy"], bot["timeframe"] = "rsi", "1h"
     SIGNAL["v"] = "BUY"; mkt.new_candle(100.0); tick()
     check("live: untested strategy cannot open", bot["open_side"] is None and "Live entries blocked" in (bot.get("last_error") or ""), bot.get("last_error"))
-    check("live: tested profile allowed", server._live_profile_error("trend_breakout", "4h") is None)
-    check("live: tested strategy on the wrong timeframe refused", server._live_profile_error("trend_breakout", "15m") is not None)
+    check("live: tested profile allowed", server._live_profile_error("rsi_trend", "4h") is None)
+    check("live: tested strategy on the wrong timeframe refused", server._live_profile_error("rsi_trend", "15m") is not None)
     demo = add_bot("d1", mode="demo", sym="D1/USDT:USDT")
     demo["strategy"], demo["timeframe"] = "rsi", "1h"
     tick("d1")
@@ -600,21 +600,23 @@ def test_start_bot_ai_pair_and_auto_exits():
         calls.append((strategy, tf, params, set(exclude)))
         return {"symbol": "PICK/USDT:USDT", "why": "momentum 80", "edge": True}
     server._autopilot.pick_for_strategy = fake_pick
-    req = server.CryptoBotReq(strategy="trend_breakout", timeframe="4h", leverage=50, capital_usd=150,
+    req = server.CryptoBotReq(strategy="rsi_trend", timeframe="4h", leverage=50, capital_usd=150,
                               mode="demo", sl_atr=9.0, reward_r=9.0)
     r = server.crypto_algo_start(req, {"username": "admin"})
     bot = server._crypto_bots[r["bot_id"]]
     check("start: AI picked the coin", bot["symbol"] == "PICK/USDT:USDT" and bot["ai_pair"], bot["symbol"])
-    check("start: tested stop/target forced (2 ATR, 3R)", bot["sl_atr"] == 2.0 and bot["reward_r"] == 3.0, (bot["sl_atr"], bot["reward_r"]))
+    check("start: tested stop/target forced (3 ATR, 3R)", bot["sl_atr"] == 3.0 and bot["reward_r"] == 3.0, (bot["sl_atr"], bot["reward_r"]))
     check("start: leverage capped by risk manager", bot["leverage"] == 10, bot["leverage"])
     check("start: balance stored", bot["capital_usd"] == 150)
-    r2 = server.crypto_algo_start(server.CryptoBotReq(strategy="rsi", timeframe="1h", capital_usd=100, mode="demo"), {"username": "admin"})
+    r2 = server.crypto_algo_start(server.CryptoBotReq(strategy="ema_trend", timeframe="4h", capital_usd=100, mode="demo"), {"username": "admin"})
     check("start: picker skips coins other bots hold", "PICK/USDT:USDT" in calls[-1][3])
     b2 = server._crypto_bots[r2["bot_id"]]
-    check("start: untested strategy gets 2 ATR / 2R", b2["sl_atr"] == 2.0 and b2["reward_r"] == 2.0)
-    bad = server.crypto_algo_start(server.CryptoBotReq(strategy="rsi", timeframe="1h", capital_usd=5000, mode="demo"), {"username": "admin"})
+    check("start: each strategy gets its own tested stop/target (EMA trend 2 ATR / 3R)", b2["sl_atr"] == 2.0 and b2["reward_r"] == 3.0)
+    gone = server.crypto_algo_start(server.CryptoBotReq(strategy="rsi", timeframe="1h", capital_usd=100, mode="demo"), {"username": "admin"})
+    check("start: strategies that failed the research are gone", getattr(gone, "status_code", 200) == 400)
+    bad = server.crypto_algo_start(server.CryptoBotReq(strategy="rsi_trend", timeframe="4h", capital_usd=5000, mode="demo"), {"username": "admin"})
     check("start: balance above the wallet refused", getattr(bad, "status_code", 200) == 400)
-    bad = server.crypto_algo_start(server.CryptoBotReq(strategy="rsi", timeframe="1h", capital_usd=0, mode="demo"), {"username": "admin"})
+    bad = server.crypto_algo_start(server.CryptoBotReq(strategy="rsi_trend", timeframe="4h", capital_usd=0, mode="demo"), {"username": "admin"})
     check("start: balance required", getattr(bad, "status_code", 200) == 400)
 
 
@@ -863,12 +865,12 @@ def test_client_permissions_enforced():
     cli = server._auth_sessions[tok]
     server._autopilot.pick_for_strategy = lambda *a, **k: {"symbol": f"Q{time.time_ns()}/USDT:USDT", "why": "x"}
     server._active_ex["cli"] = {"binance": ex}
-    live = server.crypto_algo_start(server.CryptoBotReq(strategy="trend_breakout", timeframe="4h", capital_usd=100, mode="live"), cli)
+    live = server.crypto_algo_start(server.CryptoBotReq(strategy="rsi_trend", timeframe="4h", capital_usd=100, mode="live"), cli)
     check("perms: live bot refused when live trading is off", getattr(live, "status_code", 200) == 403)
     order = server.crypto_order(server.CryptoOrderReq(exchange="binance", symbol="TEST/USDT:USDT", side="buy", order_type="market", stop_loss=98), cli)
     check("perms: Trade-tab order refused when live trading is off", getattr(order, "status_code", 200) == 403)
-    a = server.crypto_algo_start(server.CryptoBotReq(strategy="trend_breakout", timeframe="4h", capital_usd=100, mode="demo"), cli)
-    b = server.crypto_algo_start(server.CryptoBotReq(strategy="trend_breakout", timeframe="4h", capital_usd=100, mode="demo"), cli)
+    a = server.crypto_algo_start(server.CryptoBotReq(strategy="rsi_trend", timeframe="4h", capital_usd=100, mode="demo"), cli)
+    b = server.crypto_algo_start(server.CryptoBotReq(strategy="rsi_trend", timeframe="4h", capital_usd=100, mode="demo"), cli)
     check("perms: max running bots enforced", isinstance(a, dict) and a.get("success") and getattr(b, "status_code", 200) == 400)
     rs = server.account_risk_save({"risk_pct": 50, "max_positions": 2}, cli)
     check("risk: client edits own rules, clamped to limits", rs["config"]["risk_pct"] == 3.0 and server._rm.config["max_positions"] == 3)
@@ -937,31 +939,44 @@ def test_admin_panel():
 # ── AI Signal Hunter ──────────────────────────────────────────────────────────
 def test_signal_hunter():
     import autopilot as apm
-    bar = 1_800_000_000_000
-    rows = lambda: [[bar - (299 - i) * 14_400_000, 100, 101, 99, 100 + i * 0.01, 1000] for i in range(300)]
-    opened, sig_on = [], {"AAA/USDT:USDT": ("trend_breakout", "BUY"), "BBB/USDT:USDT": ("bb_squeeze", "SELL")}
+    bar = {"4h": 1_800_000_000_000, "1d": 1_799_971_200_000}
+    step = {"4h": 14_400_000, "1d": 86_400_000}
+    rows = lambda tf, w=1: [[bar[tf] - (299 - i) * step[tf], 100, 100 + w, 100 - w, 100 + i * 0.01, 1000] for i in range(300)]
+    opened = []
+    sig_on = {"AAA/USDT:USDT": ("rsi_trend", "BUY"), "BBB/USDT:USDT": ("ema_trend", "SELL"),
+              "CCC/USDT:USDT": ("trend_breakout", "BUY"), "WILD/USDT:USDT": ("rsi_trend", "BUY")}
     edge = {"AAA/USDT:USDT": 0.4, "BBB/USDT:USDT": -0.2}
     ap = apm.Autopilot({
-        "tickers": lambda: {s: {"quoteVolume": 1e9} for s in ("AAA/USDT:USDT", "BBB/USDT:USDT", "CCC/USDT:USDT")},
-        "ohlcv": lambda sym, tf, n: rows(), "history": lambda s, tf, d: [],
+        "tickers": lambda: {s: {"quoteVolume": 1e9} for s in ("AAA/USDT:USDT", "BBB/USDT:USDT", "CCC/USDT:USDT", "WILD/USDT:USDT")},
+        "ohlcv": lambda sym, tf, n: rows(tf, 20 if sym.startswith("WILD") else 1), "history": lambda s, tf, d: [],
         "backtest": lambda st, r, s, tf, p: {"avg_r": edge.get(s, 0.3), "total_trades": 20, "profit_factor": 1.5},
         "signal": lambda st, sym, tf, p, r: sig_on[sym][1] if sym in sig_on and sig_on[sym][0] == st else None,
         "open": lambda cands, cfg: (opened.extend(cands) or [f"opened {c['symbol']}" for c in cands], []),
     }, path=os.path.join(WORK, "hunt.json"))
     ap.config["enabled"] = True
+    check("hunter: trades only the strategies that passed the 2-year research",
+          set(ap.config["strategies"]) == {"rsi_trend", "ema_trend", "fibonacci_retracement", "trend_breakout"},
+          ap.config["strategies"])
     ap.hunt(apply=True)
-    check("hunter: fresh signal with an edge is traded", [c["symbol"] for c in opened] == ["AAA/USDT:USDT"], opened)
+    check("hunter: fresh 4h and daily signals with an edge are traded",
+          sorted((c["symbol"], c["tf"]) for c in opened) == [("AAA/USDT:USDT", "4h"), ("CCC/USDT:USDT", "1d")], opened)
     check("hunter: signal without an edge on that coin is skipped",
           any(x["symbol"] == "BBB/USDT:USDT" and not x["edge"]["ok"] for x in ap.state["signals"]))
+    check("hunter: a coin far more volatile than the tested ones is skipped",
+          any(x["symbol"] == "WILD/USDT:USDT" and not x["edge"]["ok"] and "per 4h candle" in x["why"] for x in ap.state["signals"])
+          and not any(c["symbol"] == "WILD/USDT:USDT" for c in opened))
     ap.hunt(apply=True)
-    check("hunter: the same candle is never traded twice", len(opened) == 1, len(opened))
-    bar += 14_400_000
+    check("hunter: the same candle is never traded twice", len(opened) == 2, len(opened))
+    bar["4h"] += step["4h"]
     ap.hunt(apply=True)
-    check("hunter: next candle's fresh signal is traded", len(opened) == 2)
-    bar = int(time.time() * 1000) - 4 * 3600 * 1000 - 3 * 3600 * 1000     # closed 3h ago
-    ap.state["hunted_bar"] = 0
+    check("hunter: next 4h candle is traded, the daily candle that was already handled is not",
+          len(opened) == 3 and opened[-1]["symbol"] == "AAA/USDT:USDT", [c["symbol"] for c in opened])
+    bar["4h"] = int(time.time() * 1000) - 4 * 3600 * 1000 - 3 * 3600 * 1000     # closed 3h ago
+    ap.state["hunted_bar"], ap.state["hunted"] = 0, {}
     ap.hunt(apply=True)
-    check("hunter: a candle that closed hours ago is not chased", len(opened) == 2 and "too late" in " ".join(x["msg"] for x in ap.state["log"][-3:]))
+    check("hunter: a candle that closed hours ago is not chased",
+          len(opened) == 4 and opened[-1]["tf"] == "1d" and "too late" in " ".join(x["msg"] for x in ap.state["log"][-4:]),
+          [(c["symbol"], c["tf"]) for c in opened])
 
 
 def test_hunter_bots_are_one_shot():
@@ -977,6 +992,11 @@ def test_hunter_bots_are_one_shot():
     for b in hunters:
         tick(b["id"])
     check("hunter: one-shot bots enter on their signal candle", all(b["open_side"] == "BUY" for b in hunters))
+    b2 = hunters[1]
+    mkt.new_candle(b2["open_entry_price"])
+    tick(b2["id"])
+    check("hunter: a bot holding a trade keeps managing it on the next candle",
+          b2["status"] == "active" and b2["open_side"] == "BUY", (b2["status"], b2.get("last_error")))
     b = hunters[0]
     SIGNAL["v"] = None
     mkt.move(b["sl"] - 1, low=b["sl"] - 1)
@@ -991,6 +1011,26 @@ def test_hunter_bots_are_one_shot():
     server._autopilot_hunt_open([], {"mode": "demo"})
     check("hunter: finished hunters are cleared (trade stays in the ledger)",
           b["id"] not in server._crypto_bots and any(r["bot_id"] == b["id"] for r in server._ledger.all()))
+
+
+def test_one_click_start():
+    mkt, ex = fresh()
+    server._autopilot.config["enabled"] = False
+    server._autopilot.scan_now = lambda: None
+    r = server.autopilot_start(server.AutopilotStartReq(balance=2500, level="safe", mode="demo"), {"username": "admin"})
+    check("start: one click sets balance, risk and slots", r.get("success") and server._rm.state["demo_wallet"] == 2500
+          and server._rm.config["risk_pct"] == 0.5 and server._rm.config["max_positions"] == 5, r)
+    check("start: AI is on in demo with the chosen level", server._autopilot.config["enabled"] and server._autopilot.config["mode"] == "demo"
+          and server._autopilot.config["level"] == "safe")
+    check("start: shows the expected profit for this balance", abs(r["expect"]["per_day"] - 0.53 * 2.5) < 0.01)
+    bad = server.autopilot_start(server.AutopilotStartReq(balance=1000, level="yolo", mode="demo"), {"username": "admin"})
+    check("start: unknown risk level refused", getattr(bad, "status_code", 200) == 400)
+    bad = server.autopilot_start(server.AutopilotStartReq(balance=1000, level="balanced", mode="live"), {"username": "admin"})
+    check("start: live needs explicit confirmation", getattr(bad, "status_code", 200) == 400)
+    add_bot("open1", mode="demo")["open_side"] = "BUY"
+    bad = server.autopilot_start(server.AutopilotStartReq(balance=900, level="balanced", mode="demo"), {"username": "admin"})
+    check("start: demo balance is not reset under open trades", getattr(bad, "status_code", 200) == 400 and server._rm.state["demo_wallet"] == 2500)
+    server._autopilot.config["enabled"] = False
 
 
 def test_trend_filtered_strategies():
@@ -1012,7 +1052,7 @@ def test_trend_filtered_strategies():
     check("smc_sweep: the same candle in a downtrend is ignored", xs.smc_sweep(rows) is None)
     for name in xs.STRATEGIES:
         check(f"{name}: wired into the bots", server._get_bot_signal({"strategy": name}, series(up)) in (None, "BUY", "SELL")
-              and server._bot_lookback_bars({"strategy": name}) == xs.LOOKBACK)
+              and server._bot_lookback_bars({"strategy": name}) == xs.lookback(name))
 
 if __name__ == "__main__":
     for name, fn in list(globals().items()):

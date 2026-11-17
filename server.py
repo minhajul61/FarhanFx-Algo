@@ -1303,6 +1303,8 @@ def _load_saved_bots():
                 bot.setdefault("group_name", "")
                 _crypto_bots[bid] = bot
                 bot["max_open_trades"] = 1
+                if bot.get("one_shot") and bot.get("open_side") and bot.get("status") != "active":
+                    bot["status"], bot["last_error"] = "active", None   # its trade is still open: keep managing it
                 if bot.get('status') == 'active':
                     _schedule_tick(bid, 15 + keys.index(bid) * 3)
                     try:
@@ -2615,7 +2617,7 @@ def _bot_lookback_bars(bot) -> int:
     if str(bot.get("strategy", "")).startswith("custom:"):
         return _custom.lookback(bot.get("custom_def") or {})
     if bot.get("strategy") in _extra.STRATEGIES:
-        return _extra.LOOKBACK
+        return _extra.lookback(bot["strategy"])
     base = max(100, (bot.get("slow_ema", 21) or 21) + 30)
     st = bot.get("strategy", "")
     if st == "trend_breakout":
@@ -3646,7 +3648,7 @@ def _live_profile_error(strategy, timeframe):
         return (f"{strategy} is only tested on {prof['tf']} — on {timeframe} it lost money in the "
                 f"1-year backtest. Use {prof['tf']} for live, or keep this bot in demo.")
     ok = ", ".join(f"{k} {v['tf']}" for k, v in _autopilot_mod.APPROVED_PROFILES.items())
-    return (f"{strategy} {timeframe} lost money in the 1-year backtest (fees + stop loss), so it can only "
+    return (f"{strategy} {timeframe} did not pass the 2-year backtest (fees + stop loss), so it can only "
             f"run in demo. Tested for live: {ok}.")
 
 
@@ -4054,6 +4056,8 @@ def _bot_step(bot):
             bot["unrealized_pnl"] = round(_engine.trade_pnl(bot["open_side"], bot["open_entry_price"], price, bot.get("open_amount", 0)), 4)
         if _manage_open(bot, ex, ohlcv, closed, price, atr_now):
             return
+        if bot.get("one_shot"):
+            return                   # a hunter trade only waits for its stop / target
 
     if bot.get("retiring"):
         bot["status"] = "stopped"
@@ -4061,7 +4065,7 @@ def _bot_step(bot):
     if not closed:
         return
     bar_ts = closed[-1][0]
-    if bot.get("one_shot") and bot.get("hunt_bar") and bar_ts != bot["hunt_bar"]:
+    if bot.get("one_shot") and bot.get("hunt_bar") and bar_ts != bot["hunt_bar"] and not bot.get("open_side"):
         bot["status"] = "stopped"
         raise _Skip("🤖 Signal expired before it could be traded — next candle is scanned again")
     if bot.get("last_eval_bar") == bar_ts:
@@ -4632,6 +4636,49 @@ def autopilot_toggle(req: AutopilotToggleReq, admin: dict = Depends(_require_adm
     return {"success": True, "config": _autopilot.config}
 
 
+class AutopilotStartReq(BaseModel):
+    balance: float
+    level: str = "balanced"
+    mode: str = "demo"
+    confirm_live: bool = False
+
+
+@app.post("/api/autopilot/start")
+def autopilot_start(req: AutopilotStartReq, admin: dict = Depends(_require_admin)):
+    """One click: the owner gives a balance and a risk level; the AI picks the
+    coins, strategies, side, size, stop loss and take profit from there."""
+    lvl = _autopilot_mod.RISK_LEVELS.get(req.level)
+    if not lvl:
+        return JSONResponse(status_code=400, content={"error": "Pick a risk level: safe, balanced or aggressive"})
+    if req.mode not in ("demo", "live"):
+        return JSONResponse(status_code=400, content={"error": "mode must be demo or live"})
+    if req.mode == "live" and not req.confirm_live:
+        return JSONResponse(status_code=400, content={"error": "Live mode needs confirm_live=true"})
+    bal = float(req.balance or 0)
+    if bal < 50:
+        return JSONResponse(status_code=400, content={"error": "Balance must be at least $50"})
+    changes = {"risk_pct": lvl["risk_pct"], "max_positions": lvl["max_positions"]}
+    if req.mode == "demo":
+        wallet = float(_rm.state["demo_wallet"])
+        if abs(wallet - bal) > 0.01:
+            if _open_positions("demo"):
+                return JSONResponse(status_code=400, content={"error":
+                    f"The demo wallet is ${wallet:,.2f} and demo trades are open — keep ${wallet:,.2f} "
+                    f"or wait for them to close before changing the balance"})
+            _rm.update_config({"demo_capital": bal})
+            _rm.reset_demo_wallet()
+    else:
+        changes["capital_cap_usd"] = bal       # never size live trades from more than this
+    _rm.update_config(changes)
+    _autopilot.update_config({"level": req.level, "balance": bal})
+    _rm.set_manual_halt(False)
+    ok, why = _autopilot.set_enabled(True, req.mode)
+    if not ok:
+        return JSONResponse(status_code=400, content={"error": why})
+    return {"success": True, "config": _autopilot.config, "risk": _rm.config,
+            "expect": {"per_day": round(lvl["per_1000_day"] * bal / 1000, 2), "max_dd_pct": lvl["max_dd"]}}
+
+
 @app.post("/api/autopilot/scan")
 def autopilot_scan(admin: dict = Depends(_require_admin)):
     if not _autopilot.config["enabled"]:
@@ -5082,16 +5129,10 @@ def _bot_stats(trades: list) -> dict:
 
 
 # ── STRATEGY BACKTESTER — 1-year historical run, all strategies at once ──────
-_ALL_CRYPTO_STRATEGIES = ["rsi", "macd_cross", "bb_squeeze", "false_breakout", "trend_breakout", "vwap_bands",
-                          "rsi_divergence", "vwap_rsi", "bb_rsi_strict", "orb",
-                          "fvg", "liquidity_sweep", "ob_fvg", "silver_bullet",
-                          "funding_rate", "volume_profile", "ifvg", "bos_choch",
-                          "super_breakout",
-                          # ── Course-derived strategies (backtest-validated, 1yr BTC/ETH/SOL) ──
-                          "bpr",                    # PF 4.43 BTC/4h, 71% WR — strongest SMC zone
-                          "fibonacci_retracement",  # PF 2.93 BTC/4h, 62% WR — golden zone pullback
-                          "inducement_continuation", "ema_trend", "rsi_trend", "smc_sweep", "pa_engulf", "macd_trend"] # PF 1.74 ETH/1h, 55% WR — trend continuation
-                          # NOT included: crt_pattern (needs tuning), pdh_pdl_failure (0 trades on crypto 24/7)
+# Only the strategies that passed the 2-year, 20-coin research (strategy_research.py)
+# can be run. The ones that lost money after fees were removed from the app;
+# their signal code stays only so the research can re-check them.
+_ALL_CRYPTO_STRATEGIES = list(_autopilot_mod.APPROVED_PROFILES)
 
 _backtest_data_cache: dict = {}   # f"{symbol}:{timeframe}:{days}" -> {"data": [...], "fetched_at": ts}
 
@@ -5467,7 +5508,9 @@ def lab_strategies(current_user: dict = Depends(_get_current_user)):
             for sid, c in _custom_all().items() if c.get("owner") == current_user["username"]]
     return {
         "builtin": [{"id": st, "tested_tf": (_autopilot_mod.APPROVED_PROFILES.get(st) or {}).get("tf"),
-                     "evidence": (_autopilot_mod.APPROVED_PROFILES.get(st) or {}).get("evidence")}
+                     "evidence": (_autopilot_mod.APPROVED_PROFILES.get(st) or {}).get("evidence"),
+                     "sl_atr": ((_autopilot_mod.APPROVED_PROFILES.get(st) or {}).get("params") or {}).get("sl_atr"),
+                     "reward_r": ((_autopilot_mod.APPROVED_PROFILES.get(st) or {}).get("params") or {}).get("reward_r")}
                     for st in _ALL_CRYPTO_STRATEGIES if st != "funding_rate"],
         "custom": sorted(mine, key=lambda x: x.get("created") or "", reverse=True),
         "coins": LAB_COINS,

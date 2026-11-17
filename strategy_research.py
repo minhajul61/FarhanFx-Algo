@@ -2,9 +2,10 @@
 Strategy research: which strategies have a real edge after fees?
 
 For each strategy × timeframe, a stop/target grid is run on the first two
-thirds of a year of data (TRAIN) for 10 coins; the best grid point on TRAIN
+thirds of 2 years of data (TRAIN) for 20 coins; the best grid point on TRAIN
 is then checked on the last third (TEST), which it never saw. A strategy
-passes only if it makes money in both halves on several coins.
+passes only if it makes money in both halves, on 8+ coins, and at 5+ of the
+9 stop/target settings (so one lucky setting cannot pass it).
 
     python strategy_research.py            # writes strategy_research.json
 """
@@ -14,18 +15,20 @@ import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
 
-COINS = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "LINK", "SUI"]
+COINS = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "LINK", "SUI",
+         "LTC", "DOT", "TRX", "NEAR", "UNI", "APT", "ARB", "OP", "INJ", "BCH"]
 GRID = [(sl, rr) for sl in (1.5, 2.0, 3.0) for rr in (1.5, 2.0, 3.0)]
 PLAN = {
-    "4h": ["ema_trend", "rsi_trend", "smc_sweep", "pa_engulf", "macd_trend",
-           "rsi", "liquidity_sweep", "bos_choch", "ob_fvg", "fvg", "ifvg", "false_breakout",
-           "vwap_bands", "rsi_divergence"],
-    "1h": ["ema_trend", "rsi_trend", "smc_sweep", "pa_engulf", "macd_trend"],
+    "4h": ["rsi_trend", "ema_trend", "smc_sweep", "fibonacci_retracement", "trend_breakout", "bb_squeeze",
+           "super_breakout", "pa_engulf", "macd_trend", "tsmom", "liquidity_sweep", "vwap_bands"],
+    "1d": ["trend_breakout", "pa_engulf", "rsi_trend", "tsmom", "bb_squeeze", "fibonacci_retracement"],
 }
-MIN_TRAIN_TRADES = 40       # pooled over the 10 coins
-MIN_TEST_TRADES = 20
-MIN_COINS_BOTH = 4
+MIN_TRAIN_TRADES = 60       # pooled over the 20 coins
+MIN_TEST_TRADES = 30
+MIN_COINS_BOTH = 8
 MIN_TEST_R = 0.05
+OUT = "strategy_research.json"
+MIN_ROBUST = 5          # grid points positive in BOTH halves
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".bt_cache")
 
 
@@ -35,11 +38,14 @@ def _server():
     return server
 
 
+DAYS = 730
+
+
 def _rows(coin, tf):
-    path = os.path.join(CACHE, f"{coin}_{tf}_365.json")
+    path = os.path.join(CACHE, f"{coin}_{tf}_{DAYS}.json")
     if not os.path.exists(path) or time.time() - os.path.getmtime(path) > 24 * 3600:
         os.makedirs(CACHE, exist_ok=True)
-        rows = _server()._fetch_backtest_ohlcv(f"{coin}/USDT:USDT", tf, 365)
+        rows = _server()._fetch_backtest_ohlcv(f"{coin}/USDT:USDT", tf, DAYS)
         with open(path, "w") as f:
             json.dump(rows, f)
     with open(path) as f:
@@ -79,7 +85,7 @@ def main():
     report = []
     for tf, strategies in PLAN.items():
         for st in strategies:
-            best = None
+            best, robust = None, 0
             for sl, rr in GRID:
                 pts = [r for r in rows if r["strategy"] == st and r["tf"] == tf and r["sl"] == sl and r["rr"] == rr]
                 tr_n = sum(p["train"][0] for p in pts)
@@ -90,16 +96,18 @@ def main():
                 cand = {"strategy": st, "tf": tf, "sl_atr": sl, "reward_r": rr, "train_trades": tr_n, "train_r": round(tr_r, 3),
                         "test_trades": te_n, "test_r": round(te_r, 3), "coins_both": both,
                         "coins": sorted(p["coin"] for p in pts if p["train"][1] > 0 and p["test"][1] > 0)}
+                robust += 1 if (tr_n and te_n and tr_r > 0 and te_r > 0) else 0
                 if tr_n >= MIN_TRAIN_TRADES and (best is None or tr_r > best["train_r"]):
                     best = cand
             if not best:
                 report.append({"strategy": st, "tf": tf, "pass": False, "why": "too few trades"})
                 continue
-            best["pass"] = bool(best["train_r"] > 0 and best["test_r"] >= MIN_TEST_R and best["test_trades"] >= MIN_TEST_TRADES
+            best["robust"] = f"{robust}/{len(GRID)}"
+            best["pass"] = bool(robust >= MIN_ROBUST and best["train_r"] > 0 and best["test_r"] >= MIN_TEST_R and best["test_trades"] >= MIN_TEST_TRADES
                                 and best["coins_both"] >= MIN_COINS_BOTH)
             report.append(best)
     report.sort(key=lambda r: (not r.get("pass"), -(r.get("test_r") or -9)))
-    with open("strategy_research.json", "w") as f:
+    with open(OUT, "w") as f:
         json.dump({"generated": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()), "rules": {
             "grid": GRID, "min_train_trades": MIN_TRAIN_TRADES, "min_test_trades": MIN_TEST_TRADES,
             "min_coins_both": MIN_COINS_BOTH, "min_test_r": MIN_TEST_R}, "results": report}, f, indent=1)
@@ -110,7 +118,7 @@ def main():
             print(f"{r['strategy']:18}{r['tf']:4}  {r['why']}")
             continue
         print(f"{r['strategy']:18}{r['tf']:4}{r['sl_atr']:>5}{r['reward_r']:>5}{r['train_r']:>8}{r['train_trades']:>5}"
-              f"{r['test_r']:>8}{r['test_trades']:>5}{r['coins_both']:>5}/10  {'YES' if r['pass'] else ''}")
+              f"{r['test_r']:>8}{r['test_trades']:>5}{r['coins_both']:>5}/{len(COINS)} robust {r['robust']}  {'YES' if r['pass'] else ''}")
 
 
 if __name__ == "__main__":
