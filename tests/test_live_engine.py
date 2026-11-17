@@ -659,6 +659,12 @@ def test_picker_ranks_and_keeps():
     check("picker: excluded coin skipped", pick["symbol"] == "CCC/USDT:USDT", pick["symbol"])
     pick = ap.pick_for_strategy("trend_breakout", "4h", {}, keep="CCC/USDT:USDT")
     check("picker: keeps the current coin while it still has an edge", pick["symbol"] == "CCC/USDT:USDT" and pick["kept"])
+    pick = ap.pick_for_strategy("trend_breakout", "4h", {}, exclude={"AAA/USDT:USDT", "CCC/USDT:USDT"})
+    check("picker: never picks a coin where the strategy loses money", pick["symbol"] is None and "made money" in pick["why"], pick)
+    server._autopilot.pick_for_strategy = lambda *a, **k: {"symbol": None, "why": "none of the 3 coins tested made money"}
+    bot = add_bot("stay", mode="demo", sym="OLD/USDT:USDT", ai_pair=True)
+    check("repick: bot stays on its coin when no coin has an edge",
+          server._ai_pair_repick(bot) is None and bot["symbol"] == "OLD/USDT:USDT" and "staying put" in bot["ai_pair_why"])
 
 
 def test_bot_balances_split_the_wallet():

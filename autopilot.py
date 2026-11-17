@@ -531,9 +531,14 @@ class Autopilot:
         if not results:
             return None
         kept = next((x for x in results if x["symbol"] == keep and x["edge"]), None)
-        best = kept or results[0]
+        best = kept or next((x for x in results if x["edge"]), None)
+        if not best:
+            # never hand a bot a coin where this strategy has been losing money
+            return {"symbol": None, "kept": False, "tested": len(results), "alternatives": [],
+                    "why": (f"none of the {len(results)} coins tested made money with {strategy} {tf} "
+                            f"recently (best {results[0]['symbol'].split('/')[0]}: {results[0]['avg_r']:+.2f}R avg)")}
         return {**best, "kept": bool(kept), "tested": len(results),
-                "alternatives": [x["symbol"] for x in results[1:4]]}
+                "alternatives": [x["symbol"] for x in results if x["edge"] and x is not best][:3]}
 
     def rank_for_strategy(self, strategy, tf, params, exclude=(), keep=None, candidates=None):
         """Every candidate coin with its momentum and this strategy's backtest, best first."""

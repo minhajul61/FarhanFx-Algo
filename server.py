@@ -4233,6 +4233,9 @@ def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_curre
             return JSONResponse(status_code=400, content={"error": f"AI coin picker failed: {str(e)[:150]}"})
         if not ai_pick:
             return JSONResponse(status_code=400, content={"error": "AI could not read market data to pick a coin — try again in a minute"})
+        if not ai_pick.get("symbol"):
+            return JSONResponse(status_code=400, content={"error": "AI found no coin to trade: " + ai_pick["why"]
+                                                          + " — try another strategy or timeframe"})
         req.symbol = ai_pick["symbol"]
     # A comma-separated symbol list creates one independent bot per symbol
     # — same proven single-symbol tick/signal/exit logic for each, just
@@ -4508,6 +4511,10 @@ def _ai_pair_repick(bot) -> str | None:
     params = {k: bot.get(k) for k in ("sl_atr", "reward_r", "tp_atr", "trailing_atr", "custom_def") if bot.get(k) is not None}
     pick = _autopilot.pick_for_strategy(bot["strategy"], bot["timeframe"], params, exclude=held, keep=bot["symbol"])
     if not pick:
+        return None
+    if not pick.get("symbol"):
+        bot["ai_pair_time"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        bot["ai_pair_why"] = "staying put — " + pick["why"]
         return None
     with _bot_lock(bot["id"]):
         if bot.get("open_side"):
