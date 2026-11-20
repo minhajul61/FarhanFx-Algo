@@ -11659,9 +11659,12 @@ function botStrategyChange(applyTested = true) {
   const st   = document.getElementById('bot-strategy')?.value;
   const hint = document.getElementById('bot-strategy-hint');
   const t = _TESTED[st];
-  if (t && applyTested) {
-    const tfEl = document.getElementById('bot-timeframe');
-    if (tfEl) tfEl.value = t.tf;
+  const tfEl = document.getElementById('bot-timeframe');
+  if (tfEl) {
+    // a tested strategy only runs on the timeframe it passed on (on 15m they all lost after fees)
+    if (t) tfEl.value = t.tf;
+    tfEl.disabled = !!t;
+    tfEl.title = t ? `Locked: ${st.replace(/_/g, ' ')} only made money on ${t.tf} in the backtest` : '';
   }
   const cu = _botCustom[st];
   const slEl = document.getElementById('bot-auto-sl'), tpEl = document.getElementById('bot-auto-tp');
@@ -11867,6 +11870,17 @@ async function algoLoadBots() {
             · SL ${b.sl_atr || 2} ATR · TP ${b.reward_r || 2}R
           </div>
           ${b.ai_pair && b.ai_pair_why ? `<div style="font-size:10px;color:#c4b5fd;margin-top:4px;line-height:1.45;max-width:420px">🤖 AI pick (${_apEsc(b.ai_pair_time || '')}): ${_apEsc(b.ai_pair_why)}</div>` : ''}
+          ${(b.ai_coins || []).length > 1 ? `<div style="margin-top:6px;max-width:440px">
+            <div style="display:flex;align-items:center;gap:6px;font-size:9px;font-weight:800;letter-spacing:.08em;color:#a78bfa">
+              <span style="width:7px;height:7px;border-radius:50%;background:#a78bfa;box-shadow:0 0 8px #a78bfa;animation:pulse 1.4s infinite"></span>
+              AI COIN LIST · ${b.open_side ? 'TRADING ' + _apEsc(b.symbol.split('/')[0]) : 'SCANNING ' + b.ai_coins.length + ' COINS'}
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${b.ai_coins.map(c => {
+              const on = c === b.symbol, hot = on && b.open_side;
+              return `<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:999px;border:1px solid ${hot ? 'var(--green)' : on ? '#a78bfa' : 'rgba(167,139,250,.3)'};color:${hot ? 'var(--green)' : on ? '#ddd6fe' : 'var(--text3)'};background:${hot ? 'rgba(34,197,94,.12)' : on ? 'rgba(139,92,246,.18)' : 'transparent'}${hot ? ';animation:liveBlink 1.6s infinite' : ''}">${_apEsc(c.split('/')[0])}</span>`;
+            }).join('')}</div>
+            ${b.ai_scan_note && !b.open_side ? `<div style="font-size:9px;color:var(--text3);margin-top:3px">⟳ ${_apEsc(b.ai_scan_note)}</div>` : ''}
+          </div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
           <div style="display:flex;gap:4px">
@@ -11895,7 +11909,7 @@ async function algoLoadBots() {
         const eq  = dep + pnl;
         const pct = dep > 0 ? (pnl/dep*100) : 0;
         return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;padding:8px 10px;background:rgba(0,200,255,0.04);border:1px solid rgba(0,200,255,0.1);border-radius:8px">
-          <div style="text-align:center"><div style="font-size:8px;color:var(--text3);letter-spacing:1px">TRADING BALANCE</div><div style="font-size:13px;font-weight:900;color:var(--text2)">$${dep.toFixed(0)}</div></div>
+          <div style="text-align:center"><div style="font-size:8px;color:var(--text3);letter-spacing:1px">${b.capital_usd ? 'TRADING BALANCE' : 'DEMO WALLET (SHARED)'}</div><div style="font-size:13px;font-weight:900;color:var(--text2)">$${dep.toFixed(0)}</div></div>
           <div style="text-align:center"><div style="font-size:8px;color:var(--text3);letter-spacing:1px">NOW</div><div style="font-size:13px;font-weight:900;color:var(--accent)">$${eq.toFixed(2)}</div></div>
           <div style="text-align:center"><div style="font-size:8px;color:var(--text3);letter-spacing:1px">PROFIT</div><div style="font-size:13px;font-weight:900;color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>=0?'+':''}$${pnl.toFixed(2)} (${pct>=0?'+':''}${pct.toFixed(1)}%)</div></div>
         </div>`;

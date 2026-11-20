@@ -52,6 +52,25 @@ def stop_distance(bot: dict, atr_value: float) -> float:
     return mult * atr_value
 
 
+MAX_STOP_PCT = 30.0     # a stop further than this from the entry = coin too wild for the strategy: no trade (2y/40 coins: 30% costs nothing, 10-20% cut profit)
+MAX_HOLD_BARS = 120     # a trade that reached neither stop nor target after this many candles is closed (2y/40 coins: 120 is neutral, 30-60 cut profit)
+MIN_HOLD_HOURS = 480    # ...but never before 20 days: 120 candles on 15m is only 30 h (1y/40 coins 15m: 20 days beat 30 h; on 1d, 20 days cut profit, so 1d keeps 120 candles)
+TF_SECONDS = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400, "1d": 86400}
+
+
+def stop_too_wide(bot: dict, entry: float, stop: float) -> bool:
+    cap = float(bot.get("max_stop_pct", MAX_STOP_PCT) or 0)
+    return cap > 0 and entry > 0 and abs(entry - stop) / entry * 100 > cap
+
+
+def hold_limit(bot: dict) -> int:
+    """Candles a trade may stay open (0 = no limit)."""
+    if bot.get("max_hold_bars") is not None:
+        return int(bot["max_hold_bars"] or 0)
+    tf = TF_SECONDS.get(bot.get("timeframe"))
+    return max(MAX_HOLD_BARS, math.ceil(MIN_HOLD_HOURS * 3600 / tf)) if tf else MAX_HOLD_BARS
+
+
 def protective_levels(bot: dict, side: str, entry: float, atr_value: float):
     """Return (stop_loss, take_profit) for a fresh position."""
     dist = stop_distance(bot, atr_value)
@@ -164,6 +183,8 @@ def backtest(signal_fn, bot: dict, ohlcv: list, window: int,
             elif pos["trail_dist"] > 0:
                 pos["extreme"] = max(pos["extreme"], h) if pos["side"] == "BUY" else min(pos["extreme"], l)
                 pos["stop"] = trail(pos["side"], pos["stop"], pos["extreme"], pos["trail_dist"])
+        if pos and hold_limit(bot) and i - pos["entry_i"] >= hold_limit(bot):
+            close(i, c, "time_exit", market=True)
 
         # 2) signal on the now-closed bar i
         win = ohlcv[i - window + 1:i + 1]
@@ -182,7 +203,7 @@ def backtest(signal_fn, bot: dict, ohlcv: list, window: int,
                 entry = fill_price("buy" if signal == "BUY" else "sell", c)
                 stop, target = protective_levels(bot, signal, entry, a)
                 qty = position_size(equity, risk_pct, entry, stop, leverage)
-                if qty > 0:
+                if qty > 0 and not stop_too_wide(bot, entry, stop):
                     pos = {"side": signal, "entry": entry, "qty": qty, "stop": stop,
                            "target": target, "extreme": entry, "entry_i": i,
                            "trail_dist": float(bot.get("trailing_atr") or 0) * a,

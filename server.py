@@ -1303,6 +1303,8 @@ def _load_saved_bots():
                 bot.setdefault("group_name", "")
                 _crypto_bots[bid] = bot
                 bot["max_open_trades"] = 1
+                if bot.get("status") == "active":
+                    _move_to_tested_timeframe(bot)   # the AI pair loop re-picks its coin list 90 s after start
                 if bot.get("one_shot") and bot.get("open_side") and bot.get("status") != "active":
                     bot["status"], bot["last_error"] = "active", None   # its trade is still open: keep managing it
                 if bot.get('status') == 'active':
@@ -3809,6 +3811,39 @@ def _flatten_live(ex, bot):
         ex.create_order(bot["symbol"], "market", side, size, None, {"reduceOnly": True})
 
 
+def _move_to_tested_timeframe(bot) -> bool:
+    """A tested strategy only runs on the timeframe it passed the backtest on
+    (on 15m every one of them lost after fees, 1y/40 coins). A flat bot is
+    moved now; one with an open trade after that trade closes. True = moved now."""
+    prof = _autopilot_mod.APPROVED_PROFILES.get(bot.get("strategy"))
+    tf = prof["tf"] if prof else None
+    if bot.get("autopilot") or not tf or bot.get("timeframe") == tf:
+        bot.pop("next_timeframe", None)
+        return False
+    if bot.get("open_side"):
+        bot["next_timeframe"] = tf
+        return False
+    old = bot.get("timeframe")
+    bot["timeframe"] = tf
+    bot.pop("next_timeframe", None)
+    for k in ("last_eval_bar", "last_close_bar", "ai_scan_bar", "ai_scan_note"):
+        bot[k] = None
+    if bot.get("ai_pair"):
+        bot["ai_coins"] = [bot["symbol"]]      # the AI re-picks the coin list for the new timeframe
+    bot["last_error"] = (f"🔁 Moved from {old} to {tf}: {bot['strategy']} only made money on {tf} "
+                         f"in the backtest (on {old} it lost after fees)")
+    return True
+
+
+def _repick_soon(bot):
+    def run():
+        try:
+            _ai_pair_repick(bot)
+        except Exception as e:
+            print(f"[ai-pair] repick after timeframe move failed: {e}")
+    threading.Thread(target=run, daemon=True).start()
+
+
 def _finalize_close(bot, exit_price, pnl, reason, bar_ts=None):
     mode = bot.get("mode", "live")
     try:
@@ -3836,13 +3871,15 @@ def _finalize_close(bot, exit_price, pnl, reason, bar_ts=None):
         bot["demo_equity"] = round(bot.get("demo_equity", bot.get("demo_balance", 1000)) + pnl, 4)
     _rm_for(bot.get("username")).record_close(mode, _bot_label(bot), pnl, reason)
     for k in ("open_side", "open_entry_price", "sl", "tp", "initial_sl", "sl_order_id", "tp_order_id",
-              "entry_bar_ts", "open_time_ms", "open_peak", "open_trough"):
+              "entry_bar_ts", "open_time_ms", "open_peak", "open_trough", "unrealized_pnl"):
         bot[k] = None
     bot["open_amount"] = 0
     bot["open_trade_count"] = 0
     bot["trail_dist"] = 0
     bot["risk_usd"] = 0
     bot["last_close_bar"] = bar_ts or bot.get("last_eval_bar")
+    if bot.get("next_timeframe") and _move_to_tested_timeframe(bot):
+        _repick_soon(bot)
     icon = "✅" if pnl >= 0 else "❌"
     _tg_notify(f"<b>FarhanFX — Position Closed ({mode.upper()})</b>\n📊 <b>{bot['strategy']}</b> | {bot['symbol']}\n"
                f"{icon} PnL: <code>${pnl:.2f}</code> ({reason})")
@@ -4036,7 +4073,12 @@ def _bot_step(bot):
             raise _Skip(f"⚠ {bot['exchange']} not connected — live bot waiting (open positions keep their Binance stop)")
         _check_one_way_mode(ex, uname)
 
+    if not bot.get("open_side") and len(bot.get("ai_coins") or []) > 1 and not bot.get("autopilot"):
+        _ai_scan(bot, pm)
+
     ohlcv = pm.fetch_ohlcv(bot["symbol"], bot["timeframe"], limit=_bot_lookback_bars(bot) + 2)
+    if (bot.get("last_error") or "").startswith("⚠"):
+        bot["last_error"] = None       # data came back: an old network error no longer applies
     closed, _forming = _split_closed(ohlcv, bot["timeframe"])
     price = float(ohlcv[-1][4])
     bot["last_price"] = price
@@ -4056,6 +4098,13 @@ def _bot_step(bot):
             bot["unrealized_pnl"] = round(_engine.trade_pnl(bot["open_side"], bot["open_entry_price"], price, bot.get("open_amount", 0)), 4)
         if _manage_open(bot, ex, ohlcv, closed, price, atr_now):
             return
+        lim = _engine.hold_limit(bot)
+        if lim and closed and bot.get("entry_bar_ts"):
+            held = (closed[-1][0] - bot["entry_bar_ts"]) // (_TF_SECONDS.get(bot["timeframe"], 3600) * 1000)
+            if held >= lim:
+                _close_position(bot, ex, price, "time_exit")
+                bot["last_error"] = f"⏱ Closed after {held} candles without reaching its stop or target"
+                return
         if bot.get("one_shot"):
             return                   # a hunter trade only waits for its stop / target
 
@@ -4121,6 +4170,9 @@ def _bot_step(bot):
         capital = min(capital, float(bot["capital_usd"]))
         max_notional = min(max_notional, float(bot["capital_usd"]) * appr["leverage"])
     stop, _tp = _engine.protective_levels(bot, signal, price, atr_now)
+    if _engine.stop_too_wide(bot, price, stop):
+        raise _Skip(f"⏸ {bot['symbol'].split('/')[0]} is too wild right now: the stop would be "
+                    f"{abs(price - stop) / price * 100:.0f}% away (max {float(bot.get('max_stop_pct', _engine.MAX_STOP_PCT)):.0f}%) — signal skipped")
     qty = _engine.position_size(capital, risk_pct, price, stop, appr["leverage"])
     qty = min(qty, max_notional / price)
     if bot.get("fixed_amount", 0) > 0:
@@ -4131,6 +4183,39 @@ def _bot_step(bot):
         raise _Skip("⏸ Size rounds to zero")
     risk_usd = qty * (abs(price - stop) + price * 2 * (_engine.TAKER_FEE + _engine.SLIPPAGE))
     _open_position(bot, ex, signal, qty, price, atr_now, appr["leverage"], bar_ts, risk_usd)
+
+
+def _ai_scan(bot, pm):
+    """A flat bot with an AI coin list reads every coin on it at the candle close
+    and moves to the first (best-ranked) coin that gives a signal. No coin is
+    fixed: the bot trades whichever of the AI's coins sets up."""
+    held = {b.get("symbol") for b in _crypto_bots.values() if b is not bot and b.get("open_side")}
+    limit = _bot_lookback_bars(bot) + 2
+    scanned, bar = 0, None
+    for sym in bot["ai_coins"]:
+        if sym in held:
+            continue
+        try:
+            closed, _ = _split_closed(pm.fetch_ohlcv(sym, bot["timeframe"], limit=limit), bot["timeframe"])
+        except Exception:
+            continue
+        if not closed:
+            continue
+        bar = closed[-1][0]
+        if bar == bot.get("ai_scan_bar"):
+            return                           # this candle was already scanned
+        scanned += 1
+        if _get_bot_signal({**bot, "symbol": sym}, closed):
+            bot["ai_scan_bar"] = bar
+            bot["ai_scan_note"] = f"{datetime.now().strftime('%H:%M')} signal on {sym.split('/')[0]}"
+            if sym != bot["symbol"]:
+                print(f"[ai-scan] {bot['strategy']} {bot['timeframe']}: {bot['symbol'].split('/')[0]} → {sym.split('/')[0]} (signal)")
+                bot["symbol"] = sym
+                bot["last_eval_bar"] = None
+            return
+    if bar is not None:
+        bot["ai_scan_bar"] = bar
+        bot["ai_scan_note"] = f"{datetime.now().strftime('%H:%M')} scanned {scanned} coins — no signal yet"
 
 
 def _schedule_tick(bot_id, delay=None):
@@ -4193,6 +4278,9 @@ def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_curre
         return JSONResponse(status_code=400, content={"error": f"Unknown strategy '{req.strategy}'"})
     if req.timeframe not in _TF_SECONDS:
         return JSONResponse(status_code=400, content={"error": f"Unsupported timeframe '{req.timeframe}'"})
+    if req.strategy in _autopilot_mod.APPROVED_PROFILES:
+        # tested strategies only run on the timeframe they passed on (on 15m all of them lost after fees)
+        req.timeframe = _autopilot_mod.APPROVED_PROFILES[req.strategy]["tf"]
     if req.mode not in ("demo", "live"):
         return JSONResponse(status_code=400, content={"error": "mode must be demo or live"})
     # Live mode needs a real connected exchange to place orders on. Demo mode
@@ -4275,6 +4363,7 @@ def crypto_algo_start(req: CryptoBotReq, current_user: dict = Depends(_get_curre
             "capital_usd": round(cap, 2), "ai_pair": bool(ai_pick),
             "custom_def": custom["def"] if custom else None, "custom_name": custom["name"] if custom else None,
             "ai_pair_why": ai_pick["why"] if ai_pick else None,
+            "ai_coins": (ai_pick.get("coins") or [ai_pick["symbol"]]) if ai_pick else None,
             "ai_pair_time": datetime.now().strftime("%Y-%m-%d %H:%M") if ai_pick else None,
             "leverage": req.leverage, "margin_mode": req.margin_mode,
             "mode": req.mode, "demo_balance": req.demo_balance,
@@ -4503,11 +4592,12 @@ _autopilot = _autopilot_mod.Autopilot({
 def _ai_pair_repick(bot) -> str | None:
     """Re-run the AI coin pick for a flat bot; switch coin if the current one
     lost its edge. Returns a log line when the coin changed."""
-    if not bot.get("ai_pair") or bot.get("open_side") or bot.get("status") != "active" or bot.get("autopilot"):
+    if not bot.get("ai_pair") or bot.get("status") != "active" or bot.get("autopilot"):
         return None
     uname = bot.get("username", "admin")
+    # coins another bot is holding a trade in cannot be traded by this one right now
     held = {b.get("symbol") for b in _crypto_bots.values()
-            if b is not bot and b.get("username") == uname and b.get("status") == "active"}
+            if b is not bot and b.get("username") == uname and b.get("open_side")}
     params = {k: bot.get(k) for k in ("sl_atr", "reward_r", "tp_atr", "trailing_atr", "custom_def") if bot.get(k) is not None}
     pick = _autopilot.pick_for_strategy(bot["strategy"], bot["timeframe"], params, exclude=held, keep=bot["symbol"])
     if not pick:
@@ -4515,14 +4605,14 @@ def _ai_pair_repick(bot) -> str | None:
     if not pick.get("symbol"):
         bot["ai_pair_time"] = datetime.now().strftime("%Y-%m-%d %H:%M")
         bot["ai_pair_why"] = "staying put — " + pick["why"]
+        bot["ai_coins"] = [bot["symbol"]]
         return None
     with _bot_lock(bot["id"]):
-        if bot.get("open_side"):
-            return None
         bot["ai_pair_time"] = datetime.now().strftime("%Y-%m-%d %H:%M")
         bot["ai_pair_why"] = pick["why"]
-        if pick["symbol"] == bot["symbol"]:
-            return None
+        bot["ai_coins"] = pick.get("coins") or [pick["symbol"]]
+        if bot.get("open_side") or bot["symbol"] in bot["ai_coins"]:
+            return None          # the open trade stays on its coin; the new list is used after it closes
         old = bot["symbol"]
         bot["symbol"] = pick["symbol"]
         bot["last_eval_bar"] = None
@@ -4557,7 +4647,7 @@ def _bot_health(b) -> dict:
         health, note = "error", b["last_error"]
     elif b.get("open_side") and not b.get("sl"):
         health, note = "error", "Position without stop loss"
-    elif (b.get("last_error") or "").startswith(("⏸", "🛑", "🧠", "⚡", "⚖", "🤖")):
+    elif (b.get("last_error") or "").startswith(("⏸", "🛑", "🧠", "⚡", "⚖", "🤖", "⏱", "🔁")):
         health, note = "waiting", b["last_error"]
     if b.get("retiring"):
         note = (note + " · " if note else "") + "retiring after this trade"
@@ -4574,7 +4664,7 @@ def _bot_health(b) -> dict:
         "trades": len(closed), "pnl": round(sum(t.get("pnl") or 0 for t in closed), 4),
         "wins": sum(1 for t in closed if (t.get("pnl") or 0) > 0),
         "why": b.get("autopilot_why") or b.get("ai_pair_why"), "last_signal": b.get("last_signal"),
-        "capital_usd": b.get("capital_usd"),
+        "capital_usd": b.get("capital_usd"), "ai_coins": b.get("ai_coins"),
     }
 
 

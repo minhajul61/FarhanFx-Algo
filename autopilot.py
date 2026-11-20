@@ -522,6 +522,8 @@ class Autopilot:
         self._board_cache = (time.time(), board)
         return board
 
+    AI_COINS = 5     # coins an algo bot watches at once
+
     def pick_for_strategy(self, strategy, tf, params, exclude=(), keep=None):
         """Best coin for this strategy right now: the top-momentum coins are
         each backtested with this strategy/timeframe/stop settings, ranked by
@@ -537,8 +539,11 @@ class Autopilot:
             return {"symbol": None, "kept": False, "tested": len(results), "alternatives": [],
                     "why": (f"none of the {len(results)} coins tested made money with {strategy} {tf} "
                             f"recently (best {results[0]['symbol'].split('/')[0]}: {results[0]['avg_r']:+.2f}R avg)")}
+        edge = [x["symbol"] for x in results if x["edge"]]
         return {**best, "kept": bool(kept), "tested": len(results),
-                "alternatives": [x["symbol"] for x in results if x["edge"] and x is not best][:3]}
+                "alternatives": [x for x in edge if x != best["symbol"]][:3],
+                # the bot's coin list: every coin where this strategy has an edge, best first
+                "coins": edge[:self.AI_COINS]}
 
     def rank_for_strategy(self, strategy, tf, params, exclude=(), keep=None, candidates=None):
         """Every candidate coin with its momentum and this strategy's backtest, best first."""

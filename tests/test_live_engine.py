@@ -655,6 +655,8 @@ def test_picker_ranks_and_keeps():
     }, path=os.path.join(WORK, "ap_pick.json"))
     pick = ap.pick_for_strategy("trend_breakout", "4h", {})
     check("picker: coin with the best backtest edge wins over pure momentum", pick["symbol"] == "AAA/USDT:USDT", pick)
+    check("picker: hands the bot a coin list of only the coins with an edge, best first",
+          pick["coins"] == ["AAA/USDT:USDT", "CCC/USDT:USDT"], pick.get("coins"))
     pick = ap.pick_for_strategy("trend_breakout", "4h", {}, exclude={"AAA/USDT:USDT"})
     check("picker: excluded coin skipped", pick["symbol"] == "CCC/USDT:USDT", pick["symbol"])
     pick = ap.pick_for_strategy("trend_breakout", "4h", {}, keep="CCC/USDT:USDT")
@@ -665,6 +667,78 @@ def test_picker_ranks_and_keeps():
     bot = add_bot("stay", mode="demo", sym="OLD/USDT:USDT", ai_pair=True)
     check("repick: bot stays on its coin when no coin has an edge",
           server._ai_pair_repick(bot) is None and bot["symbol"] == "OLD/USDT:USDT" and "staying put" in bot["ai_pair_why"])
+
+
+def test_ai_coin_list():
+    mkt, ex = fresh()
+    A, B, C = "AAA/USDT:USDT", "BBB/USDT:USDT", "CCC/USDT:USDT"
+    hot = set()
+    server._get_bot_signal = lambda bot, ohlcv: "BUY" if bot["symbol"] in hot else None
+    try:
+        bot = add_bot("s", mode="demo", sym=A)
+        bot.update({"ai_pair": True, "ai_coins": [A, B, C]})
+        mkt.new_candle(100.0); tick("s")
+        check("coin list: no signal on any coin → bot waits and says so",
+              bot["open_side"] is None and "scanned 3 coins" in (bot.get("ai_scan_note") or ""), bot.get("ai_scan_note"))
+        hot.add(B)
+        mkt.new_candle(100.0); tick("s")
+        check("coin list: bot trades whichever coin on its list gives a signal",
+              bot["symbol"] == B and bot["open_side"] == "BUY", (bot["symbol"], bot["open_side"]))
+        server._autopilot.pick_for_strategy = lambda *a, **k: {"symbol": C, "coins": [C, A], "why": "fresh list"}
+        server._ai_pair_repick(bot)
+        check("coin list: AI refreshes the list during a trade but the trade stays on its coin",
+              bot["ai_coins"] == [C, A] and bot["symbol"] == B and bot["open_side"] == "BUY")
+        other = add_bot("t", mode="demo", sym=A)
+        other.update({"ai_pair": True, "ai_coins": [B, C]})
+        hot.update({C})
+        mkt.new_candle(100.0); tick("t")
+        check("coin list: a coin another bot is trading is skipped, the next signal is taken",
+              other["symbol"] == C and other["open_side"] == "BUY", (other["symbol"], other["open_side"]))
+    finally:
+        server._get_bot_signal = lambda bot, ohlcv: SIGNAL["v"]
+
+
+def test_stop_cap_and_hold_limit():
+    import engine
+    mkt, ex = fresh()
+    SIGNAL["v"] = "BUY"
+    mkt.new_candle(100.0)
+    wild = add_bot("w", mode="demo", sym="WILD/USDT:USDT", max_stop_pct=1.0, max_hold_bars=0)
+    tick("w")
+    check("stop cap: a signal whose stop would be too far away is not traded",
+          wild["open_side"] is None and "too wild" in (wild.get("last_error") or ""), wild.get("last_error"))
+    slow = add_bot("h", mode="demo", sym="SLOW/USDT:USDT", max_stop_pct=0, max_hold_bars=3)
+    tick("h")
+    check("hold limit: trade opens normally", slow["open_side"] == "BUY")
+    SIGNAL["v"] = None
+    for _ in range(2):
+        mkt.new_candle(100.0); tick("h")
+    check("hold limit: still open before the limit", slow["open_side"] == "BUY")
+    mkt.new_candle(100.0); tick("h")
+    check("hold limit: closed once it has sat for the limit without stop or target",
+          slow["open_side"] is None and slow["trades"][-1].get("exit_reason") == "time_exit", slow["trades"][-1:])
+    rows = [[i * 3600000, 100, 101, 99, 100, 1000] for i in range(300)]
+    flip = iter(["BUY"] + [None] * 1000)
+    res = engine.backtest(lambda b, w: next(flip), {"sl_atr": 2.0, "reward_r": 3.0, "max_hold_bars": 10, "max_stop_pct": 0}, rows, 50)
+    check("hold limit: the backtest closes a flat trade after the same number of candles",
+          res["total_trades"] == 1 and res["trades"][0]["exit_reason"] == "time_exit", res["trades"][:1])
+    res = engine.backtest(lambda b, w: "BUY", {"sl_atr": 2.0, "reward_r": 3.0, "max_stop_pct": 1.0, "max_hold_bars": 0}, rows, 50)
+    check("stop cap: the backtest skips the same too-wide trades", res["total_trades"] == 0)
+
+
+def test_stale_errors_and_pnl_clear():
+    mkt, ex = fresh()
+    SIGNAL["v"] = "BUY"
+    mkt.new_candle(100.0)
+    bot = add_bot("e", mode="demo", sym="ERR/USDT:USDT")
+    tick("e")
+    bot["last_error"] = "⚠ binanceusdm GET https://fapi.binance.com/fapi/v1/klines (timeout)"
+    tick("e")
+    check("a network error is cleared once data comes back", bot["open_side"] == "BUY" and not bot.get("last_error"), bot.get("last_error"))
+    SIGNAL["v"] = "SELL"
+    mkt.new_candle(100.0); tick("e")
+    check("a closed trade leaves no stale open P/L behind", bot["trades"][0].get("exit_reason") == "signal_flip" and bot.get("unrealized_pnl") is None,
+          (bot["trades"][0].get("exit_reason"), bot.get("unrealized_pnl")))
 
 
 def test_bot_balances_split_the_wallet():
@@ -1065,6 +1139,45 @@ def test_trend_filtered_strategies():
     for name in xs.STRATEGIES:
         check(f"{name}: wired into the bots", server._get_bot_signal({"strategy": name}, series(up)) in (None, "BUY", "SELL")
               and server._bot_lookback_bars({"strategy": name}) == xs.lookback(name))
+
+def test_tested_timeframe_and_hold_days():
+    import engine
+    check("hold limit: 120 candles on 4h (20 days) and on 1d",
+          engine.hold_limit({"timeframe": "4h"}) == 120 and engine.hold_limit({"timeframe": "1d"}) == 120)
+    check("hold limit: never under 20 days on short timeframes (15m = 1920 candles, 1h = 480)",
+          engine.hold_limit({"timeframe": "15m"}) == 1920 and engine.hold_limit({"timeframe": "1h"}) == 480)
+    check("hold limit: a bot's own setting still wins", engine.hold_limit({"timeframe": "15m", "max_hold_bars": 3}) == 3)
+    mkt, ex = fresh(mode="demo")
+    real_repick, picked = server._ai_pair_repick, []
+    server._ai_pair_repick = lambda b: picked.append(b["id"])
+    try:
+        flat = add_bot("tf1", mode="demo", sym="FLAT/USDT:USDT")
+        flat.update(timeframe="15m", ai_pair=True, ai_coins=["FLAT/USDT:USDT", "X/USDT:USDT"])
+        moved = server._move_to_tested_timeframe(flat)
+        check("a flat rsi_trend bot on 15m is moved to its tested 4h at once",
+              moved and flat["timeframe"] == "4h" and flat["ai_coins"] == ["FLAT/USDT:USDT"]
+              and flat["last_error"].startswith("🔁"), (flat["timeframe"], flat.get("last_error")))
+        other = add_bot("tf2", mode="demo", sym="SMC/USDT:USDT")
+        other.update(strategy="smc_sweep", timeframe="15m")
+        check("an untested strategy keeps the timeframe the user chose",
+              not server._move_to_tested_timeframe(other) and other["timeframe"] == "15m")
+        SIGNAL["v"] = "BUY"
+        mkt.new_candle(100.0)
+        busy = add_bot("tf3", mode="demo", sym="BUSY/USDT:USDT")
+        tick("tf3")
+        busy.update(timeframe="15m", ai_pair=True)
+        server._move_to_tested_timeframe(busy)
+        check("a bot with an open trade keeps its timeframe until the trade closes",
+              busy["open_side"] == "BUY" and busy["timeframe"] == "15m" and busy.get("next_timeframe") == "4h")
+        server._close_position(busy, ex, 100.0, "signal_flip")
+        import time as _t; _t.sleep(0.2)
+        check("...and moves to 4h right after it closes, with a fresh AI coin pick",
+              busy["timeframe"] == "4h" and not busy.get("next_timeframe") and "tf3" in picked,
+              (busy["timeframe"], picked))
+    finally:
+        server._ai_pair_repick = real_repick
+        SIGNAL["v"] = None
+
 
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
