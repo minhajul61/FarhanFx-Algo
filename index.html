@@ -913,6 +913,57 @@ tr:hover td{background:rgba(139,92,246,0.07)}
 #view-only-bar i{font-size:18px;color:#f59e0b}
 #view-only-bar::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);transform:translateX(-100%);animation:vosh 3.5s ease-in-out infinite}
 @keyframes vosh{to{transform:translateX(100%)}}
+/* ── Journal: import bar + AI Trading Mentor ── */
+.jm-import{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px;padding:14px 16px;border-radius:14px;
+  background:linear-gradient(120deg,rgba(139,92,246,.12),rgba(34,211,238,.05));border:1px dashed rgba(139,92,246,.45)}
+.jm-import-txt{display:flex;gap:12px;align-items:center;min-width:240px;flex:1}
+.jm-import-txt>i{font-size:26px;color:#a78bfa}
+.jm-import-txt b{display:block;font-size:13px}.jm-import-txt span{font-size:11.5px;color:var(--text2)}
+.jm-import-btns{display:flex;gap:8px;flex-wrap:wrap}
+.jm{margin-bottom:18px}
+.jm-card{position:relative;border-radius:16px;padding:18px;background:linear-gradient(160deg,rgba(22,25,41,.95),rgba(13,15,26,.95));border:1px solid rgba(139,92,246,.3);overflow:hidden}
+.jm-card::before{content:'';position:absolute;inset:0;background:radial-gradient(600px circle at 0% 0%,rgba(139,92,246,.16),transparent 45%);pointer-events:none}
+.jm-card>*{position:relative}
+.jm-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.jm-head .t{font-size:12px;font-weight:800;letter-spacing:2px;color:#c4b5fd}
+.jm-head .live{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--green);padding:3px 9px;border-radius:999px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3)}
+.jm-head .live i{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:jmPulse 1.6s infinite}
+@keyframes jmPulse{50%{opacity:.3}}
+.jm-head .sub{margin-left:auto;font-size:11px;color:var(--text3)}
+.jm-top{display:grid;grid-template-columns:170px 1fr;gap:18px;align-items:center}
+.jm-grade{width:150px;height:150px;border-radius:50%;display:grid;place-items:center;margin:auto;position:relative;
+  background:conic-gradient(var(--jm-c) calc(var(--jm-s) * 1%),rgba(255,255,255,.06) 0)}
+.jm-grade::after{content:'';position:absolute;inset:11px;border-radius:50%;background:#0d0f1a;box-shadow:inset 0 0 30px rgba(139,92,246,.2)}
+.jm-grade div{position:relative;z-index:1;text-align:center}
+.jm-grade b{display:block;font-size:40px;font-weight:800;line-height:1;color:var(--jm-c)}
+.jm-grade span{font-size:11px;color:var(--text2);letter-spacing:1px}
+.jm-sum{font-size:14px;line-height:1.6}
+.jm-sum .h{font-size:16px;font-weight:700;margin-bottom:6px}
+.jm-stats{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:var(--text2)}
+.jm-stats b{color:var(--text);font-size:13px;margin-left:4px}
+.jm-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
+.jm-box{border-radius:12px;padding:12px 14px;background:rgba(255,255,255,.025);border:1px solid var(--border)}
+.jm-box h4{font-size:10.5px;letter-spacing:1.6px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.jm-box.good h4{color:var(--green)}.jm-box.bad h4{color:var(--red)}.jm-box.plan h4{color:#c4b5fd}
+.jm-box ul{list-style:none;display:flex;flex-direction:column;gap:7px}
+.jm-box li{font-size:12px;line-height:1.5;color:var(--text2);padding-left:14px;position:relative}
+.jm-box li::before{content:'';position:absolute;left:0;top:7px;width:6px;height:6px;border-radius:2px;background:currentColor;opacity:.6}
+.jm-box.good li::before{background:var(--green)}.jm-box.bad li::before{background:var(--red)}.jm-box.plan li::before{background:#a78bfa}
+.jm-box li b{color:var(--text)}
+.jm-edge{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:12px}
+.jm-tbl{width:100%;font-size:11.5px;border-collapse:collapse}
+.jm-tbl td{padding:4px 2px;border-bottom:1px solid rgba(255,255,255,.04)}
+.jm-tbl td:last-child{text-align:right;font-family:var(--mono, monospace)}
+.jm-hours{display:grid;grid-template-columns:repeat(12,1fr);gap:3px;margin-top:4px}
+.jm-hours div{height:26px;border-radius:5px;display:grid;place-items:center;font-size:9px;color:rgba(255,255,255,.75)}
+.jm-empty{font-size:13px;color:var(--text2);line-height:1.7}
+.jm-modal{position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
+.jm-modal .box{width:min(560px,100%);border-radius:16px;padding:20px;background:var(--card);border:1px solid rgba(139,92,246,.4);box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.jm-modal h3{font-size:15px;margin-bottom:10px}
+.jm-modal .kv{display:flex;justify-content:space-between;font-size:12.5px;padding:7px 0;border-bottom:1px solid var(--border)}
+.jm-modal .kv span{color:var(--text2)}
+@media (max-width:1100px){.jm-edge{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:760px){.jm-top{grid-template-columns:1fr}.jm-cols,.jm-edge{grid-template-columns:1fr}.jm-head .sub{margin-left:0;width:100%}}
 /* Support the creator — bottom of the side menu */
 .creator{margin:18px 12px 8px;padding:12px;border-radius:14px;position:relative;overflow:hidden;
   background:linear-gradient(160deg,rgba(139,92,246,.14),rgba(34,211,238,.05));border:1px solid rgba(139,92,246,.28)}
@@ -1744,6 +1795,19 @@ tr:hover td{background:rgba(139,92,246,0.07)}
             <button onclick="jOpenAddModal()" style="background:var(--card2);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--font);font-size:11px;font-weight:700;padding:8px 16px;cursor:pointer;letter-spacing:1px;transition:all 0.2s">+ ADD TRADE</button>
           </div>
         </div>
+        <!-- import bar -->
+        <div class="jm-import">
+          <div class="jm-import-txt"><i class="ti ti-cloud-upload"></i><div><b>Bring in your trade history</b>
+            <span>Binance Futures, MT4 / MT5 or any broker — CSV, Excel or HTML statement. The AI Mentor analyses everything.</span></div></div>
+          <div class="jm-import-btns">
+            <button class="ap-btn primary" onclick="document.getElementById('j-file').click()"><i class="ti ti-upload"></i> UPLOAD HISTORY</button>
+            <button class="ap-btn" onclick="jImportFarhan()"><i class="ti ti-robot"></i> IMPORT MY FARHANFX TRADES</button>
+            <button class="ap-btn" onclick="jTemplateCSV()" title="CSV template"><i class="ti ti-file-download"></i></button>
+          </div>
+          <input type="file" id="j-file" accept=".csv,.txt,.xlsx,.xls,.html,.htm" style="display:none" onchange="jUploadFile(this)"/>
+        </div>
+        <!-- AI TRADING MENTOR -->
+        <div class="jm" id="j-mentor"></div>
 
         <!-- KPI ROW 1 -->
         <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:10px">
@@ -3468,8 +3532,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (!token) {
     document.getElementById('auth-screen').style.display = 'flex';
     // the landing page's "Start free trial" opens the sign-up form straight away
-    if (_authArea() === 'client' && new URLSearchParams(location.search).has('signup')) showAuthRegister();
-    else setTimeout(() => document.getElementById('auth-username').focus(), 100);
+    if (_authArea() === 'client' && (location.pathname === '/signup' || new URLSearchParams(location.search).has('signup'))) showAuthRegister();
+    else { if (_authArea() === 'client') _setUrl('/login', true); setTimeout(() => document.getElementById('auth-username').focus(), 100); }
     return;
   }
   // Verify token with server
@@ -3943,7 +4007,45 @@ function navToggle(force) {
   document.body.classList.toggle('nav-open', on);
 }
 // ── NAVIGATION ─────────────────────────────────────────────────────────────────
+// ── Addresses: /login, /signup, /app/<page> for clients, /admin/<page> for the owner ──
+const _PAGE_SLUG = {dashboard: 'dashboard', autopilot: 'autopilot', lab: 'strategy-lab', reports: 'reports',
+                    telegram: 'telegram', indian: 'indian-market', journal: 'journal', profile: 'profile',
+                    brain: 'ai-brain', admin: 'control-panel'};
+const _SLUG_NAV = {dashboard: 'nav-dashboard', autopilot: 'nav-autopilot', trade: 'nav-trade', 'algo-bots': 'nav-algo',
+                   'strategy-lab': 'nav-lab', reports: 'nav-reports', telegram: 'nav-telegram', 'indian-market': 'nav-indian',
+                   journal: 'nav-journal', profile: 'nav-profile', 'ai-brain': 'nav-brain', 'control-panel': 'nav-admin'};
+let _routing = false;
+function _appBase() { return _authArea() === 'admin' ? '/admin' : '/app'; }
+function _setUrl(path, replace) {
+  if (location.pathname === path) return;
+  history[replace ? 'replaceState' : 'pushState']({}, '', path);
+}
+function _slugFor(id) { return id === 'crypto' ? (_cryptoWanted === 'algo' ? 'algo-bots' : 'trade') : (_PAGE_SLUG[id] || id); }
+function _urlSlug() {
+  const p = location.pathname.replace(/\/+$/, ''), base = _appBase() + '/';
+  return p.startsWith(base) ? p.slice(base.length) : '';
+}
+// open the page this address names; false when it isn't a page this account can open
+function _openSlug(slug) {
+  const navId = _SLUG_NAV[slug], nav = navId && document.getElementById(navId);
+  if (!nav) return false;
+  _routing = true;
+  try {
+    if (slug === 'trade' || slug === 'algo-bots') openCrypto(slug === 'trade' ? 'trade' : 'algo', nav);
+    else showPage(Object.keys(_PAGE_SLUG).find(k => _PAGE_SLUG[k] === slug), nav);
+  } finally { _routing = false; }
+  return true;
+}
+window.addEventListener('popstate', () => {
+  if (document.getElementById('app')?.style.display === 'flex') { const s = _urlSlug(); if (s) _openSlug(s); }
+  else if (_authArea() === 'client') { location.pathname === '/signup' ? showAuthRegister() : showAuthLogin(); }
+});
+
 function showPage(id, el) {
+  if (!_routing) {
+    const fromAuth = ['/login', '/signup', '/app', '/admin'].includes(location.pathname.replace(/\/+$/, '') || '/');
+    _setUrl(_appBase() + '/' + _slugFor(id), fromAuth);
+  }
   document.body.classList.remove('nav-open');
   if (id !== 'crypto' && typeof _clearCryptoTimers === 'function') _clearCryptoTimers();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -3979,17 +4081,21 @@ let jEditId = null;
 let jPnlChart = null;
 
 function jSave() {
-  localStorage.setItem('jTrades', JSON.stringify(journalTrades));
+  // the journal lives on the server (per account, every device); saves are batched
+  clearTimeout(_jSaveTimer);
+  _jSaveTimer = setTimeout(jPushServer, 400);
 }
 
-function jInit() {
+async function jInit() {
+  if (!_jLoaded) await jLoadServer();
+  jRenderMentor();
   jRenderKPIs();
   jRenderCalendar();
   jRenderTable();
   jRenderBreakdowns();
   jRenderPnlChart();
   const clearBtn = document.getElementById('j-clear-btn');
-  if (clearBtn) clearBtn.style.display = _getAuthRole() === 'admin' ? '' : 'none';
+  if (clearBtn) clearBtn.style.display = journalTrades.length ? '' : 'none';
 }
 
 // ── KPIs ──
@@ -4262,7 +4368,7 @@ function _jRenderDaily() {
 function jRenderBreakdowns() {
   const sessions = {}; const pairs = {};
   journalTrades.forEach(t => {
-    const s = t.session || 'Other'; sessions[s] = (sessions[s] || 0) + 1;
+    const s = t.session || jSession(t.date); sessions[s] = (sessions[s] || 0) + 1;
     const p = (t.symbol || 'OTHER').replace('c','').replace('s','');
     pairs[p] = (pairs[p] || 0) + 1;
   });
@@ -4271,14 +4377,14 @@ function jRenderBreakdowns() {
 
   const sessBars = document.getElementById('j-session-bars');
   sessBars.innerHTML = Object.entries(sessions).map(([k, v], i) =>
-    `<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span style="color:var(--text2)">${k}</span><span style="color:${colors[i%5]}">${v}</span></div>
+    `<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span style="color:var(--text2)">${_apEsc(k)}</span><span style="color:${colors[i%5]}">${v}</span></div>
     <div class="bar-track"><div class="bar-fill" style="width:${(v/total*100).toFixed(0)}%;background:${colors[i%5]}"></div></div></div>`
   ).join('') || '<div style="color:var(--text3);font-size:11px">No data</div>';
 
   const pairBars = document.getElementById('j-pair-bars');
   const topPairs = Object.entries(pairs).sort((a,b)=>b[1]-a[1]).slice(0,5);
   pairBars.innerHTML = topPairs.map(([k, v], i) =>
-    `<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span style="color:var(--text2)">${k}</span><span style="color:${colors[i%5]}">${v}</span></div>
+    `<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span style="color:var(--text2)">${_apEsc(k)}</span><span style="color:${colors[i%5]}">${v}</span></div>
     <div class="bar-track"><div class="bar-fill" style="width:${(v/total*100).toFixed(0)}%;background:${colors[i%5]}"></div></div></div>`
   ).join('') || '<div style="color:var(--text3);font-size:11px">No data</div>';
 }
@@ -4335,6 +4441,10 @@ function jRenderTable() {
   if (!filtered.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
 
+  const total = filtered.length;
+  filtered = filtered.slice(0, 500);                       // big imported histories stay fast; the Mentor still reads all of them
+  const fmtDur = t => t.duration || (t.durationMin != null ? (t.durationMin >= 1440 ? (t.durationMin / 1440).toFixed(1) + 'd'
+    : t.durationMin >= 60 ? (t.durationMin / 60).toFixed(1) + 'h' : t.durationMin + 'm') : '');
   tbody.innerHTML = filtered.map((t, i) => {
     const dirBadge = t.direction === 'BUY'
       ? '<span class="badge badge-green">▲ BUY</span>'
@@ -4350,24 +4460,24 @@ function jRenderTable() {
     return `<tr>
       <td style="color:var(--text3)">${i + 1}</td>
       <td style="color:var(--text2);white-space:nowrap">${dateStr}</td>
-      <td style="font-weight:700">${t.symbol || '—'}</td>
+      <td style="font-weight:700">${_apEsc(t.symbol || '—')}</td>
       <td>${dirBadge}</td>
-      <td>${t.lots || '—'}</td>
-      <td>${t.entry || '—'}</td>
-      <td>${t.exit || '—'}</td>
+      <td>${_apEsc(t.lots || '—')}</td>
+      <td>${_apEsc(t.entry || '—')}</td>
+      <td>${_apEsc(t.exit || '—')}</td>
       <td style="color:${(t.pips||0)>=0?'var(--green)':'var(--red)'}">${t.pips >= 0 ? '+' : ''}${(t.pips||0).toFixed(1)}</td>
       <td style="color:${pnlColor};font-weight:700">${pnlText}</td>
-      <td style="color:var(--amber)">${t.rr ? t.rr.toFixed(2) + 'R' : '—'}</td>
-      <td style="color:var(--text2)">${t.duration || '—'}</td>
-      <td style="color:var(--text2)">${t.strategy || '—'}</td>
-      <td style="color:var(--text2)">${t.session || '—'}</td>
-      <td>${t.emotion || '—'}</td>
+      <td style="color:var(--amber)">${t.rr ? Number(t.rr).toFixed(2) + 'R' : '—'}</td>
+      <td style="color:var(--text2)">${_apEsc(fmtDur(t) || '—')}</td>
+      <td style="color:var(--text2)">${_apEsc(t.strategy || '—')}</td>
+      <td style="color:var(--text2)">${_apEsc(t.session || '—')}</td>
+      <td>${_apEsc(t.emotion || '—')}</td>
       <td style="color:var(--amber);letter-spacing:1px;font-size:11px">${stars}</td>
-      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)" title="${(t.notes||'').replace(/"/g,'&quot;')}">${t.notes || '—'}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)" title="${_apEsc(t.notes || '')}">${_apEsc(t.notes || '—')}</td>
       <td>${resBadge}</td>
       <td><button onclick="jDeleteTrade(${journalTrades.indexOf(t)})" style="background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:2px 6px" title="Delete">✕</button></td>
     </tr>`;
-  }).join('');
+  }).join('') + (total > 500 ? `<tr><td colspan="18" style="text-align:center;color:var(--text3);padding:10px">Showing the newest 500 of ${total} trades — search or filter to find older ones.</td></tr>` : '');
 }
 
 // ── MODAL ──
@@ -4513,6 +4623,374 @@ function jExportCSV() {
   toast('CSV exported ✓');
 }
 
+// ═══ JOURNAL: server storage, trade-history upload, AI Trading Mentor ══════════
+let _jLoaded = false, _jSaveTimer = null;
+async function jLoadServer() {
+  const d = await apiFetch('/api/journal');
+  if (!d || d.error) return;
+  const server = Array.isArray(d.trades) ? d.trades : [];
+  const local = JSON.parse(localStorage.getItem('jTrades') || '[]');
+  if (!server.length && local.length) {           // first visit after the move to the server: bring the browser's trades along
+    journalTrades = local; await jPushServer();
+  } else journalTrades = server;
+  localStorage.removeItem('jTrades');
+  _jLoaded = true;
+}
+async function jPushServer() {
+  const r = await apiFetch('/api/journal', {method: 'PUT', body: JSON.stringify({trades: journalTrades})});
+  if (r && r.error) toast('Journal not saved: ' + r.error, false);
+}
+
+// ── CSV / Excel / HTML statement parsing ──
+function _jCSV(text) {
+  const first = text.split(/\r?\n/).find(l => l.trim()) || '';
+  const delim = [',', ';', '\t'].map(d => [d, first.split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === delim) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.map(r => r.map(x => String(x).trim()));
+}
+function _jNum(v) {
+  if (v == null) return NaN;
+  let s = String(v).replace(/[\s$€£₹]/g, '').replace(/[A-Za-z]+$/, '');
+  if (/^-?[\d.]+,\d{1,2}$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');   // 1.234,56
+  else s = s.replace(/,/g, '');
+  return parseFloat(s);
+}
+function _jDate(v, utc) {
+  if (!v) return '';
+  let s = String(v).trim().replace(/^(\d{4})\.(\d{2})\.(\d{2})/, '$1-$2-$3');      // MT5 2026.11.20 13:45:00
+  if (/^\d{10,13}$/.test(s)) { const n = +s; return _jIso(new Date(s.length === 13 ? n : n * 1000)); }
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(s)) { const [d, m, y] = s.split(/[\/\s]/); s = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}` + s.slice(s.indexOf(' ') > 0 ? s.indexOf(' ') : s.length); }
+  const t = Date.parse(utc && !/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s.replace(' ', 'T') + 'Z' : s.replace(' ', 'T'));
+  return isNaN(t) ? '' : _jIso(new Date(t));
+}
+function _jIso(d) { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; }
+function _jMinutes(a, b) { const x = Date.parse(a), y = Date.parse(b); return isNaN(x) || isNaN(y) ? null : Math.max(0, Math.round((y - x) / 60000)); }
+
+const _J_COLS = {
+  open:   [/^open ?time|^opening time|^entry ?time|^time ?open|^open ?date/i],
+  close:  [/^close ?time|^closing time|^exit ?time|^time ?close|^close ?date/i],
+  time:   [/^date ?\(utc\)|^time ?\(utc\)|^date ?time|^date$|^time$|^datetime|^timestamp|^created/i],
+  symbol: [/^symbol|^pair|^instrument|^market|^contract|^item|^ticker|^asset/i],
+  side:   [/^side|^type$|^direction|^action|^buy ?\/ ?sell|^position ?side|^order ?type/i],
+  qty:    [/^qty|^quantity|^volume|^lots?$|^size|^executed|^filled/i],
+  entry:  [/^open ?price|^entry ?price|^avg\.? ?entry|^entry$|^price ?open|^opening price/i],
+  exit:   [/^close ?price|^exit ?price|^avg\.? ?close|^exit$|^price ?close|^closing price/i],
+  price:  [/^price$|^avg ?price|^fill ?price/i],
+  pnl:    [/^realized ?(profit|p ?& ?l|pnl)|^closed ?p ?& ?l|^profit|^p ?& ?l|^pnl|^net ?(profit|p ?& ?l)|^result/i],
+  fee:    [/^fee|^commission|^trading ?fee/i],
+  swap:   [/^swap|^funding/i],
+  sl:     [/^s ?\/ ?l$|^sl$|^stop/i],
+  tp:     [/^t ?\/ ?p$|^tp$|^take ?profit|^target/i],
+};
+function _jHeaderMap(h) {
+  const m = {}, seen = {};
+  h.forEach((name, i) => {
+    const n = String(name).trim();
+    for (const [k, res] of Object.entries(_J_COLS)) {
+      if (res.some(r => r.test(n))) {
+        if (k === 'time' || k === 'price') {               // MT5 repeats Time / Price: first = open, second = close
+          seen[k] = (seen[k] || 0) + 1;
+          if (seen[k] === 1) m[k] = i; else m[k === 'time' ? 'close' : 'exit'] = m[k === 'time' ? 'close' : 'exit'] ?? i;
+        } else if (m[k] == null) m[k] = i;
+        break;
+      }
+    }
+  });
+  return m;
+}
+function _jParseRows(rows) {
+  let hi = rows.findIndex(r => { const m = _jHeaderMap(r); return m.symbol != null && (m.pnl != null || (m.entry != null && m.exit != null)); });
+  if (hi < 0) throw new Error('Could not find the columns — the file needs at least Symbol and Profit (or Entry/Exit price). Use the CSV template.');
+  const head = rows[hi], m = _jHeaderMap(head), utc = head.some(c => /utc/i.test(c));
+  const binanceFills = m.pnl != null && /realized/i.test(head[m.pnl]) && m.exit == null && m.price != null;   // Binance trade history
+  const out = [];
+  for (let i = hi + 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || r.every(c => !c)) { if (out.length) break; else continue; }     // a blank row ends the table (MT5 reports)
+    if (_jHeaderMap(r).symbol != null && r.length >= head.length - 1 && isNaN(_jNum(r[m.pnl]))) break;
+    const g = k => (m[k] != null ? r[m[k]] : '');
+    const symbol = String(g('symbol')).toUpperCase().replace(/[^A-Z0-9.]/g, '');
+    if (!symbol) continue;
+    let side = String(g('side')).toUpperCase();
+    if (!/BUY|SELL|LONG|SHORT/.test(side)) { if (m.side != null) continue; side = ''; }
+    let dir = /SELL|SHORT/.test(side) ? 'SELL' : 'BUY';
+    let pnl = _jNum(g('pnl')), fee = _jNum(g('fee')), swap = _jNum(g('swap'));
+    const qty = Math.abs(_jNum(g('qty'))) || 0;
+    let entry = _jNum(g('entry')), exit = _jNum(g('exit'));
+    if (binanceFills) {
+      if (!pnl) continue;                                  // an opening fill: the trade closes later
+      dir = dir === 'SELL' ? 'BUY' : 'SELL';               // a closing SELL ended a long
+      exit = _jNum(g('price')); entry = NaN;
+    } else if (isNaN(entry) && m.price != null) entry = _jNum(g('price'));
+    if (isNaN(pnl)) {
+      if (isNaN(entry) || isNaN(exit) || !qty) continue;
+      pnl = (exit - entry) * qty * (dir === 'BUY' ? 1 : -1);
+    }
+    if (!isNaN(fee)) pnl += fee < 0 ? fee : -fee;          // MT5 commission is negative, exchange fees positive
+    if (!isNaN(swap)) pnl += swap;
+    const open = _jDate(g('open') || g('time'), utc), close = _jDate(g('close'), utc) || (binanceFills ? open : '');
+    out.push({
+      id: Date.now() + i + Math.random(), date: open || close, closeDate: close || '', symbol, direction: dir, lots: qty,
+      entry: isNaN(entry) ? 0 : entry, exit: isNaN(exit) ? 0 : exit, pips: 0, pnl: Math.round(pnl * 100) / 100,
+      rr: null, sl: _jNum(g('sl')) || 0, tp: _jNum(g('tp')) || 0, strategy: '', session: '', notes: '',
+      durationMin: open && close ? _jMinutes(open, close) : null, emotion: '', rating: 0,
+      result: pnl > 0 ? 'WIN' : pnl < 0 ? 'LOSS' : 'BE', source: binanceFills ? 'Binance' : (head.some(c => /swap/i.test(c)) ? 'MT4/MT5' : 'Upload'),
+    });
+  }
+  if (binanceFills) {                                       // partial fills of one close → one trade
+    const merged = [];
+    out.forEach(t => {
+      const last = merged[merged.length - 1];
+      if (last && last.symbol === t.symbol && last.direction === t.direction && last.date.slice(0, 16) === t.date.slice(0, 16)) {
+        last.pnl = Math.round((last.pnl + t.pnl) * 100) / 100; last.lots += t.lots; last.result = last.pnl > 0 ? 'WIN' : last.pnl < 0 ? 'LOSS' : 'BE';
+      } else merged.push(t);
+    });
+    return {trades: merged, format: 'Binance Futures trade history'};
+  }
+  return {trades: out, format: out[0] && out[0].source === 'MT4/MT5' ? 'MT4 / MT5 statement' : 'Trade history'};
+}
+let _jXlsx = null;
+function _jLoadXlsx() {
+  return _jXlsx || (_jXlsx = new Promise((ok, bad) => {
+    const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => ok(window.XLSX); s.onerror = () => { _jXlsx = null; bad(new Error('Could not load the Excel reader — check the internet connection')); };
+    document.head.appendChild(s);
+  }));
+}
+async function jUploadFile(input) {
+  const f = input.files && input.files[0]; input.value = '';
+  if (!f) return;
+  if (f.size > 15 * 1024 * 1024) { toast('File is too big (max 15 MB)', false); return; }
+  try {
+    let rows;
+    if (/\.(xlsx|xls|html?)$/i.test(f.name)) {
+      const X = await _jLoadXlsx();
+      const wb = /\.html?$/i.test(f.name) ? X.read(await f.text(), {type: 'string'}) : X.read(await f.arrayBuffer(), {type: 'array'});
+      rows = [];
+      wb.SheetNames.forEach(n => rows.push(...X.utils.sheet_to_json(wb.Sheets[n], {header: 1, raw: false, defval: ''}).map(r => r.map(c => String(c).trim())), []));
+    } else rows = _jCSV(await f.text());
+    const res = _jParseRows(rows);
+    if (!res.trades.length) throw new Error('No closed trades found in this file.');
+    jPreviewImport(res.trades, res.format + ' · ' + f.name);
+  } catch (e) { toast(e.message || 'Could not read this file', false); }
+}
+function _jKey(t) { return [String(t.date || '').slice(0, 16), t.symbol, t.direction, Number(t.pnl || 0).toFixed(2)].join('|'); }
+function jPreviewImport(trades, label) {
+  const have = new Set(journalTrades.map(_jKey));
+  const fresh = trades.filter(t => !have.has(_jKey(t)));
+  const net = fresh.reduce((a, t) => a + (t.pnl || 0), 0);
+  const dates = fresh.map(t => t.date).filter(Boolean).sort();
+  const box = document.createElement('div'); box.className = 'jm-modal'; box.id = 'jm-import-modal';
+  box.innerHTML = `<div class="box"><h3><i class="ti ti-file-check" style="color:#a78bfa"></i> Ready to import</h3>
+    <div class="kv"><span>Source</span><b>${_apEsc(label)}</b></div>
+    <div class="kv"><span>Trades found</span><b>${trades.length}</b></div>
+    <div class="kv"><span>New (not already in your journal)</span><b style="color:var(--green)">${fresh.length}</b></div>
+    <div class="kv"><span>Period</span><b>${dates.length ? _apEsc(dates[0].slice(0, 10)) + ' → ' + _apEsc(dates[dates.length - 1].slice(0, 10)) : '—'}</b></div>
+    <div class="kv"><span>Net P&amp;L of new trades</span><b style="color:${net >= 0 ? 'var(--green)' : 'var(--red)'}">${net >= 0 ? '+' : '-'}$${Math.abs(net).toFixed(2)}</b></div>
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+      <button class="ap-btn" onclick="document.getElementById('jm-import-modal').remove()">CANCEL</button>
+      <button class="ap-btn primary" ${fresh.length ? '' : 'disabled'} id="jm-import-go"><i class="ti ti-check"></i> IMPORT ${fresh.length} TRADES</button></div></div>`;
+  document.body.appendChild(box);
+  box.addEventListener('click', e => { if (e.target === box) box.remove(); });
+  const go = document.getElementById('jm-import-go');
+  if (go) go.onclick = async () => {
+    journalTrades = fresh.concat(journalTrades).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    box.remove(); await jPushServer(); jInit(); toast(`✓ ${fresh.length} trades imported — the AI Mentor has re-read your history`, true);
+  };
+}
+async function jImportFarhan() {
+  const d = await apiFetch('/api/reports?period=all&mode=all&source=all&account=me');
+  if (!d || d.error) { toast((d && d.error) || 'Could not load your trades', false); return; }
+  const trades = (d.trades || []).map((r, i) => {
+    const open = _jDate(r.open_time, true), close = _jDate(r.close_time, true);
+    const side = String(r.side || '').toUpperCase(), pnl = Number(r.pnl || 0);
+    return {id: Date.now() + i, date: open || close, closeDate: close, symbol: String(r.symbol || '').split('/')[0].replace(':USDT', ''),
+            direction: /SELL|SHORT/.test(side) ? 'SELL' : 'BUY', lots: Number(r.qty || 0), entry: Number(r.entry || 0), exit: Number(r.exit || 0),
+            pips: 0, pnl: Math.round(pnl * 100) / 100, rr: r.r != null ? Number(r.r) : null, rMultiple: r.r != null ? Number(r.r) : null,
+            sl: Number(r.sl || 0), tp: Number(r.tp || 0), strategy: (r.strategy || '').replace(/_/g, ' '), session: '',
+            notes: r.exit_reason ? 'Exit: ' + String(r.exit_reason).replace(/_/g, ' ') : '', durationMin: open && close ? _jMinutes(open, close) : null,
+            emotion: '', rating: 0, result: pnl > 0 ? 'WIN' : pnl < 0 ? 'LOSS' : 'BE', source: 'FarhanFX ' + (r.mode || '')};
+  });
+  if (!trades.length) { toast('No closed FarhanFX trades on your account yet', false); return; }
+  jPreviewImport(trades, 'Your FarhanFX trades (bots + AI Autopilot)');
+}
+function jTemplateCSV() {
+  const csv = 'Open Time,Close Time,Symbol,Side,Quantity,Entry Price,Exit Price,Profit,Fee,Stop Loss,Take Profit\n' +
+              '2026-11-20 09:15,2026-11-20 13:40,BTCUSDT,BUY,0.01,59000,59850,8.50,0.06,58400,60500\n';
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type: 'text/csv'}));
+  a.download = 'FarhanFX_journal_template.csv'; a.click();
+}
+
+// ── AI TRADING MENTOR: reads the whole history like a trading coach ──
+function _jDur(t) {
+  if (t.durationMin != null) return t.durationMin;
+  const s = String(t.duration || ''); if (!s) return null;
+  let m = 0; const d = s.match(/(\d+(?:\.\d+)?)\s*d/i), h = s.match(/(\d+(?:\.\d+)?)\s*h/i), mi = s.match(/(\d+(?:\.\d+)?)\s*m/i);
+  if (d) m += +d[1] * 1440; if (h) m += +h[1] * 60; if (mi) m += +mi[1];
+  if (!d && !h && !mi && !isNaN(+s)) m = +s;
+  return m || null;
+}
+function _jGroup(ts, keyFn) {
+  const g = {};
+  ts.forEach(t => { const k = keyFn(t); if (k == null || k === '') return; (g[k] = g[k] || {k, n: 0, pnl: 0, w: 0}); g[k].n++; g[k].pnl += t.pnl; if (t.pnl > 0) g[k].w++; });
+  return Object.values(g).map(x => ({...x, wr: x.w / x.n * 100, avg: x.pnl / x.n}));
+}
+function jMentor(all) {
+  const ts = all.filter(t => !isNaN(t.pnl) && t.date).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const n = ts.length;
+  if (n < 5) return {n};
+  const money = v => (v >= 0 ? '+' : '-') + '$' + Math.abs(v).toFixed(2);
+  const wins = ts.filter(t => t.pnl > 0), losses = ts.filter(t => t.pnl < 0);
+  const gw = wins.reduce((a, t) => a + t.pnl, 0), gl = -losses.reduce((a, t) => a + t.pnl, 0), net = gw - gl;
+  const wr = wins.length / n * 100, avgW = wins.length ? gw / wins.length : 0, avgL = losses.length ? gl / losses.length : 0;
+  const pf = gl ? gw / gl : (gw ? 99 : 0), exp = net / n, payoff = avgL ? avgW / avgL : 0;
+  let eq = 0, peak = 0, dd = 0; ts.forEach(t => { eq += t.pnl; peak = Math.max(peak, eq); dd = Math.max(dd, peak - eq); });
+  let cw = 0, cl = 0, bw = 0, bl = 0; ts.forEach(t => { if (t.pnl > 0) { cw++; cl = 0; } else if (t.pnl < 0) { cl++; cw = 0; } bw = Math.max(bw, cw); bl = Math.max(bl, cl); });
+  const day = t => String(t.date).slice(0, 10), hour = t => parseInt(String(t.date).slice(11, 13));
+  const days = _jGroup(ts, day), wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const bySym = _jGroup(ts, t => t.symbol).sort((a, b) => b.pnl - a.pnl);
+  const bySide = _jGroup(ts, t => t.direction === 'SELL' ? 'Short' : 'Long');
+  const byWd = _jGroup(ts, t => { const d = new Date(String(t.date).slice(0, 10) + 'T12:00'); return isNaN(d) ? null : wd[d.getDay()]; });
+  const sess = t => { const h = hour(t); if (isNaN(h)) return null; return h >= 5 && h < 13 ? 'Asia' : h >= 13 && h < 18 ? 'London' : h >= 18 || h < 2 ? 'New York' : 'Late night'; };   // IST-ish hours
+  const bySess = _jGroup(ts, sess);
+  const byHour = _jGroup(ts, t => { const h = hour(t); return isNaN(h) ? null : Math.floor(h / 2) * 2; });
+  const byStrat = _jGroup(ts, t => t.strategy || null);
+  const byEmo = _jGroup(ts, t => t.emotion || null);
+  const strengths = [], issues = [], plan = [];
+  let score = 50;
+  // profitability
+  if (pf >= 1.5) { score += 20; strengths.push(`Profitable system: profit factor <b>${pf.toFixed(2)}</b> — you make $${pf.toFixed(2)} for every $1 you lose.`); }
+  else if (pf >= 1.15) { score += 12; strengths.push(`Positive edge: profit factor <b>${pf.toFixed(2)}</b>, ${money(exp)} per trade on average.`); }
+  else if (pf >= 1) { score += 4; issues.push({t: `Your edge is razor-thin: profit factor <b>${pf.toFixed(2)}</b>. Fees or one bad week can wipe it out.`, w: 2}); }
+  else { score -= 12; issues.push({t: `You are losing money overall: profit factor <b>${pf.toFixed(2)}</b>, ${money(exp)} per trade.`, w: 5}); }
+  // win/loss shape
+  if (payoff >= 1.5) strengths.push(`Winners are <b>${payoff.toFixed(1)}×</b> bigger than losers — you let profits run.`);
+  else if (wr >= 55 && payoff < 0.8) { score -= 6; issues.push({t: `High win rate (${wr.toFixed(0)}%) but average loss ($${avgL.toFixed(2)}) is bigger than average win ($${avgW.toFixed(2)}): you cut winners early and let losers run.`, w: 4}); plan.push('Set the take-profit before entry and do not close a winner early unless the stop moved to breakeven.'); }
+  else if (wr < 40 && payoff < 1.5) { score -= 6; issues.push({t: `Low win rate (${wr.toFixed(0)}%) without big winners to pay for it (payoff ${payoff.toFixed(2)}).`, w: 4}); plan.push('Only take setups that offer at least 2R (target ≥ 2× the stop distance).'); }
+  // revenge trading: a bigger trade soon after a loss
+  let revN = 0, revPnl = 0;
+  for (let i = 1; i < n; i++) {
+    const p = ts[i - 1], t = ts[i], gap = _jMinutes(p.closeDate || p.date, t.date);
+    if (p.pnl < 0 && gap != null && gap <= 60 && p.lots && t.lots >= p.lots * 1.5) { revN++; revPnl += t.pnl; }
+  }
+  if (revN >= 2) { score -= 8; issues.push({t: `Revenge trading: <b>${revN}</b> times you opened a bigger trade within an hour of a loss — those trades made <b>${money(revPnl)}</b>.`, w: 5}); plan.push('After a losing trade, wait 30 minutes and keep the next trade at the same size or smaller.'); }
+  // tilt: results after two losses in a row
+  const after2 = []; for (let i = 2; i < n; i++) if (ts[i - 1].pnl < 0 && ts[i - 2].pnl < 0) after2.push(ts[i]);
+  if (after2.length >= 4) {
+    const a = after2.reduce((x, t) => x + t.pnl, 0) / after2.length;
+    if (a < exp - Math.abs(exp) * 0.5 && a < 0) { score -= 6; issues.push({t: `Tilt: after 2 losses in a row your next trade averages <b>${money(a)}</b> (normal ${money(exp)}).`, w: 4}); plan.push('Stop for the day after 2 losses in a row (the AI daily-loss stop can do this for you).'); }
+    else strengths.push('You stay disciplined after losing streaks — no tilt in your results.');
+  }
+  // overtrading
+  const counts = days.map(d => d.n).sort((a, b) => a - b), med = counts[Math.floor(counts.length / 2)] || 1;
+  const busy = days.filter(d => d.n >= Math.max(5, med * 2));
+  if (busy.length) {
+    const bp = busy.reduce((a, d) => a + d.pnl, 0);
+    if (bp < 0) { score -= 6; issues.push({t: `Overtrading: on your ${busy.length} busiest day(s) (${med * 2}+ trades) you lost <b>${money(bp)}</b>.`, w: 4}); plan.push(`Cap yourself at ${Math.max(3, med + 1)} trades per day.`); }
+  }
+  // position size consistency
+  const lots = ts.map(t => t.lots).filter(v => v > 0);
+  if (lots.length >= 5) {
+    const mean = lots.reduce((a, b) => a + b, 0) / lots.length, cv = Math.sqrt(lots.reduce((a, b) => a + (b - mean) ** 2, 0) / lots.length) / mean;
+    if (cv > 0.8) { score -= 5; issues.push({t: `Position size jumps around a lot (variation ${(cv * 100).toFixed(0)}%). Inconsistent size makes results random.`, w: 3}); plan.push('Size every trade from the stop: risk the same % of the account each time.'); }
+    else strengths.push('Consistent position sizing.');
+  }
+  // holding losers vs winners
+  const dw = wins.map(_jDur).filter(v => v != null), dl = losses.map(_jDur).filter(v => v != null);
+  if (dw.length >= 3 && dl.length >= 3) {
+    const aw = dw.reduce((a, b) => a + b, 0) / dw.length, al = dl.reduce((a, b) => a + b, 0) / dl.length, f = m => m >= 1440 ? (m / 1440).toFixed(1) + 'd' : m >= 60 ? (m / 60).toFixed(1) + 'h' : Math.round(m) + 'm';
+    if (al > aw * 1.5) { score -= 5; issues.push({t: `You hold losers longer than winners (${f(al)} vs ${f(aw)}) — hoping a loser comes back.`, w: 3}); plan.push('Respect the stop loss: never move it further away once the trade is open.'); }
+    else strengths.push(`You close losers fast (${f(al)}) and give winners time (${f(aw)}).`);
+  }
+  // profit concentration
+  const bestDay = days.slice().sort((a, b) => b.pnl - a.pnl)[0];
+  if (net > 0 && bestDay && bestDay.pnl > net * 0.6 && days.length >= 5) { score -= 4; issues.push({t: `One day (${bestDay.k}) made ${Math.round(bestDay.pnl / net * 100)}% of all your profit — results depend on a lucky day.`, w: 2}); }
+  const greenDays = days.filter(d => d.pnl > 0).length / days.length * 100;
+  if (greenDays >= 60 && days.length >= 5) strengths.push(`Consistent: <b>${greenDays.toFixed(0)}%</b> of your trading days are green.`);
+  // drawdown
+  if (dd > 0 && net > 0 && dd > net) { score -= 5; issues.push({t: `Your worst drawdown (<b>$${dd.toFixed(2)}</b>) is bigger than your total profit — risk is too high for the edge.`, w: 3}); plan.push('Halve your risk per trade until the drawdown is smaller than one month of profit.'); }
+  // edges: symbols, side, session, weekday
+  const good = arr => arr.filter(x => x.n >= 3);
+  const bs = good(bySym), bestS = bs[0], worstS = bs[bs.length - 1];
+  if (bestS && bestS.pnl > 0) { strengths.push(`Your best market is <b>${_apEsc(bestS.k)}</b>: ${money(bestS.pnl)} over ${bestS.n} trades (${bestS.wr.toFixed(0)}% wins).`); plan.push(`Focus on ${_apEsc(bestS.k)} — it is where your edge is proven.`); }
+  if (worstS && worstS !== bestS && worstS.pnl < 0) { issues.push({t: `<b>${_apEsc(worstS.k)}</b> is costing you: ${money(worstS.pnl)} over ${worstS.n} trades.`, w: 3}); plan.push(`Stop trading ${_apEsc(worstS.k)} until you can show why it works for you.`); }
+  const L = bySide.find(x => x.k === 'Long'), S = bySide.find(x => x.k === 'Short');
+  if (L && S && L.n >= 3 && S.n >= 3 && Math.sign(L.pnl) !== Math.sign(S.pnl)) {
+    const [g, b] = L.pnl > S.pnl ? [L, S] : [S, L];
+    issues.push({t: `${g.k}s make money (${money(g.pnl)}) but ${b.k.toLowerCase()}s lose (${money(b.pnl)}).`, w: 2}); plan.push(`Lean on ${g.k.toLowerCase()} setups; take ${b.k.toLowerCase()}s only when the trend is clearly down/up for them.`);
+  }
+  const ws = good(byWd).sort((a, b) => a.pnl - b.pnl);
+  if (ws.length >= 3 && ws[0].pnl < 0) issues.push({t: `<b>${ws[0].k}</b> is your worst day (${money(ws[0].pnl)}).`, w: 1});
+  const ss = good(bySess).sort((a, b) => b.pnl - a.pnl);
+  if (ss.length >= 2 && ss[0].pnl > 0) strengths.push(`You trade best in the <b>${ss[0].k}</b> session (${money(ss[0].pnl)}).`);
+  // journaling discipline
+  const noted = ts.filter(t => (t.notes || '').trim() || t.strategy).length / n * 100;
+  if (noted < 30) plan.push('Write the setup and the reason for every trade — the Mentor gets sharper with notes and strategy tags.');
+  if (byEmo.length >= 2) { const e = byEmo.filter(x => x.n >= 2).sort((a, b) => a.pnl - b.pnl)[0]; if (e && e.pnl < 0) issues.push({t: `Trades taken feeling ${_apEsc(e.k)} lost ${money(e.pnl)}.`, w: 1}); }
+  score = Math.max(0, Math.min(100, Math.round(score + (exp > 0 ? 5 : 0) + Math.min(10, n / 20))));
+  const grade = score >= 85 ? 'A+' : score >= 75 ? 'A' : score >= 65 ? 'B' : score >= 55 ? 'C' : score >= 45 ? 'D' : 'F';
+  issues.sort((a, b) => b.w - a.w);
+  const headline = pf >= 1.15 && score >= 65 ? 'You have a real edge — now protect it.'
+    : pf >= 1 ? 'You are close to break-even — a few habits decide whether this becomes profitable.'
+    : 'Your history is losing money — fix the biggest leak first, then build up.';
+  if (!plan.length) plan.push('Keep doing what works: same risk, same setups, and review this page every week.');
+  return {n, net, wr, pf, exp, avgW, avgL, payoff, dd, bw, bl, score, grade, headline, strengths: strengths.slice(0, 5), issues: issues.slice(0, 5).map(x => x.t),
+          plan: [...new Set(plan)].slice(0, 5), bySym, bySide, byWd, bySess, byHour, byStrat, days: days.length, greenDays};
+}
+function jRenderMentor() {
+  const el = document.getElementById('j-mentor'); if (!el) return;
+  const m = jMentor(journalTrades);
+  const head = `<div class="jm-head"><i class="ti ti-school" style="font-size:20px;color:#a78bfa"></i><span class="t">AI TRADING MENTOR</span>
+    <span class="live"><i></i>ANALYSING</span><span class="sub">${m.n ? m.n + ' trades analysed' : ''}</span></div>`;
+  if (!m.n || m.n < 5) {
+    el.innerHTML = `<div class="jm-card">${head}<div class="jm-empty">Add or upload at least <b>5 closed trades</b> and your mentor will grade your trading,
+      find your strengths and the habits that cost you money, show your best and worst markets, sessions, days and hours, and write a personal action plan.
+      <br><br>Fastest start: <b>UPLOAD HISTORY</b> (Binance / MT4 / MT5 export) or <b>IMPORT MY FARHANFX TRADES</b>.</div></div>`;
+    return;
+  }
+  const col = m.score >= 75 ? '#10b981' : m.score >= 55 ? '#f59e0b' : '#ef4444';
+  const money = v => (v >= 0 ? '+' : '-') + '$' + Math.abs(v).toFixed(2);
+  const li = a => a.length ? a.map(x => `<li>${x}</li>`).join('') : '<li>Nothing stands out yet — keep journaling.</li>';
+  const tbl = (rows, label) => rows.length ? `<table class="jm-tbl">${rows.slice(0, 6).map(r => `<tr><td>${_apEsc(String(label ? label(r.k) : r.k))} <span style="color:var(--text3)">· ${r.n}</span></td>
+      <td style="color:${r.pnl >= 0 ? 'var(--green)' : 'var(--red)'}">${money(r.pnl)}</td></tr>`).join('')}</table>` : '<div style="font-size:11px;color:var(--text3)">Not enough data</div>';
+  const maxAbs = Math.max(1, ...m.byHour.map(h => Math.abs(h.pnl)));
+  const hours = Array.from({length: 12}, (_, i) => { const h = m.byHour.find(x => +x.k === i * 2);
+    const a = h ? Math.min(1, Math.abs(h.pnl) / maxAbs) : 0, c = !h ? 'rgba(255,255,255,.04)' : h.pnl >= 0 ? `rgba(16,185,129,${.15 + a * .7})` : `rgba(239,68,68,${.15 + a * .7})`;
+    return `<div style="background:${c}" title="${String(i * 2).padStart(2, '0')}:00 · ${h ? h.n + ' trades · ' + money(h.pnl) : 'no trades'}">${String(i * 2).padStart(2, '0')}</div>`; }).join('');
+  el.innerHTML = `<div class="jm-card">${head}
+    <div class="jm-top">
+      <div class="jm-grade" style="--jm-c:${col};--jm-s:${m.score}"><div><b>${m.grade}</b><span>SCORE ${m.score}/100</span></div></div>
+      <div class="jm-sum"><div class="h">${m.headline}</div>
+        <div class="jm-stats"><span>Net<b style="color:${m.net >= 0 ? 'var(--green)' : 'var(--red)'}">${money(m.net)}</b></span><span>Win rate<b>${m.wr.toFixed(1)}%</b></span>
+          <span>Profit factor<b>${m.pf >= 99 ? '∞' : m.pf.toFixed(2)}</b></span><span>Avg win / loss<b>$${m.avgW.toFixed(2)} / $${m.avgL.toFixed(2)}</b></span>
+          <span>Expectancy<b>${money(m.exp)}</b></span><span>Max drawdown<b style="color:var(--red)">$${m.dd.toFixed(2)}</b></span>
+          <span>Green days<b>${m.greenDays.toFixed(0)}%</b></span><span>Streaks<b>${m.bw}W / ${m.bl}L</b></span></div></div>
+    </div>
+    <div class="jm-cols">
+      <div class="jm-box good"><h4><i class="ti ti-thumb-up"></i> WHAT YOU DO WELL</h4><ul>${li(m.strengths)}</ul></div>
+      <div class="jm-box bad"><h4><i class="ti ti-alert-triangle"></i> WHAT COSTS YOU MONEY</h4><ul>${li(m.issues)}</ul></div>
+      <div class="jm-box plan"><h4><i class="ti ti-target-arrow"></i> YOUR ACTION PLAN</h4><ul>${li(m.plan)}</ul></div>
+    </div>
+    <div class="jm-edge">
+      <div class="jm-box"><h4><i class="ti ti-coins"></i> MARKETS</h4>${tbl(m.bySym)}</div>
+      <div class="jm-box"><h4><i class="ti ti-world"></i> SESSIONS</h4>${tbl(m.bySess.sort((a, b) => b.pnl - a.pnl))}</div>
+      <div class="jm-box"><h4><i class="ti ti-calendar-week"></i> WEEKDAYS</h4>${tbl(m.byWd.sort((a, b) => b.pnl - a.pnl))}</div>
+      <div class="jm-box"><h4><i class="ti ti-arrows-sort"></i> LONG vs SHORT${m.byStrat.length ? ' · STRATEGY' : ''}</h4>${tbl(m.bySide.concat(m.byStrat.sort((a, b) => b.pnl - a.pnl)))}</div>
+    </div>
+    <div class="jm-box" style="margin-top:12px"><h4><i class="ti ti-clock-hour-4"></i> BEST &amp; WORST HOURS (your clock) — green makes money, red loses</h4><div class="jm-hours">${hours}</div></div>
+  </div>`;
+}
+
+
 // ── SETTINGS ───────────────────────────────────────────────────────────────────
 const SETTINGS_DEFAULTS = {
   lot: 0.01, sl: 30, tp: 60, symbol: 'XAUUSDc', magic: 234000,
@@ -4647,7 +5125,7 @@ function getSettings() { return loadSettings(); }
 // Two doors, one app: farhanfxalgo.in is the client site, farhanfxalgo.in/admin
 // the admin's. Each keeps its own login, so the admin always signs in at /admin
 // with the admin password and a client session never opens the admin side.
-function _authArea() { return location.pathname.replace(/\/+$/, '') === '/admin' ? 'admin' : 'client'; }
+function _authArea() { const p = location.pathname.replace(/\/+$/, ''); return p === '/admin' || p.startsWith('/admin/') ? 'admin' : 'client'; }
 function _ak(k)          { return (_authArea() === 'admin' ? 'fx_admin_' : 'fx_') + k; }
 function _getAuthToken() { return localStorage.getItem(_ak('auth_token')) || ''; }
 function _setAuthToken(t) { localStorage.setItem(_ak('auth_token'), t); }
@@ -4664,12 +5142,14 @@ function _wrongDoor(role) {
 }
 
 function showAuthRegister() {
+  if (_authArea() === 'client') _setUrl('/signup', true);
   document.getElementById('auth-card-login').style.display = 'none';
   document.getElementById('auth-card-register').style.display = 'block';
   document.getElementById('reg-err').style.display = 'none';
   setTimeout(() => document.getElementById('reg-display-name').focus(), 50);
 }
 function showAuthLogin() {
+  if (_authArea() === 'client') _setUrl('/login', true);
   document.getElementById('auth-card-register').style.display = 'none';
   document.getElementById('auth-card-login').style.display = 'block';
   document.getElementById('auth-err').style.display = 'none';
@@ -4890,13 +5370,20 @@ async function _afterAuthSuccess() {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
     // clients start on their Dashboard (after login and on every reload), or on Algo Bots without it
-    const me = await apiFetch('/api/account/me');
-    if (me && me.permissions && me.permissions.dashboard) showPage('dashboard', document.getElementById('nav-dashboard'));
+    const me = await apiFetch('/api/account/me'), p = (me && me.permissions) || {};
+    const SLUG_PERM = {dashboard: 'dashboard', autopilot: 'ai_autopilot', trade: 'live_trading', 'algo-bots': 'algo_bots',
+                       'strategy-lab': 'strategy_lab', reports: 'reports', telegram: 'telegram', 'indian-market': 'indian_market',
+                       journal: 'journal', 'ai-brain': 'ai_brain', profile: null};
+    const slug = _urlSlug();
+    if (slug in SLUG_PERM && (SLUG_PERM[slug] === null || p[SLUG_PERM[slug]]) && _openSlug(slug)) return;   // reload keeps the page
+    if (p.dashboard) showPage('dashboard', document.getElementById('nav-dashboard'));
     else openCrypto('algo');
     return;
   }
   showApp({});
   if (_authArea() === 'admin') {
+    const slug = _urlSlug();
+    if (slug && _openSlug(slug)) return;
     showPage('admin', document.getElementById('nav-admin'));   // farhanfxalgo.in/admin opens on the admin panel
     return;
   }
@@ -4913,6 +5400,8 @@ async function doAuthLogout() {
   _clearAuthRole();
   _applyRoleUI('admin');   // restore full nav in case a different role logs in next
   showAuthLogin();
+  if (_authArea() === 'admin') _setUrl('/admin', true);
+  journalTrades = []; _jLoaded = false;
   if (ws) { ws.close(); ws = null; }
   // NOTE: Do NOT call /api/disconnect here — algo strategies keep running on the server
   // MT5 stays connected so running strategies are not interrupted by logout

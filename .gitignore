@@ -35,3 +35,8 @@ market_guard.json
 autopilot_state.json
 custom_strategies.json
 trade_ledger.json
+journals/
+autopilot_clients.json
+risk_manager_*.json
+server.log
+backups/

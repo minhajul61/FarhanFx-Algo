@@ -54,6 +54,7 @@ _CLIENT_ALLOWED_PREFIXES = ("/api/auth/", "/api/crypto/", "/api/payment/", "/api
 # pages the admin can switch on per client; each endpoint checks that permission itself
 # client paths that need one permission: (prefix or exact path, permission)
 _CLIENT_PERM_PATHS = [
+    ("/api/journal", "journal"),
     ("/api/indian/", "indian_market"),
     ("/api/telegram/status", "telegram"), ("/api/telegram/signals", "telegram"),
     ("/api/telegram/demo_stats", "telegram"), ("/api/telegram/demo_trades", "telegram"),
@@ -87,7 +88,7 @@ async def _role_gate(request: Request, call_next):
 
 # A client who signed up on the website can log in and look around, but every
 # action stays blocked until the admin switches on "Full access" for them.
-_VIEW_ONLY_ALLOWED = ("/api/auth/", "/api/payment/")
+_VIEW_ONLY_ALLOWED = ("/api/auth/", "/api/payment/", "/api/journal")
 _VIEW_ONLY_ALLOWED_PATHS = {"/api/account/profile", "/api/account/logout_others"}
 
 
@@ -5969,6 +5970,44 @@ def _telegram_demo_records():
     return out
 
 
+# ── TRADING JOURNAL: each account's own journal, kept on the server ─────────
+_JOURNAL_DIR = "journals"          # next to users.json / bots.json (the server runs from its own folder)
+_JOURNAL_MAX_TRADES = 20000
+_journal_lock = threading.Lock()
+
+
+def _journal_path(username: str) -> str:
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(username))[:60]
+    return os.path.join(_JOURNAL_DIR, f"{safe}.json")
+
+
+@app.get("/api/journal")
+def journal_get(current_user: dict = Depends(_get_current_user)):
+    try:
+        with open(_journal_path(current_user["username"]), encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {"trades": [], "updated": None}
+
+
+@app.put("/api/journal")
+def journal_put(body: dict, current_user: dict = Depends(_get_current_user)):
+    trades = (body or {}).get("trades")
+    if not isinstance(trades, list) or not all(isinstance(t, dict) for t in trades):
+        return JSONResponse(status_code=400, content={"error": "trades must be a list of trades"})
+    if len(trades) > _JOURNAL_MAX_TRADES:
+        return JSONResponse(status_code=400, content={"error": f"A journal can hold up to {_JOURNAL_MAX_TRADES:,} trades"})
+    data = {"trades": trades, "updated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}
+    path = _journal_path(current_user["username"])
+    with _journal_lock:
+        os.makedirs(_JOURNAL_DIR, exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, default=str)
+        os.replace(tmp, path)
+    return {"success": True, "count": len(trades), "updated": data["updated"]}
+
+
 def _report_period(period, date_from, date_to):
     now = datetime.now(timezone.utc)
     if period == "custom":
@@ -6168,6 +6207,23 @@ def serve_index():
 def serve_app_slash():
     from fastapi.responses import RedirectResponse
     return RedirectResponse("/app", status_code=308)
+
+
+# every page of the app has its own address: /login, /signup, /app/<page>, /admin/<page>
+@app.get("/login")
+@app.get("/signup")
+def serve_auth_page():
+    return serve_index()
+
+
+@app.get("/app/{page}")
+def serve_app_page(page: str):
+    return serve_index()
+
+
+@app.get("/admin/{page}")
+def serve_admin_page(page: str):
+    return serve_index()
 
 
 @app.get("/api/public/pulse")

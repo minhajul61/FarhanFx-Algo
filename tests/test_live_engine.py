@@ -1276,6 +1276,22 @@ def test_view_only_signups():
     check("view-only: admin-only areas stay closed even with full access", g("/api/admin/overview", "GET", "newbie") == "Forbidden")
 
 
+def test_journal_storage():
+    a, b = {"username": "jr_a", "role": "client"}, {"username": "jr_b", "role": "client"}
+    server.journal_put({"trades": [{"symbol": "BTCUSDT", "pnl": 5.5}]}, a)
+    check("journal: each account keeps its own journal on the server",
+          server.journal_get(a)["trades"][0]["symbol"] == "BTCUSDT" and server.journal_get(b)["trades"] == [])
+    r = server.journal_put({"trades": "nope"}, a)
+    check("journal: a malformed upload is refused", getattr(r, "status_code", 200) == 400)
+    check("journal: a view-only sign-up can still keep a journal", server._client_gate("/api/journal", "PUT", "newbie") is None
+          or "view-only" not in (server._client_gate("/api/journal", "PUT", "newbie") or ""))
+    data = server._load_users()
+    data["users"] = [u for u in data.get("users", []) if u["username"] != "jr_c"] + [{
+        "username": "jr_c", "role": "client", "salt": "x", "password_hash": "x", "permissions": {"journal": False}}]
+    server._save_users(data)
+    check("journal: needs the Journal permission", "Journal" in (server._client_gate("/api/journal", "GET", "jr_c") or ""))
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
