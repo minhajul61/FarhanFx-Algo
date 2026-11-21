@@ -6110,13 +6110,55 @@ def crypto_algo_list(live: bool = False, current_user: dict = Depends(_get_curre
 
 _SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
 
+_NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+
+
+# farhanfxalgo.in = the public landing page; the app (client login) is /app,
+# the owner's side /admin.
 @app.get("/")
+def serve_landing():
+    return FileResponse(os.path.join(_SERVER_DIR, "landing.html"), headers=_NO_CACHE)
+
+
+@app.get("/app")
 def serve_index():
-    return FileResponse(os.path.join(_SERVER_DIR, "index.html"), headers={
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0"
-    })
+    return FileResponse(os.path.join(_SERVER_DIR, "index.html"), headers=_NO_CACHE)
+
+
+@app.get("/app/")
+def serve_app_slash():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("/app", status_code=308)
+
+
+@app.get("/api/public/pulse")
+def public_pulse():
+    """For the landing page, no login: live prices of the majors and what the
+    AI market scanner is doing right now (counts and the momentum board only —
+    never an account, a position or a P/L)."""
+    if _time.time() - _pulse_cache["t"] > 10:
+        pm = _get_pub_mkt()
+        try:
+            _pulse_cache["tickers"] = pm.fetch_tickers() if pm else {}
+            _pulse_cache["t"] = _time.time()
+        except Exception:
+            pass
+    tickers = _pulse_cache.get("tickers") or {}
+    prices = []
+    for base in _PULSE_MAJORS:
+        t = tickers.get(f"{base}/USDT:USDT")
+        if t and t.get("last"):
+            prices.append({"base": base, "price": t["last"], "chg": round(float(t.get("percentage") or 0), 2),
+                           "high": t.get("high"), "low": t.get("low"), "vol": t.get("quoteVolume")})
+    st = _autopilot.state
+    sig = st.get("signals") or []
+    board = [{"base": str(r.get("symbol", "")).split("/")[0], "score": round(float(r.get("score") or 0)),
+              "direction": r.get("direction")} for r in (st.get("leaderboard") or [])[:8]]
+    return {"prices": prices,
+            "ai": {"last_scan": st.get("last_scan"), "coins": st.get("coins_scanned") or len(st.get("leaderboard") or []),
+                   "signals": len(sig), "with_edge": sum(1 for x in sig if (x.get("edge") or {}).get("ok")),
+                   "strategies": len(_autopilot_mod.APPROVED_PROFILES), "board": board},
+            "server_time": int(_time.time() * 1000)}
 
 
 # farhanfxalgo.in/admin opens the same app straight on the admin panel (the

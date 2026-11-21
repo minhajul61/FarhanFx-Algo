@@ -9,7 +9,7 @@ KEY="${FARHANFX_KEY:-$HOME/.ssh/farhanfx_vps}"
 DOMAIN="${FARHANFX_DOMAIN:-farhanfxalgo.in}"
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 SSH=(ssh -i "$KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15)
-APP_FILES=(server.py index.html brain.py engine.py risk_manager.py autopilot.py market_guard.py
+APP_FILES=(server.py index.html landing.html brain.py engine.py risk_manager.py autopilot.py market_guard.py
            custom_strategy.py extra_strategies.py trade_ledger.py requirements.txt set_admin_password.py)
 
 cd "$SRC"

@@ -281,13 +281,15 @@ class Autopilot:
         time.sleep(20)
         while True:
             self._wake.clear()          # a scan request that arrived meanwhile is served by this scan
-            if self.config["enabled"] or self._followers():
-                try:
-                    self.hunt(apply=True)
-                except Exception as e:
-                    self.state["last_error"] = str(e)[:300]
-                    self._log(f"Scan failed: {str(e)[:200]}")
-                    self.save()
+            # With nobody trading it still reads the market (nothing is opened),
+            # so the public page and the dashboards always show a live scan.
+            acting = bool(self.config["enabled"] or self._followers())
+            try:
+                self.hunt(apply=acting)
+            except Exception as e:
+                self.state["last_error"] = str(e)[:300]
+                self._log(f"Scan failed: {str(e)[:200]}")
+                self.save()
             period = self.config["scan_hours"] * 3600
             wait = engine.candle_close_delay(min(period, 14400), time.time(), grace=60)
             self.state["next_scan"] = datetime.fromtimestamp(time.time() + wait, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

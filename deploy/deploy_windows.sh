@@ -7,7 +7,7 @@ set -euo pipefail
 HOST="${FARHANFX_HOST:-Administrator@212.24.127.115}"
 KEY="${FARHANFX_KEY:-$HOME/.ssh/farhanfx_vps}"
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
-APP_FILES=(server.py index.html brain.py engine.py risk_manager.py autopilot.py market_guard.py
+APP_FILES=(server.py index.html landing.html brain.py engine.py risk_manager.py autopilot.py market_guard.py
            custom_strategy.py extra_strategies.py trade_ledger.py requirements.txt set_admin_password.py)
 cd "$SRC"
 echo "== checks"

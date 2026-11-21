@@ -942,6 +942,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
     </div>
     <button class="auth-btn" id="auth-btn" onclick="doAuthLogin()">LOGIN →</button>
     <div style="text-align:center;margin-top:16px;font-size:11px;color:var(--text3)">
+      <a href="/" style="display:block;margin-bottom:8px;color:var(--text3);text-decoration:none">← farhanfxalgo.in</a>
       <span id="auth-signup-row">New here? <a href="#" onclick="showAuthRegister();return false;" style="color:var(--accent);font-weight:700">Sign up for Crypto Bot access</a></span>
     </div>
   </div>
@@ -3436,7 +3437,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   const token = _getAuthToken();
   if (!token) {
     document.getElementById('auth-screen').style.display = 'flex';
-    setTimeout(() => document.getElementById('auth-username').focus(), 100);
+    // the landing page's "Start free trial" opens the sign-up form straight away
+    if (_authArea() === 'client' && new URLSearchParams(location.search).has('signup')) showAuthRegister();
+    else setTimeout(() => document.getElementById('auth-username').focus(), 100);
     return;
   }
   // Verify token with server
