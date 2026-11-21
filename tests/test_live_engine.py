@@ -560,14 +560,18 @@ def test_telegram_live_needs_stop_and_admin():
     r = server._tg_execute_signal({"symbol": "TEST/USDT:USDT", "side": "buy", "sl": 97.0, "tps": [103.0], "leverage": 50}, {})
     check("telegram: live signal sized by risk manager + protected", r[0]["ok"] and sorted(o["kind"] for o in ex.orders) == ["sl", "tp"], r)
     check("telegram: leverage capped at risk manager max", ex.leverage == 10, ex.leverage)
+    # clients may READ the signal feed (the middleware checks their Telegram permission);
+    # setup, tests, login codes and trading stay admin-only
+    view_only = {p for p, perm in server._CLIENT_PERM_PATHS if perm == "telegram"}
     open_routes = []
     for route in server.app.routes:
         path = getattr(route, "path", "")
         if path.startswith("/api/telegram"):
             deps = [d.call for d in route.dependant.dependencies]
-            if server._require_admin not in deps:
+            needs = server._get_current_user if path in view_only else server._require_admin
+            if needs not in deps:
                 open_routes.append(path)
-    check("telegram: every endpoint needs an admin login", not open_routes, open_routes)
+    check("telegram: setup and trading need an admin login; the feed needs a login", not open_routes, open_routes)
     check("capital-protection endpoints removed", not any("capital-protection" in getattr(r, "path", "") for r in server.app.routes))
 
 
@@ -1242,6 +1246,28 @@ def test_symbol_lock_per_account():
     tick("own2")
     check("...but one account never opens the same coin twice", b["open_side"] is None and "Symbol lock" in (b.get("last_error") or ""))
     SIGNAL["v"] = None
+
+
+def test_view_only_signups():
+    from datetime import datetime, timedelta
+    data = server._load_users()
+    data["users"] = [u for u in data.get("users", []) if u["username"] != "newbie"] + [{
+        "username": "newbie", "role": "client", "salt": "x", "password_hash": "x",
+        "expiry": (datetime.now() + timedelta(days=7)).isoformat(), "permissions": {}}]
+    server._save_users(data)
+    g = server._client_gate
+    check("view-only: a website sign-up can open pages", g("/api/autopilot/status", "GET", "newbie") is None)
+    check("view-only: but cannot start bots, the autopilot or trades",
+          all("view-only" in (g(pth, "POST", "newbie") or "") for pth in
+              ("/api/crypto/algo/start", "/api/autopilot/start", "/api/crypto/order", "/api/indian/algo/start")))
+    check("view-only: can still log out, edit the profile and send a payment proof",
+          g("/api/auth/logout", "POST", "newbie") is None and g("/api/account/profile", "POST", "newbie") is None
+          and g("/api/payment/submit", "POST", "newbie") is None)
+    data = server._load_users()
+    next(u for u in data["users"] if u["username"] == "newbie")["permissions"] = {"can_trade": True}
+    server._save_users(data)
+    check("view-only: full access from the admin unlocks actions", g("/api/crypto/algo/start", "POST", "newbie") is None)
+    check("view-only: admin-only areas stay closed even with full access", g("/api/admin/overview", "GET", "newbie") == "Forbidden")
 
 
 if __name__ == "__main__":

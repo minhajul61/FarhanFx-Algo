@@ -14,6 +14,6 @@ echo "== checks"
 python3 -m py_compile server.py brain.py engine.py risk_manager.py autopilot.py market_guard.py custom_strategy.py extra_strategies.py trade_ledger.py set_admin_password.py
 if [ -x .venv/bin/python ]; then .venv/bin/python -W ignore tests/test_live_engine.py | tail -1; fi
 echo "== upload"
-scp -i "$KEY" -q "${APP_FILES[@]}" deploy/windows/restart_app.ps1 "$HOST:C:/FarhanFX/"
+scp -i "$KEY" -q "${APP_FILES[@]}" deploy/windows/restart_app.ps1 deploy/windows/backup_data.ps1 "$HOST:C:/FarhanFX/"
 echo "== restart"
 ssh -i "$KEY" -o ConnectTimeout=15 "$HOST" 'powershell -ExecutionPolicy Bypass -File C:\FarhanFX\restart_app.ps1'

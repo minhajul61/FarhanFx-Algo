@@ -907,6 +907,12 @@ tr:hover td{background:rgba(139,92,246,0.07)}
 .jarvis-run-btn:disabled { opacity:.5;cursor:not-allowed;transform:none }
 </style>
 <style>body.is-client .admin-only{display:none!important}
+.client-only{display:none}body.is-client .client-only{display:block}
+#view-only-bar{display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:11px 16px;border-radius:12px;font-size:12.5px;color:#fde68a;
+  background:linear-gradient(90deg,rgba(245,158,11,.14),rgba(139,92,246,.08));border:1px solid rgba(245,158,11,.35);position:relative;overflow:hidden}
+#view-only-bar i{font-size:18px;color:#f59e0b}
+#view-only-bar::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);transform:translateX(-100%);animation:vosh 3.5s ease-in-out infinite}
+@keyframes vosh{to{transform:translateX(100%)}}
 /* Support the creator — bottom of the side menu */
 .creator{margin:18px 12px 8px;padding:12px;border-radius:14px;position:relative;overflow:hidden;
   background:linear-gradient(160deg,rgba(139,92,246,.14),rgba(34,211,238,.05));border:1px solid rgba(139,92,246,.28)}
@@ -2943,6 +2949,8 @@ tr:hover td{background:rgba(139,92,246,0.07)}
 
       <!-- FOREX BOT PAGE REMOVED -->
       <div class="page" id="page-telegram">
+        <div class="client-only" style="margin-bottom:12px;padding:10px 14px;border-radius:10px;font-size:12px;color:#c4b5fd;background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.3)">
+          <i class="ti ti-broadcast"></i> Telegram signals run by the FarhanFX admin — you see every signal and result live (view only).</div>
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:4px">
           <div class="page-title" style="margin-bottom:0">Telegram Signal Bot</div>
           <div style="display:flex;gap:6px">
@@ -2961,16 +2969,16 @@ tr:hover td{background:rgba(139,92,246,0.07)}
                 <span id="tg-status-badge" style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;background:var(--card2);color:var(--text3);border:1px solid var(--border)">OFFLINE</span>
               </div>
               <div style="display:flex;gap:6px;align-items:center">
-                <div id="tg-start-area">
+                <div id="tg-start-area" class="admin-only">
                   <button onclick="tgSaveConfig(true)" style="padding:7px 18px;background:linear-gradient(135deg,#06b6d4,#0ea5e9);border:none;color:#000;border-radius:8px;font-weight:800;font-size:12px;cursor:pointer;font-family:var(--font);letter-spacing:.5px;box-shadow:0 0 12px rgba(6,182,212,0.35)">▶ START BOT</button>
                 </div>
-                <button onclick="tgToggleSettings()" id="tg-settings-btn" style="padding:6px 13px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.4);color:var(--accent);border-radius:7px;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font)">⚙ SETTINGS</button>
+                <button onclick="tgToggleSettings()" id="tg-settings-btn" class="admin-only" style="padding:6px 13px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.4);color:var(--accent);border-radius:7px;font-weight:700;font-size:11px;cursor:pointer;font-family:var(--font)">⚙ SETTINGS</button>
                 <button onclick="tgLoadSignals()" style="padding:6px 10px;background:transparent;border:1px solid var(--border);color:var(--text3);border-radius:7px;font-size:13px;cursor:pointer">↻</button>
               </div>
             </div>
 
             <!-- ── Settings Panel (collapsible) ── -->
-            <div id="tg-settings-panel" style="display:none;padding:16px 18px;border-bottom:1px solid var(--border);background:rgba(139,92,246,0.03)">
+            <div id="tg-settings-panel" class="admin-only" style="display:none;padding:16px 18px;border-bottom:1px solid var(--border);background:rgba(139,92,246,0.03)">
               <div style="font-size:10px;font-weight:800;color:var(--accent);letter-spacing:1.5px;margin-bottom:14px">⚙ BOT SETTINGS — set once, the rest is automatic</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
 
@@ -8523,7 +8531,6 @@ async function cryptoInit() {
 // accounts, whose endpoints are blocked server-side for the client role anyway.
 function telegramInit() {
   clearInterval(_tgRefTimer);
-  if (_getAuthRole() === 'client') return;
   tgLoadStatus();
   tgLoadSignals();
   tgLoadDemoStats();
@@ -10494,8 +10501,19 @@ async function applyMenuPermissions() {
     show('nav-autopilot', p.ai_autopilot);
     show('nav-journal', p.journal);
     show('nav-brain', p.ai_brain);
-    ['nav-telegram', 'nav-indian', 'nav-admin'].forEach(id => show(id, false));   // owner-only
+    show('nav-telegram', p.telegram);        // read-only: the signals the admin runs
+    show('nav-indian', p.indian_market);     // the client's own Kotak Neo account and bots
+    show('nav-admin', false);                // owner-only
   }
+  // website sign-ups are view-only until the admin gives them full access
+  let vb = document.getElementById('view-only-bar');
+  if (client && !p.can_trade) {
+    if (!vb) {
+      vb = document.createElement('div'); vb.id = 'view-only-bar';
+      vb.innerHTML = '<i class="ti ti-eye"></i><span><b>View-only account.</b> You can explore everything; trading, bots and the AI Autopilot open once the admin gives you full access.</span>';
+      document.querySelector('.content')?.prepend(vb);
+    }
+  } else if (vb) vb.remove();
 }
 
 // ═══ ADMIN CONTROL PANEL ════════════════════════════════════════════════════

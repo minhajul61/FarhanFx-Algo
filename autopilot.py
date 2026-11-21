@@ -558,10 +558,13 @@ class Autopilot:
                     "why": (f"none of the {len(results)} coins tested made money with {strategy} {tf} "
                             f"recently (best {results[0]['symbol'].split('/')[0]}: {results[0]['avg_r']:+.2f}R avg)")}
         edge = [x["symbol"] for x in results if x["edge"]]
+        coins = edge[:self.AI_COINS]
+        if best["symbol"] not in coins:          # the kept coin always stays on the bot's list
+            coins = [best["symbol"]] + coins[:self.AI_COINS - 1]
         return {**best, "kept": bool(kept), "tested": len(results),
                 "alternatives": [x for x in edge if x != best["symbol"]][:3],
                 # the bot's coin list: every coin where this strategy has an edge, best first
-                "coins": edge[:self.AI_COINS]}
+                "coins": coins}
 
     def rank_for_strategy(self, strategy, tf, params, exclude=(), keep=None, candidates=None):
         """Every candidate coin with its momentum and this strategy's backtest, best first."""

@@ -52,6 +52,13 @@ app.add_middleware(
 
 _CLIENT_ALLOWED_PREFIXES = ("/api/auth/", "/api/crypto/", "/api/payment/", "/api/lab/", "/api/reports", "/api/account/")
 # pages the admin can switch on per client; each endpoint checks that permission itself
+# client paths that need one permission: (prefix or exact path, permission)
+_CLIENT_PERM_PATHS = [
+    ("/api/indian/", "indian_market"),
+    ("/api/telegram/status", "telegram"), ("/api/telegram/signals", "telegram"),
+    ("/api/telegram/demo_stats", "telegram"), ("/api/telegram/demo_trades", "telegram"),
+    ("/api/telegram/open_positions", "telegram"),
+]
 _CLIENT_ALLOWED_PATHS = {
     "/api/autopilot/status", "/api/autopilot/start", "/api/autopilot/toggle", "/api/autopilot/scan",
     "/api/risk/kill_switch", "/api/risk/reset_demo",
@@ -68,12 +75,36 @@ async def _role_gate(request: Request, call_next):
     this only adds a new restriction for the new client-role tokens this
     feature introduces."""
     path = request.url.path
-    if path.startswith("/api/") and not path.startswith(_CLIENT_ALLOWED_PREFIXES) and path not in _CLIENT_ALLOWED_PATHS:
+    if path.startswith("/api/"):
         token = (request.headers.get("authorization") or "").replace("Bearer ", "").strip()
         sess = _auth_sessions.get(token)
         if sess and sess.get("role") == "client":
-            return JSONResponse({"error": "Forbidden"}, status_code=403)
+            err = _client_gate(path, request.method, sess.get("username"))
+            if err:
+                return JSONResponse({"error": err}, status_code=403)
     return await call_next(request)
+
+
+# A client who signed up on the website can log in and look around, but every
+# action stays blocked until the admin switches on "Full access" for them.
+_VIEW_ONLY_ALLOWED = ("/api/auth/", "/api/payment/")
+_VIEW_ONLY_ALLOWED_PATHS = {"/api/account/profile", "/api/account/logout_others"}
+
+
+def _client_gate(path: str, method: str, username: str):
+    """None when this client may make this API call, else the reason why not."""
+    if (method.upper() not in ("GET", "HEAD", "OPTIONS") and not path.startswith(_VIEW_ONLY_ALLOWED)
+            and path not in _VIEW_ONLY_ALLOWED_PATHS and not _perms(username).get("can_trade")):
+        return "Your account is view-only until the admin gives you full access — contact the admin"
+    if path.startswith(_CLIENT_ALLOWED_PREFIXES) or path in _CLIENT_ALLOWED_PATHS:
+        return None
+    perm = next((pm for pre, pm in _CLIENT_PERM_PATHS
+                 if path == pre or (pre.endswith("/") and path.startswith(pre))), None)
+    if not perm:
+        return "Forbidden"
+    if not _perms(username).get(perm):
+        return f"{PERMISSION_LABELS.get(perm, perm)} is not enabled for your account — ask the admin"
+    return None
 
 
 # ── ACCOUNT stub — MT5 removed; watchdog polls this endpoint and expects HTTP 200 ─
@@ -447,6 +478,7 @@ def admin_reject_payment(request_id: str, admin: dict = Depends(_require_admin))
 # What each client account may use. The admin control panel (coming next)
 # edits user["permissions"]; until then every client gets these defaults.
 PERMISSION_DEFAULTS = {
+    "can_trade": False,      # off = view only: a website sign-up can look around but not act until the admin approves
     "algo_bots": True,       # create demo bots
     "live_trading": True,    # live bots, Trade tab orders on Binance
     "strategy_lab": True,
@@ -455,13 +487,17 @@ PERMISSION_DEFAULTS = {
     "dashboard": True,       # the client's own trading dashboard
     "journal": True,         # trading journal (kept in the client's browser)
     "ai_brain": False,       # AI Brain chat/analysis — runs on the owner's Groq key
+    "telegram": True,        # Telegram signals the admin runs (read-only for clients)
+    "indian_market": True,   # Indian Market: the client's own Kotak Neo account and bots
     "max_bots": 5,           # running bots at once
 }
 PERMISSION_LABELS = {
+    "can_trade": "Full access (off = view only)",
     "algo_bots": "Algo bots", "live_trading": "Live trading (real money)",
     "strategy_lab": "Strategy Lab", "reports": "Reports",
     "ai_autopilot": "AI Autopilot", "dashboard": "Dashboard", "journal": "Journal",
-    "ai_brain": "AI Brain (uses your Groq key)", "max_bots": "Max running bots",
+    "ai_brain": "AI Brain (uses your Groq key)", "telegram": "Telegram signals (view)",
+    "indian_market": "Indian Market", "max_bots": "Max running bots",
 }
 
 
@@ -7043,8 +7079,11 @@ def tg_config_get(current_user: dict = Depends(_require_admin)):
 
 
 @app.get("/api/telegram/status")
-def tg_status(current_user: dict = Depends(_require_admin)):
+def tg_status(current_user: dict = Depends(_get_current_user)):
     cfg = _load_tg_cfg()
+    if current_user.get("role") == "client":     # clients see the feed, not the admin's setup
+        return {"running": _TG_RUNNING, "enabled": cfg.get("enabled", False),
+                "auto_trade": cfg.get("auto_trade", False), "mode": cfg.get("mode", "demo"), "view_only": True}
     return {
         "running":      _TG_RUNNING,
         "enabled":      cfg.get("enabled", False),
@@ -7060,7 +7099,7 @@ def tg_status(current_user: dict = Depends(_require_admin)):
 
 
 @app.get("/api/telegram/signals")
-def tg_signals_list(current_user: dict = Depends(_require_admin)):
+def tg_signals_list(current_user: dict = Depends(_get_current_user)):
     return _TG_SIGNALS[:50]
 
 
@@ -7178,7 +7217,7 @@ async def ub_verify_code(request: Request, current_user: dict = Depends(_require
 
 
 @app.get("/api/telegram/demo_stats")
-def tg_demo_stats(current_user: dict = Depends(_require_admin)):
+def tg_demo_stats(current_user: dict = Depends(_get_current_user)):
     st = _load_tg_demo_state()
     closed = st.get("trades", [])
     stats = _bot_stats(closed)
@@ -7191,7 +7230,7 @@ def tg_demo_stats(current_user: dict = Depends(_require_admin)):
 
 
 @app.get("/api/telegram/demo_trades")
-def tg_demo_trades(current_user: dict = Depends(_require_admin)):
+def tg_demo_trades(current_user: dict = Depends(_get_current_user)):
     """Return full closed trade list from demo state — newest first."""
     st = _load_tg_demo_state()
     trades = st.get("trades", [])
@@ -7199,7 +7238,7 @@ def tg_demo_trades(current_user: dict = Depends(_require_admin)):
 
 
 @app.get("/api/telegram/open_positions")
-def tg_open_positions(current_user: dict = Depends(_require_admin)):
+def tg_open_positions(current_user: dict = Depends(_get_current_user)):
     """Return open TG demo positions with live unrealized PnL."""
     st   = _load_tg_demo_state()
     pm   = _get_pub_mkt()
@@ -8522,7 +8561,7 @@ def indian_algo_start(req: IndianBotReq, current_user: dict = Depends(_get_curre
 @app.post("/api/indian/algo/stop/{bot_id}")
 def indian_algo_stop(bot_id: str, current_user: dict = Depends(_get_current_user)):
     bot = _indian_bots.get(bot_id)
-    if not bot:
+    if not bot or (bot.get("username") != current_user["username"] and current_user.get("role") != "admin"):
         return JSONResponse(status_code=404, content={"error": "Bot not found"})
     t = _indian_bot_timers.pop(bot_id, None)
     if t:
