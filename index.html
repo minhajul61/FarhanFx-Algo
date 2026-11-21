@@ -941,7 +941,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
     </div>
     <button class="auth-btn" id="auth-btn" onclick="doAuthLogin()">LOGIN →</button>
     <div style="text-align:center;margin-top:16px;font-size:11px;color:var(--text3)">
-      New here? <a href="#" onclick="showAuthRegister();return false;" style="color:var(--accent);font-weight:700">Sign up for Crypto Bot access</a>
+      <span id="auth-signup-row">New here? <a href="#" onclick="showAuthRegister();return false;" style="color:var(--accent);font-weight:700">Sign up for Crypto Bot access</a></span>
     </div>
   </div>
 
@@ -3428,6 +3428,10 @@ const WS  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + windo
 
 // Page load — check auth token first, then MT5
 window.addEventListener('DOMContentLoaded', async () => {
+  if (_authArea() === 'admin') {
+    const sub = document.querySelector('.auth-sub'); if (sub) sub.textContent = 'ADMIN PANEL · SECURE LOGIN';
+    const su = document.getElementById('auth-signup-row'); if (su) su.style.display = 'none';
+  }
   const token = _getAuthToken();
   if (!token) {
     document.getElementById('auth-screen').style.display = 'flex';
@@ -3443,6 +3447,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     _clearAuthToken();
     document.getElementById('auth-screen').style.display = 'flex';
     setTimeout(() => document.getElementById('auth-username').focus(), 100);
+    return;
+  }
+  const wrong = _wrongDoor(vr.role);
+  if (wrong) {
+    // an old session from before the two doors: sign in again at the right one
+    _clearAuthToken(); _clearAuthRole();
+    document.getElementById('auth-screen').style.display = 'flex';
+    const errEl = document.getElementById('auth-err');
+    errEl.textContent = wrong; errEl.style.display = 'block';
     return;
   }
   // Token valid — update badge, role, and check MT5
@@ -4588,14 +4601,24 @@ function getSettings() { return loadSettings(); }
 // ── AUTH HELPERS ───────────────────────────────────────────────────────────────
 // localStorage (not sessionStorage) so closing the browser/tab doesn't force
 // a fresh login every time — it only clears on explicit logout now.
-function _getAuthToken() { return localStorage.getItem('fx_auth_token') || ''; }
-function _setAuthToken(t) { localStorage.setItem('fx_auth_token', t); }
-function _clearAuthToken() { localStorage.removeItem('fx_auth_token'); }
-function _getAuthRole()  { return localStorage.getItem('fx_role') || 'admin'; }
-function _setAuthRole(r) { localStorage.setItem('fx_role', r || 'admin'); }
-function _clearAuthRole(){ localStorage.removeItem('fx_role'); }
-function _getDaysLeft()  { const v = localStorage.getItem('fx_days_left'); return v === null || v === 'null' ? null : parseInt(v); }
-function _setDaysLeft(d) { if (d === null || d === undefined) localStorage.removeItem('fx_days_left'); else localStorage.setItem('fx_days_left', d); }
+// Two doors, one app: farhanfxalgo.in is the client site, farhanfxalgo.in/admin
+// the admin's. Each keeps its own login, so the admin always signs in at /admin
+// with the admin password and a client session never opens the admin side.
+function _authArea() { return location.pathname.replace(/\/+$/, '') === '/admin' ? 'admin' : 'client'; }
+function _ak(k)          { return (_authArea() === 'admin' ? 'fx_admin_' : 'fx_') + k; }
+function _getAuthToken() { return localStorage.getItem(_ak('auth_token')) || ''; }
+function _setAuthToken(t) { localStorage.setItem(_ak('auth_token'), t); }
+function _clearAuthToken() { localStorage.removeItem(_ak('auth_token')); }
+function _getAuthRole()  { return localStorage.getItem(_ak('role')) || _authArea(); }
+function _setAuthRole(r) { localStorage.setItem(_ak('role'), r || _authArea()); }
+function _clearAuthRole(){ localStorage.removeItem(_ak('role')); }
+function _getDaysLeft()  { const v = localStorage.getItem(_ak('days_left')); return v === null || v === 'null' ? null : parseInt(v); }
+function _setDaysLeft(d) { if (d === null || d === undefined) localStorage.removeItem(_ak('days_left')); else localStorage.setItem(_ak('days_left'), d); }
+function _wrongDoor(role) {
+  if (_authArea() === 'admin' && role !== 'admin') return 'This login is for the admin only.';
+  if (_authArea() === 'client' && role === 'admin') return 'Admin: please sign in at ' + location.origin + '/admin';
+  return '';
+}
 
 function showAuthRegister() {
   document.getElementById('auth-card-login').style.display = 'none';
@@ -4622,7 +4645,7 @@ async function doAuthLogin() {
     const r = await fetch(API + '/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ username, password, area: _authArea() })
     });
     const data = await r.json();
     if (!r.ok) { errEl.textContent = data.error || 'Login failed.'; errEl.style.display = 'block'; return; }
@@ -4825,8 +4848,12 @@ async function _afterAuthSuccess() {
     openCrypto('algo');
     return;
   }
-  // Go straight to the dashboard
   showApp({});
+  if (_authArea() === 'admin') {
+    showPage('admin', document.getElementById('nav-admin'));   // farhanfxalgo.in/admin opens on the admin panel
+    return;
+  }
+  // Go straight to the dashboard
   showPage('dashboard', document.querySelector('.nav-item[onclick*="\'dashboard\'"]'));
 }
 

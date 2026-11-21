@@ -110,6 +110,7 @@ _auth_sessions: dict = _load_auth_sessions()   # token -> {"username": str, "cre
 class AuthLoginRequest(BaseModel):
     username: str
     password: str
+    area: str = ""          # "client" = farhanfxalgo.in, "admin" = farhanfxalgo.in/admin
 
 class AuthRegisterRequest(BaseModel):
     username: str
@@ -210,6 +211,11 @@ def auth_login(req: AuthLoginRequest):
         return JSONResponse({"error": "Service expired — contact admin to renew"}, status_code=403)
     display_name = user.get("display_name", req.username)
     role = user.get("role", "admin")
+    # two doors: the admin signs in only at /admin, clients only on the main site
+    if req.area == "admin" and role != "admin":
+        return JSONResponse({"error": "This login is for the admin only"}, status_code=403)
+    if req.area == "client" and role == "admin":
+        return JSONResponse({"error": "Admin: please sign in at /admin"}, status_code=403)
     token = _make_session(req.username, display_name, role)
     return {"token": token, "username": req.username, "display_name": display_name, "role": role,
             "days_left": _days_left(user)}
@@ -5941,6 +5947,19 @@ def serve_index():
         "Pragma": "no-cache",
         "Expires": "0"
     })
+
+
+# farhanfxalgo.in/admin opens the same app straight on the admin panel (the
+# page checks the login; every /api/admin/* call still requires an admin token)
+@app.get("/admin")
+def serve_admin():
+    return serve_index()
+
+
+@app.get("/admin/")
+def serve_admin_slash():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("/admin", status_code=308)
 
 
 # ── TELEGRAM SIGNAL BOT ─────────────────────────────────────────────────────────
