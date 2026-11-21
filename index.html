@@ -1854,7 +1854,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
             <div id="j-empty-state" style="text-align:center;padding:48px;color:var(--text2)">
               <div style="font-size:40px;margin-bottom:12px">📓</div>
               <div style="font-size:14px;margin-bottom:6px;color:var(--text)">No trades yet</div>
-              <div style="font-size:12px">Add a trade manually or import from MT5</div>
+              <div style="font-size:12px">Add a trade manually<span class="admin-only"> or import from MT5</span></div>
             </div>
           </div>
         </div>
@@ -3619,6 +3619,15 @@ async function apLoad() {
   apBannerRender(d);
 }
 
+// server times are "YYYY-MM-DD HH:MM UTC" — show them in the viewer's own clock
+function _localTime(utc, withDate) {
+  if (!utc) return '';
+  const t = Date.parse(String(utc).replace(' UTC', 'Z').replace(' ', 'T'));
+  if (isNaN(t)) return String(utc);
+  const d = new Date(t), hm = d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+  return withDate && d.toDateString() !== new Date().toDateString() ? d.toLocaleDateString([], {day: 'numeric', month: 'short'}) + ' ' + hm : hm;
+}
+
 function _apStatus(d) {
   const c = d.autopilot.config, st = d.autopilot.state, r = d.risk;
   if (r.manual_halt) return {cls: 'halt', txt: 'KILL SWITCH ON'};
@@ -3639,7 +3648,7 @@ function apRender(d) {
   document.getElementById('ap-btn-stop').disabled = !c.enabled;
   apStartInit(d);
   document.getElementById('ap-sub').textContent = c.enabled
-    ? `Signal hunter ${c.mode.toUpperCase()} · scans ${st.coins_scanned || c.universe} coins × ${(c.strategies || []).length} strategies on every 4h and daily candle · ${r.config.max_positions} slots · next ${st.next_scan || 'soon'}`
+    ? `Signal hunter ${c.mode.toUpperCase()} · scans ${st.coins_scanned || c.universe} coins × ${(c.strategies || []).length} strategies on every 4h and daily candle · ${r.config.max_positions} slots · next ${st.next_scan ? _localTime(st.next_scan, true) : 'soon'}`
     : 'On every 4h and daily candle the AI scans the liquid crypto market with the tested strategies and trades fresh buy/sell signals on coins where that strategy has an edge — up to ' + r.config.max_positions + ' positions, under the risk manager.';
   const lastLog = (st.log || []).slice(-1)[0];
   _apType(st.scanning ? 'scanning every liquid coin · reading the closed candle · checking each signal\'s edge…' : (lastLog ? lastLog.msg : 'idle — press SCAN NOW for a preview'));
@@ -3672,7 +3681,7 @@ function apRender(d) {
 
   // picks
   const picks = st.picks || [];
-  document.getElementById('ap-scan-time').textContent = st.last_scan ? `last scan ${st.last_scan}${st.scan_seconds ? ' · ' + st.scan_seconds + 's' : ''}` : '';
+  document.getElementById('ap-scan-time').textContent = st.last_scan ? `last scan ${_localTime(st.last_scan, true)}${st.scan_seconds ? ' · ' + st.scan_seconds + 's' : ''}` : '';
   document.getElementById('ap-picks').innerHTML = picks.length ? picks.map((p, i) => `
     <div class="ap-pick">
       <div class="ap-score" style="--p:${Math.round(p.momentum)}"><span>${Math.round(p.momentum)}</span></div>
@@ -4880,7 +4889,10 @@ async function _afterAuthSuccess() {
   if (role === 'client') {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
-    openCrypto('algo');
+    // clients start on their Dashboard (after login and on every reload), or on Algo Bots without it
+    const me = await apiFetch('/api/account/me');
+    if (me && me.permissions && me.permissions.dashboard) showPage('dashboard', document.getElementById('nav-dashboard'));
+    else openCrypto('algo');
     return;
   }
   showApp({});
@@ -8574,6 +8586,7 @@ async function cryptoCheckStatus() {
     });
     if (grid) grid.style.gridTemplateColumns = '';
   }
+  return s;
 }
 
 function _updateTpConnBtn(exchange, isConnected) {
@@ -8852,11 +8865,13 @@ const _TP_EXCHANGES = ['binance'];
 
 // Load everything for all 3 panels
 async function cryptoRefresh() {
+  // no exchange connected: the "connect" card shows — don't ask Binance for a balance we can't have
+  const s = await cryptoCheckStatus();
+  if (!s || !_TP_EXCHANGES.some(ex => s[ex])) return;
   await Promise.all([
-    ..._TP_EXCHANGES.map(ex => tpLoadBalance(ex)),
+    ..._TP_EXCHANGES.filter(ex => s[ex]).map(ex => tpLoadBalance(ex)),
     tpLoadAllPositions(),
     tpLoadAllOrders(),
-    cryptoCheckStatus(),
   ]);
 }
 
@@ -9178,14 +9193,17 @@ async function closeTpPos(ex, symbol, side, amount) {
 }
 
 // Initialize trade panels when tab is shown
-function tpInit() {
+async function tpInit() {
   // Load markets for autocomplete (from any connected exchange)
   cryptoLoadMarkets();
-  // Load balances for all 3
-  _TP_EXCHANGES.forEach(ex => { tpLoadBalance(ex); tpLoadMark(ex); });
+  tpLoadRisk();
+  _TP_EXCHANGES.forEach(ex => tpLoadMark(ex));
+  // balances, positions and orders only exist once an exchange is connected
+  const s = await cryptoCheckStatus();
+  if (!s || !_TP_EXCHANGES.some(ex => s[ex])) return;
+  _TP_EXCHANGES.filter(ex => s[ex]).forEach(ex => tpLoadBalance(ex));
   tpLoadAllPositions();
   tpLoadAllOrders();
-  tpLoadRisk();
 }
 
 // ── Exchange Connect Modal ──
@@ -9428,10 +9446,10 @@ function dcRadar(d) {
       ${p ? `<span class="pick">🤖 AI PICK · ${_apEsc(p.strategy.replace(/_/g, ' '))} ${_apEsc(p.tf)}</span>` : ''}</div>`;
   }).join('') : '<div class="ap-empty">No scan yet — switch on the autopilot or press ↻.</div>';
   const sub = document.getElementById('dc-radar-sub');
-  if (sub) sub.textContent = st.last_scan ? `${(st.leaderboard || []).length} coins ranked · ${st.last_scan.slice(11, 16)} UTC` : '';
+  if (sub) sub.textContent = st.last_scan ? `${(st.leaderboard || []).length} coins ranked · ${_localTime(st.last_scan)}` : '';
   const note = document.getElementById('dc-radar-note');
   if (note) note.innerHTML = `Closer to the centre = stronger momentum (trend, ADX, volume). <span style="color:#c4b5fd">Pulsing</span> = picked after a backtest on its own history.` +
-    (st.next_scan ? ` Next scan ${_apEsc(String(st.next_scan).slice(11, 16))} UTC.` : '');
+    (st.next_scan ? ` Next scan ${_apEsc(_localTime(st.next_scan))}.` : '');
 }
 async function dcScan() {
   const r = await apiFetch('/api/autopilot/scan', {method: 'POST'});
@@ -9678,7 +9696,9 @@ function dcRender(d) {
 
   // brain
   let bh;
-  if (!br.key_configured) {
+  if (_getAuthRole() === 'client' && !br.key_configured) {
+    bh = `<div class="dc-brain-txt">The AI Brain is not part of your plan yet. The AI Guard still protects every trade with its market rules.</div>`;
+  } else if (!br.key_configured) {
     bh = `<div class="dc-brain-txt">The AI Brain is <b>offline</b>. Add a free Groq API key on the AI BRAIN page and it will read the market every 4 hours, write its view here and advise the AI Guard (it can only lower risk).</div>
       <button class="ap-btn" style="margin-top:12px" onclick="showPage('brain', document.getElementById('nav-brain'))"><i class="ti ti-key"></i> ADD API KEY</button>
       <div class="dc-note">The AI Guard keeps working without it, using its market rules.</div>`;
@@ -10544,6 +10564,10 @@ function _admDays(c) {
   return `<div class="adm-days" style="color:${c.status === 'expired' ? 'var(--red)' : d <= 7 ? 'var(--amber)' : 'var(--text)'}">${c.status === 'expired' ? 'expired' : d + ' day' + (d === 1 ? '' : 's')}<small>until ${_apEsc(c.expiry.slice(0, 10))}</small></div>`;
 }
 
+// a website sign-up waiting for the admin to switch on Full access
+const _admViewOnly = c => c.permissions && !c.permissions.can_trade
+  ? ' <span class="adm-badge" style="background:rgba(245,158,11,.14);color:#f59e0b;border:1px solid rgba(245,158,11,.4)" title="Waiting for Full access">VIEW ONLY</span>' : '';
+
 function admRenderOverview() {
   const o = _adm.overview, c = o.clients, p = o.payments, t = o.trading;
   const tile = (k, v, s, col) => `<div class="ap-stat"><div class="k">${k}</div><div class="v" style="color:${col || 'var(--text)'}">${v}</div><div class="s">${s}</div></div>`;
@@ -10562,7 +10586,7 @@ function admRenderOverview() {
     `${_admDays(c)}<button class="sbtn" style="font-size:10px;padding:5px 9px" onclick="admQuickExtend('${_apEsc(c.username)}',30)">+30 DAYS</button>`)).join('')
     : '<div class="ap-empty">Nobody expires in the next 7 days.</div>';
   document.getElementById('adm-recent').innerHTML = o.recent_clients.length ? o.recent_clients.map(c => row(c,
-    `<span class="adm-badge ${c.status}">${_admStatus[c.status] || c.status}</span><button class="sbtn" style="font-size:10px;padding:5px 9px" onclick="admManage('${_apEsc(c.username)}')">MANAGE</button>`)).join('')
+    `<span class="adm-badge ${c.status}">${_admStatus[c.status] || c.status}</span>${_admViewOnly(c)}<button class="sbtn" style="font-size:10px;padding:5px 9px" onclick="admManage('${_apEsc(c.username)}')">MANAGE</button>`)).join('')
     : '<div class="ap-empty">No clients yet — they sign up on the login page, or use ADD CLIENT.</div>';
   const sv = o.server;
   const el = document.getElementById('adm-server');
@@ -10575,7 +10599,7 @@ function admRenderClients() {
   const rows = _adm.clients.filter(c => (!q || [c.username, c.display_name, c.contact].join(' ').toLowerCase().includes(q))
     && (f === 'all' || (f === 'expiring' ? (['active', 'trial'].includes(c.status) && (c.days_left ?? 0) <= 7) : c.status === f)));
   document.getElementById('adm-clients').innerHTML = rows.length ? rows.map(c => `<tr>
-      <td>${_admUserCell(c)}</td><td><span class="adm-badge ${c.status}">${_admStatus[c.status] || c.status}</span>${c.kill_switch && c.status !== 'suspended' ? ' <span class="adm-badge expired">KILL</span>' : ''}</td>
+      <td>${_admUserCell(c)}</td><td><span class="adm-badge ${c.status}">${_admStatus[c.status] || c.status}</span>${_admViewOnly(c)}${c.kill_switch && c.status !== 'suspended' ? ' <span class="adm-badge expired">KILL</span>' : ''}</td>
       <td>${_admDays(c)}</td><td>${c.bots_running}/${c.permissions.max_bots}${c.open_positions ? ` <small style="color:var(--cyan)">· ${c.open_positions} open</small>` : ''}</td>
       <td>${c.binance ? '<span style="color:var(--green)">● yes</span>' : '<span style="color:var(--text3)">—</span>'}</td>
       <td>${c.permissions.live_trading ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--red)">✕</span>'}</td>

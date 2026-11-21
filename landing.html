@@ -348,7 +348,7 @@ footer{position:relative;z-index:1;margin-top:90px;border-top:1px solid var(--li
       </div>
       <div class="mini rv">
         <div><b id="m-coins">40</b><span>coins scanned</span></div>
-        <div><b id="m-sig">—</b><span>signals last scan</span></div>
+        <div><b id="m-sig">—</b><span>signals last candle</span></div>
         <div><b>100%</b><span>trades with stop loss</span></div>
       </div>
     </div>
@@ -475,6 +475,8 @@ footer{position:relative;z-index:1;margin-top:90px;border-top:1px solid var(--li
   const NAMES = {BTC: 'Bitcoin', ETH: 'Ethereum', SOL: 'Solana', BNB: 'BNB', XRP: 'XRP', DOGE: 'Dogecoin', ADA: 'Cardano', AVAX: 'Avalanche', LINK: 'Chainlink', SUI: 'Sui'};
   const fmt = p => p == null ? '—' : p >= 1000 ? p.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1}) : p >= 1 ? p.toFixed(3) : p.toPrecision(4);
   const pct = c => (c >= 0 ? '+' : '') + c.toFixed(2) + '%';
+  const localHM = utc => { const t = Date.parse(String(utc).replace(' UTC', 'Z').replace(' ', 'T'));
+    return isNaN(t) ? String(utc).slice(11, 16) : new Date(t).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}); };
 
   // reveal + tile spotlight
   const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), {threshold: .1});
@@ -573,7 +575,7 @@ footer{position:relative;z-index:1;margin-top:90px;border-top:1px solid var(--li
     const key = rows.map(r => r.base + r.label).join();
     if (key === scanKey) return; scanKey = key;
     document.getElementById('sc-title').textContent = isAI ? 'AI momentum scanner' : 'Biggest movers · 24h';
-    document.getElementById('sc-sub').textContent = isAI ? `scan ${ai.last_scan.slice(11, 16)} UTC` : 'live';
+    document.getElementById('sc-sub').textContent = isAI ? `scan ${localHM(ai.last_scan)}` : 'live';
     document.getElementById('sc-foot').textContent = isAI
       ? `${ai.coins || 40} coins ranked · ${ai.signals || 0} fresh signals · ${ai.with_edge || 0} with a backtest edge`
       : 'Live 24h moves from Binance Futures';
@@ -613,7 +615,7 @@ footer{position:relative;z-index:1;margin-top:90px;border-top:1px solid var(--li
       drawScanner(ai, d.prices || []);
       if (ai.last_scan) {
         if (!counted) { counted = true; countTo(document.getElementById('m-sig'), ai.signals || 0); if (ai.coins) countTo(document.getElementById('m-coins'), ai.coins); }
-        document.getElementById('f1b').textContent = 'AI scan · ' + ai.last_scan.slice(11, 16) + ' UTC';
+        document.getElementById('f1b').textContent = 'AI scan · ' + localHM(ai.last_scan);
         document.getElementById('f1s').textContent = `${ai.coins || 40} coins · ${ai.signals || 0} signals`;
         document.getElementById('f2b').textContent = `${ai.with_edge || 0} passed backtest`;
         if (ai.board && ai.board[0]) document.getElementById('f2s').textContent = `top momentum: ${ai.board[0].base}`;

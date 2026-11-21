@@ -1054,12 +1054,18 @@ def test_signal_hunter():
     check("hunter: a coin far more volatile than the tested ones is skipped",
           any(x["symbol"] == "WILD/USDT:USDT" and not x["edge"]["ok"] and "per 4h candle" in x["why"] for x in ap.state["signals"])
           and not any(c["symbol"] == "WILD/USDT:USDT" for c in opened))
+    first = len(ap.state["signals"])
     ap.hunt(apply=True)
     check("hunter: the same candle is never traded twice", len(opened) == 2, len(opened))
+    check("hunter: a re-scan inside the same candle keeps that candle's signal list",
+          len(ap.state["signals"]) == first and "no new candle" in ap.state["log"][-1]["msg"], ap.state["log"][-1])
     bar["4h"] += step["4h"]
     ap.hunt(apply=True)
     check("hunter: next 4h candle is traded, the daily candle that was already handled is not",
           len(opened) == 3 and opened[-1]["symbol"] == "AAA/USDT:USDT", [c["symbol"] for c in opened])
+    check("hunter: signal counts only cover the candle that just closed (no old daily signals)",
+          ap.state["signals"] and all(x["tf"] == "4h" for x in ap.state["signals"])
+          and ap.state["log"][-2]["msg"].startswith("New 4h candle:"), [x["tf"] for x in ap.state["signals"]])
     bar["4h"] = int(time.time() * 1000) - 4 * 3600 * 1000 - 3 * 3600 * 1000     # closed 3h ago
     ap.state["hunted_bar"], ap.state["hunted"] = 0, {}
     ap.hunt(apply=True)

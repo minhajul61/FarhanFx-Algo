@@ -499,6 +499,9 @@ PERMISSION_LABELS = {
     "ai_brain": "AI Brain (uses your Groq key)", "telegram": "Telegram signals (view)",
     "indian_market": "Indian Market", "max_bots": "Max running bots",
 }
+# what a client reads on their own Profile page (no admin wording)
+CLIENT_PERMISSION_LABELS = {**PERMISSION_LABELS, "can_trade": "Full access (trading)", "ai_brain": "AI Brain",
+                            "telegram": "Telegram signals"}
 
 
 def _user_record(username):
@@ -562,7 +565,7 @@ def account_me(authorization: str = Header(default=None), current_user: dict = D
         "expiry": user.get("expiry"),
         "days_left": _days_left(user),
         "permissions": _perms(uname),
-        "permission_labels": PERMISSION_LABELS,
+        "permission_labels": CLIENT_PERMISSION_LABELS if user.get("role") == "client" else PERMISSION_LABELS,
         "sessions": len(sessions),
         "this_session_started": (_auth_sessions.get(token) or {}).get("created", "")[:16],
         "exchange": {"binance": bool(ex)},
@@ -6191,7 +6194,7 @@ def public_pulse():
     board = [{"base": str(r.get("symbol", "")).split("/")[0], "score": round(float(r.get("score") or 0)),
               "direction": r.get("direction")} for r in (st.get("leaderboard") or [])[:8]]
     return {"prices": prices,
-            "ai": {"last_scan": st.get("last_scan"), "coins": st.get("coins_scanned") or len(st.get("leaderboard") or []),
+            "ai": {"last_scan": st.get("signals_at") or st.get("last_scan"), "coins": st.get("coins_scanned") or len(st.get("leaderboard") or []),
                    "signals": len(sig), "with_edge": sum(1 for x in sig if (x.get("edge") or {}).get("ok")),
                    "strategies": len(_autopilot_mod.APPROVED_PROFILES), "board": board},
             "server_time": int(_time.time() * 1000)}

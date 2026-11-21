@@ -477,6 +477,15 @@ class Autopilot:
                     age = (now_ms - (bar + TF_SECONDS.get(tf, 14400) * 1000)) / 60000
                     (late_tfs if age > self.MAX_SIGNAL_AGE_MIN else new_tfs).add(tf)
             new_candle = "4h" in new_tfs or "4h" in late_tfs
+            # Only signals on a candle that closed since the last scan count: an older
+            # candle's signals were handled already and can never be traded again.
+            closed_tfs = set(new_tfs)          # a candle that closed too long ago can't be entered, so it isn't counted
+            now_sigs = [s for s in fresh if s["tf"] in closed_tfs]
+            now_edge = [s for s in now_sigs if s["edge"].get("ok")]
+            tf_txt = " + ".join(sorted(closed_tfs, key=lambda t: TF_SECONDS.get(t, 0)))
+            summary = (f"New {tf_txt} candle: {len(now_sigs)} fresh signal(s), {len(now_edge)} passed the backtest "
+                       f"({len(board)} coins scanned)") if closed_tfs else \
+                      f"Scanned {len(board)} coins — no new candle since the last scan, waiting for the next close"
             actions, active = [], []
             followers = self._followers() if apply else []
             acting = apply and (cfg["enabled"] or bool(followers))
@@ -489,7 +498,6 @@ class Autopilot:
                 if late_note:
                     actions.insert(0, late_note)
             if followers and self.hooks.get("follow"):
-                summary = f"Scanned {len(board)} coins: {len(fresh)} fresh signal(s), {len(tradeable)} with an edge"
                 try:
                     self.hooks["follow"](followers, go if acting else [], summary, late_note)
                 except Exception as e:
@@ -501,16 +509,17 @@ class Autopilot:
                     self.state["hunted"] = hunted
                     self.state["hunted_bar"] = int(hunted.get("4h") or 0)
                 self.state["leaderboard"] = board[:20]
-                self.state["signals"] = [{k: v for k, v in s.items() if k != "params"} for s in
-                                         sorted(fresh, key=lambda s: -s.get("rank", 0))][:30]
+                if closed_tfs or "signals_at" not in self.state:
+                    # a re-scan inside the same candle keeps the last candle's signals
+                    self.state["signals"] = [{k: v for k, v in s.items() if k != "params"} for s in
+                                             sorted(now_sigs, key=lambda s: -s.get("rank", 0))][:30]
+                    self.state["signals_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
                 self.state["picks"] = active if (apply and cfg["enabled"]) else \
                     [{k: v for k, v in s.items() if k != "params"} for s in tradeable[:6]]
                 self.state["coins_scanned"] = len(board)
                 self.state["last_scan"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
                 self.state["scan_seconds"] = round(time.time() - t0, 1)
-                self._log(f"Scanned {len(board)} coins × {len(cfg['strategies'])} strategies: "
-                          f"{len(fresh)} fresh signal(s), {len(tradeable)} with an edge"
-                          + ("" if new_candle or not (apply and cfg["enabled"]) else " — this candle was already handled"))
+                self._log(summary)
                 for a in actions:
                     self._log(a)
                 self.save()
