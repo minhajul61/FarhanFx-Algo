@@ -162,6 +162,39 @@ h2{font-family:var(--head);font-weight:700;font-size:clamp(30px,4.2vw,52px);lett
 .mk.flu::after{background:radial-gradient(circle at 50% 50%,rgba(16,185,129,.16),transparent 70%);opacity:1}
 .mk.fld::after{background:radial-gradient(circle at 50% 50%,rgba(244,63,94,.16),transparent 70%);opacity:1}
 
+/* market: heatmap + AI scanner */
+.mkt{display:grid;grid-template-columns:1.5fr 1fr;gap:16px;margin-top:50px}
+.pane{border-radius:22px;padding:18px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.015));border:1px solid var(--line);position:relative;overflow:hidden}
+.ptop{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.ptop span{display:flex;align-items:center;gap:9px;font-family:var(--head);font-weight:600;font-size:15px}
+.ptop span i{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:16px;color:#fff;background:linear-gradient(140deg,rgba(139,92,246,.7),rgba(109,40,217,.4));border:1px solid rgba(196,181,253,.3)}
+.ptop small{font-family:var(--mono);font-size:10.5px;color:var(--t3)}
+.heat{position:relative;height:392px;border-radius:14px;overflow:hidden;background:rgba(0,0,0,.25)}
+.hload{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--mono);font-size:12px;color:var(--t3)}
+.hc{position:absolute;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;border:2px solid #05060a;border-radius:10px;overflow:hidden;
+  transition:left .8s,top .8s,width .8s,height .8s,background .8s,filter .2s;cursor:default}
+.hc:hover{filter:brightness(1.25);z-index:2}
+.hc b{font-family:var(--head);font-weight:700;font-size:clamp(12px,1.6vw,22px);letter-spacing:-.02em;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.35)}
+.hc .hp{font-family:var(--mono);font-size:12px;color:rgba(255,255,255,.85)}
+.hc .hx{font-family:var(--mono);font-size:13px;font-weight:600;color:#fff}
+.hc.sm b{font-size:12px}.hc.sm .hp{display:none}.hc.sm .hx{font-size:10.5px}
+.hc.xs{padding:6px 7px;justify-content:center;align-items:center}.hc.xs .hx{display:none}.hc.xs b{font-size:10.5px}
+.hc b,.hc span{white-space:nowrap;overflow:hidden;text-overflow:clip;max-width:100%}
+.hc.flash{animation:hflash .9s}
+@keyframes hflash{30%{filter:brightness(1.6)}}
+.scan-list{display:flex;flex-direction:column;gap:7px}
+.srow{display:grid;grid-template-columns:22px 62px 1fr 52px;align-items:center;gap:10px;padding:8px 10px;border-radius:11px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.04);
+  opacity:0;transform:translateX(14px);animation:sin .6s forwards}
+@keyframes sin{to{opacity:1;transform:none}}
+.srow .rk{font-family:var(--mono);font-size:11px;color:var(--t3)}
+.srow .sy{font-family:var(--head);font-weight:700;font-size:13.5px}
+.sbar{height:8px;border-radius:8px;background:rgba(255,255,255,.06);overflow:hidden}
+.sbar i{display:block;height:100%;border-radius:8px;width:0;transition:width 1.2s cubic-bezier(.2,.8,.2,1)}
+.sbar i.u{background:linear-gradient(90deg,rgba(16,185,129,.35),#34d399);box-shadow:0 0 12px rgba(52,211,153,.5)}
+.sbar i.d{background:linear-gradient(90deg,rgba(244,63,94,.35),#f43f5e);box-shadow:0 0 12px rgba(244,63,94,.5)}
+.srow .dr{font-family:var(--mono);font-size:11px;text-align:right;font-weight:600}
+.scan-foot{display:flex;align-items:center;gap:8px;margin-top:12px;font-family:var(--mono);font-size:11px;color:var(--t2)}
+
 /* bento */
 .bento{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:230px;gap:16px;margin-top:50px}
 .tile{position:relative;border-radius:22px;padding:24px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.015));
@@ -208,10 +241,11 @@ h2{font-family:var(--head);font-weight:700;font-size:clamp(30px,4.2vw,52px);lett
 
 /* plans */
 .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:50px;align-items:stretch}
-.plan{border-radius:22px;padding:28px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.015));border:1px solid var(--line);position:relative;transition:transform .3s}
-.plan:hover{transform:translateY(-4px)}
-.plan.hot{border-color:rgba(139,92,246,.6);background:linear-gradient(180deg,rgba(139,92,246,.16),rgba(255,255,255,.02));box-shadow:0 30px 80px rgba(109,40,217,.25)}
-.plan .tag{position:absolute;top:22px;right:22px;font-size:10.5px;font-weight:700;letter-spacing:1px;padding:4px 10px;border-radius:999px;background:var(--v);color:#fff}
+.plan{border-radius:22px;padding:28px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.015));border:1px solid var(--line);position:relative;outline:none;cursor:default;
+  transition:transform .3s,border-color .3s,background .3s,box-shadow .3s}
+/* the card under the mouse (or the tapped one on a phone) lights up — none is pre-selected */
+.plans .plan:hover,.plans .plan:focus-visible,.plans .plan:active{transform:translateY(-4px);border-color:rgba(139,92,246,.6);
+  background:linear-gradient(180deg,rgba(139,92,246,.16),rgba(255,255,255,.02));box-shadow:0 30px 80px rgba(109,40,217,.25)}
 .plan h3{font-family:var(--head);font-size:22px}
 .plan .big{font-family:var(--head);font-size:44px;font-weight:700;letter-spacing:-.03em;margin:14px 0 2px}
 .plan .big small{font-size:15px;color:var(--t2);font-weight:500;letter-spacing:0}
@@ -252,6 +286,7 @@ footer{position:relative;z-index:1;margin-top:90px;border-top:1px solid var(--li
   #globe{right:-20%;width:120%;top:420px;height:700px}
   .term3d{transform:rotateY(-8deg) rotateX(6deg)}
   .board{grid-template-columns:repeat(2,1fr)}
+  .mkt{grid-template-columns:1fr}
   .bento{grid-template-columns:1fr 1fr}
   .tile.wide{grid-column:span 2}
 }
@@ -272,6 +307,7 @@ footer{position:relative;z-index:1;margin-top:90px;border-top:1px solid var(--li
   .mk .top{gap:7px}.mk .ic{width:28px;height:28px;font-size:9px;border-radius:8px}.mk .nm b{font-size:13px}.mk .c{font-size:10.5px;padding:3px 5px}
   .rl{font-size:9px}
   .bento{grid-template-columns:1fr;grid-auto-rows:220px}.tile.wide{grid-column:span 1}
+  .heat{height:300px}.ptop small{display:none}.srow{grid-template-columns:18px 54px 1fr 46px;gap:8px}
   .steps{grid-template-columns:1fr;gap:38px}.steps::before{display:none}
   .plans{grid-template-columns:1fr}
   section{padding-top:96px}
@@ -285,7 +321,6 @@ footer{position:relative;z-index:1;margin-top:90px;border-top:1px solid var(--li
 
 <!-- live prices, one line, right to left -->
 <div class="ticker">
-  <div class="badge"><span class="dot"></span>LIVE</div>
   <div class="rail"><div class="track" id="track"></div></div>
 </div>
 
@@ -348,7 +383,17 @@ footer{position:relative;z-index:1;margin-top:90px;border-top:1px solid var(--li
   <section id="market">
     <div class="kick rv">Live market</div>
     <h2 class="rv">Real prices. <span class="shine">Updated live.</span></h2>
-    <div class="board" id="board"></div>
+    <div class="mkt">
+      <div class="pane rv">
+        <div class="ptop"><span><i class="ti ti-layout-grid"></i>Market heatmap</span><small>size = trading volume · colour = 24h move</small></div>
+        <div class="heat" id="heat"><div class="hload">Loading live market…</div></div>
+      </div>
+      <div class="pane rv">
+        <div class="ptop"><span><i class="ti ti-brain"></i><b id="sc-title">AI momentum scanner</b></span><small id="sc-sub">live</small></div>
+        <div class="scan-list" id="scanlist"></div>
+        <div class="scan-foot"><span class="dot"></span><span id="sc-foot">Ranking momentum across the market…</span></div>
+      </div>
+    </div>
   </section>
 
   <section id="features">
@@ -382,11 +427,11 @@ footer{position:relative;z-index:1;margin-top:90px;border-top:1px solid var(--li
     <div class="kick rv">Risk levels</div>
     <h2 class="rv">You choose how hard it pushes.</h2>
     <div class="plans">
-      <div class="plan rv"><h3>Safe</h3><div class="big">0.5%<small> risk / trade</small></div>
+      <div class="plan rv" tabindex="0"><h3>Safe</h3><div class="big">0.5%<small> risk / trade</small></div>
         <ul><li>Trades at once<b>5</b></li><li>Backtest worst drawdown<b>13%</b></li><li>Months up (backtest)<b>11 / 18</b></li></ul></div>
-      <div class="plan hot rv"><span class="tag">DEFAULT</span><h3>Balanced</h3><div class="big">1%<small> risk / trade</small></div>
+      <div class="plan rv" tabindex="0"><h3>Balanced</h3><div class="big">1%<small> risk / trade</small></div>
         <ul><li>Trades at once<b>8</b></li><li>Backtest worst drawdown<b>34%</b></li><li>Months up (backtest)<b>10 / 18</b></li></ul></div>
-      <div class="plan rv"><h3>Aggressive</h3><div class="big">2%<small> risk / trade</small></div>
+      <div class="plan rv" tabindex="0"><h3>Aggressive</h3><div class="big">2%<small> risk / trade</small></div>
         <ul><li>Trades at once<b>10</b></li><li>Backtest worst drawdown<b>62%</b></li><li>Months up (backtest)<b>8 / 18</b></li></ul></div>
     </div>
     <p class="foot-note rv">Portfolio backtest, 40 coins, Mar 2025 – Nov 2026, fees included. Not a promise of future results.</p>
@@ -448,14 +493,11 @@ footer{position:relative;z-index:1;margin-top:90px;border-top:1px solid var(--li
   }
 
   // ── live prices: ticker + board + chart header ──
-  const last = {}, track = document.getElementById('track'), board = document.getElementById('board');
+  const last = {}, track = document.getElementById('track');
   let built = false, quotes = {};
   function build(list) {
     const one = list.map(p => `<span class="tk" data-b="${p.base}"><span class="s">${p.base}</span><span class="p">$${fmt(p.price)}</span><span class="c ${p.chg >= 0 ? 'up' : 'dn'}">${p.chg >= 0 ? '▲' : '▼'} ${Math.abs(p.chg).toFixed(2)}%</span></span>`).join('');
     track.innerHTML = one + one;           // two copies -> seamless loop
-    board.innerHTML = list.slice(0, 8).map(p => `<div class="mk rv in" data-b="${p.base}">
-      <div class="top"><div class="ic">${p.base.slice(0, 4)}</div><div class="nm"><b>${p.base}</b><span>${NAMES[p.base] || ''}</span></div><span class="c"></span></div>
-      <div class="p"></div><div class="rng"><i></i></div><div class="rl"><span class="lo"></span><span class="hi"></span></div></div>`).join('');
     built = true;
   }
   function paint(list) {
@@ -469,18 +511,76 @@ footer{position:relative;z-index:1;margin-top:90px;border-top:1px solid var(--li
         const ce = el.querySelector('.c'); ce.className = 'c ' + (p.chg >= 0 ? 'up' : 'dn'); ce.textContent = (p.chg >= 0 ? '▲ ' : '▼ ') + Math.abs(p.chg).toFixed(2) + '%';
         if (dir) { pe.classList.add('f' + dir); setTimeout(() => pe.classList.remove('f' + dir), 900); }
       });
-      const card = board.querySelector(`.mk[data-b="${p.base}"]`);
-      if (card) {
-        const pe = card.querySelector('.p'); pe.textContent = '$' + fmt(p.price);
-        const ce = card.querySelector('.c'); ce.className = 'c ' + (p.chg >= 0 ? 'up' : 'dn'); ce.textContent = pct(p.chg);
-        if (p.high && p.low && p.high > p.low) {
-          card.querySelector('.rng i').style.left = Math.max(0, Math.min(100, (p.price - p.low) / (p.high - p.low) * 100)) + '%';
-          card.querySelector('.lo').textContent = 'L ' + fmt(p.low); card.querySelector('.hi').textContent = 'H ' + fmt(p.high);
-        }
-        if (dir) { pe.classList.add('f' + dir); card.classList.add('fl' + dir); setTimeout(() => { pe.classList.remove('f' + dir); card.classList.remove('fl' + dir); }, 900); }
-      }
+      if (dir) { const hc = heat.querySelector(`.hc[data-b="${p.base}"]`); if (hc) { hc.classList.remove('flash'); void hc.offsetWidth; hc.classList.add('flash'); } }
     });
     header();
+    drawHeat(list);
+  }
+
+  // ── heatmap: squarified treemap, box size = 24h volume, colour = 24h move ──
+  const heat = document.getElementById('heat');
+  function squarify(items, x, y, w, h) {
+    const out = [], total = items.reduce((a, b) => a + b.v, 0);
+    let rest = items.map(it => ({...it, a: it.v / total * w * h}));
+    while (rest.length) {
+      const short = Math.min(w, h); let row = [rest[0]], best = Infinity;
+      const worst = r => { const s = r.reduce((a, b) => a + b.a, 0), mx = Math.max(...r.map(q => q.a)), mn = Math.min(...r.map(q => q.a)); return Math.max(short * short * mx / (s * s), s * s / (short * short * mn)); };
+      best = worst(row);
+      for (let i = 1; i < rest.length; i++) { const t = row.concat(rest[i]), wv = worst(t); if (wv > best) break; row = t; best = wv; }
+      const s = row.reduce((a, b) => a + b.a, 0);
+      if (w >= h) { const cw = s / h; let cy = y; row.forEach(q => { const ch = q.a / cw; out.push({...q, x, y: cy, w: cw, h: ch}); cy += ch; }); x += cw; w -= cw; }
+      else { const ch = s / w; let cx = x; row.forEach(q => { const cw = q.a / ch; out.push({...q, x: cx, y, w: cw, h: ch}); cx += cw; }); y += ch; h -= ch; }
+      rest = rest.slice(row.length);
+    }
+    return out;
+  }
+  function heatColor(c) {
+    const k = Math.min(1, Math.abs(c) / 8);
+    return c >= 0 ? `linear-gradient(140deg,rgba(16,185,129,${.35 + k * .55}),rgba(4,120,87,${.45 + k * .5}))`
+                  : `linear-gradient(140deg,rgba(244,63,94,${.35 + k * .55}),rgba(159,18,57,${.45 + k * .5}))`;
+  }
+  function drawHeat(list) {
+    const W = heat.clientWidth, H = heat.clientHeight;
+    const items = list.filter(p => p.vol || p.price).map(p => ({base: p.base, v: Math.sqrt(Math.max(1, p.vol || 1)), p})).sort((a, b) => b.v - a.v).slice(0, W < 500 ? 8 : 10);
+    if (!items.length || !W) return;
+    heat.querySelectorAll('.hc').forEach(el => { if (!items.some(i => i.base === el.dataset.b)) el.remove(); });
+    heat.querySelector('.hload')?.remove();
+    squarify(items, 0, 0, W, H).forEach(r => {
+      let el = heat.querySelector(`.hc[data-b="${r.base}"]`);
+      if (!el) { el = document.createElement('div'); el.className = 'hc'; el.dataset.b = r.base; el.innerHTML = '<b></b><span class="hp"></span><span class="hx"></span>'; heat.appendChild(el); }
+      Object.assign(el.style, {left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', background: heatColor(r.p.chg)});
+      el.classList.toggle('sm', r.w < 90 || r.h < 70);
+      el.classList.toggle('xs', r.w < 64 || r.h < 48);
+      el.querySelector('b').textContent = r.base;
+      el.querySelector('.hp').textContent = '$' + fmt(r.p.price);
+      el.querySelector('.hx').textContent = pct(r.p.chg);
+      el.title = `${NAMES[r.base] || r.base} · $${fmt(r.p.price)} · ${pct(r.p.chg)} · vol $${Math.round((r.p.vol || 0) / 1e6).toLocaleString()}M`;
+    });
+  }
+  addEventListener('resize', () => { const l = Object.values(quotes); if (l.length) drawHeat(l); });
+
+  // ── AI momentum scanner (real scan) — or the biggest 24h movers when the scan isn't reachable ──
+  const slist = document.getElementById('scanlist');
+  let scanKey = '';
+  function drawScanner(ai, prices) {
+    let rows, isAI = ai && ai.board && ai.board.length;
+    if (isAI) rows = ai.board.slice(0, 8).map(b => ({base: b.base, val: b.score, up: b.direction === 'UP', label: b.direction === 'UP' ? '▲ UP' : '▼ DOWN', w: b.score}));
+    else {
+      const mx = Math.max(1, ...prices.map(p => Math.abs(p.chg)));
+      rows = prices.slice().sort((a, b) => Math.abs(b.chg) - Math.abs(a.chg)).slice(0, 8)
+        .map(p => ({base: p.base, up: p.chg >= 0, label: pct(p.chg), w: Math.abs(p.chg) / mx * 100}));
+    }
+    const key = rows.map(r => r.base + r.label).join();
+    if (key === scanKey) return; scanKey = key;
+    document.getElementById('sc-title').textContent = isAI ? 'AI momentum scanner' : 'Biggest movers · 24h';
+    document.getElementById('sc-sub').textContent = isAI ? `scan ${ai.last_scan.slice(11, 16)} UTC` : 'live';
+    document.getElementById('sc-foot').textContent = isAI
+      ? `${ai.coins || 40} coins ranked · ${ai.signals || 0} fresh signals · ${ai.with_edge || 0} with a backtest edge`
+      : 'Live 24h moves from Binance Futures';
+    slist.innerHTML = rows.map((r, i) => `<div class="srow" style="animation-delay:${i * 70}ms"><span class="rk">${String(i + 1).padStart(2, '0')}</span>
+      <span class="sy">${r.base}</span><div class="sbar"><i class="${r.up ? 'u' : 'd'}" data-w="${Math.max(6, Math.min(100, r.w))}"></i></div>
+      <span class="dr ${r.up ? 'up' : 'dn'}">${isAI ? Math.round(r.val) : r.label}</span></div>`).join('');
+    requestAnimationFrame(() => slist.querySelectorAll('.sbar i').forEach(b => b.style.width = b.dataset.w + '%'));
   }
   let sym = 'BTC';
   function header() {
@@ -503,13 +603,14 @@ footer{position:relative;z-index:1;margin-top:90px;border-top:1px solid var(--li
     const all = await getJSON(BINANCE + '/ticker/24hr');
     const by = {}; all.forEach(t => by[t.symbol] = t);
     return {prices: MAJORS.map(b => by[b + 'USDT']).filter(Boolean).map(t => ({
-      base: t.symbol.replace('USDT', ''), price: +t.lastPrice, chg: +(+t.priceChangePercent).toFixed(2), high: +t.highPrice, low: +t.lowPrice})), ai: {}};
+      base: t.symbol.replace('USDT', ''), price: +t.lastPrice, chg: +(+t.priceChangePercent).toFixed(2), high: +t.highPrice, low: +t.lowPrice, vol: +t.quoteVolume})), ai: {}};
   }
   async function pulse() {
     try {
       const d = await pulseData();
       if (d.prices && d.prices.length) paint(d.prices);
       const ai = d.ai || {};
+      drawScanner(ai, d.prices || []);
       if (ai.last_scan) {
         if (!counted) { counted = true; countTo(document.getElementById('m-sig'), ai.signals || 0); if (ai.coins) countTo(document.getElementById('m-coins'), ai.coins); }
         document.getElementById('f1b').textContent = 'AI scan · ' + ai.last_scan.slice(11, 16) + ' UTC';
