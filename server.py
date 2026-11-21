@@ -51,6 +51,12 @@ app.add_middleware(
 )
 
 _CLIENT_ALLOWED_PREFIXES = ("/api/auth/", "/api/crypto/", "/api/payment/", "/api/lab/", "/api/reports", "/api/account/")
+# pages the admin can switch on per client; each endpoint checks that permission itself
+_CLIENT_ALLOWED_PATHS = {
+    "/api/autopilot/status", "/api/autopilot/start", "/api/autopilot/toggle", "/api/autopilot/scan",
+    "/api/risk/kill_switch", "/api/risk/reset_demo",
+    "/api/brain/status", "/api/brain/market", "/api/brain/scanner", "/api/brain/run",
+}
 
 @app.middleware("http")
 async def _role_gate(request: Request, call_next):
@@ -62,7 +68,7 @@ async def _role_gate(request: Request, call_next):
     this only adds a new restriction for the new client-role tokens this
     feature introduces."""
     path = request.url.path
-    if path.startswith("/api/") and not path.startswith(_CLIENT_ALLOWED_PREFIXES):
+    if path.startswith("/api/") and not path.startswith(_CLIENT_ALLOWED_PREFIXES) and path not in _CLIENT_ALLOWED_PATHS:
         token = (request.headers.get("authorization") or "").replace("Bearer ", "").strip()
         sess = _auth_sessions.get(token)
         if sess and sess.get("role") == "client":
@@ -445,11 +451,17 @@ PERMISSION_DEFAULTS = {
     "live_trading": True,    # live bots, Trade tab orders on Binance
     "strategy_lab": True,
     "reports": True,
+    "ai_autopilot": True,    # the client's own AI Autopilot (own wallet, own trades)
+    "dashboard": True,       # the client's own trading dashboard
+    "journal": True,         # trading journal (kept in the client's browser)
+    "ai_brain": False,       # AI Brain chat/analysis — runs on the owner's Groq key
     "max_bots": 5,           # running bots at once
 }
 PERMISSION_LABELS = {
     "algo_bots": "Algo bots", "live_trading": "Live trading (real money)",
-    "strategy_lab": "Strategy Lab", "reports": "Reports", "max_bots": "Max running bots",
+    "strategy_lab": "Strategy Lab", "reports": "Reports",
+    "ai_autopilot": "AI Autopilot", "dashboard": "Dashboard", "journal": "Journal",
+    "ai_brain": "AI Brain (uses your Groq key)", "max_bots": "Max running bots",
 }
 
 
@@ -4152,7 +4164,8 @@ def _bot_step(bot):
         return
     if bot.get("last_close_bar") and bar_ts <= bot["last_close_bar"]:
         raise _Skip("⏸ Cooldown: waiting for a fresh candle after the last close")
-    if any(b is not bot and b.get("open_side") and b.get("symbol") == bot["symbol"] for b in _crypto_bots.values()):
+    if any(b is not bot and b.get("open_side") and b.get("symbol") == bot["symbol"]
+           and b.get("username", "admin") == uname for b in _crypto_bots.values()):
         raise _Skip(f"⏸ Symbol lock: another bot already holds {bot['symbol']}")
     if atr_now <= 0:
         raise _Skip("⏸ Not enough candles for ATR yet")
@@ -4195,7 +4208,9 @@ def _ai_scan(bot, pm):
     """A flat bot with an AI coin list reads every coin on it at the candle close
     and moves to the first (best-ranked) coin that gives a signal. No coin is
     fixed: the bot trades whichever of the AI's coins sets up."""
-    held = {b.get("symbol") for b in _crypto_bots.values() if b is not bot and b.get("open_side")}
+    uname = bot.get("username", "admin")
+    held = {b.get("symbol") for b in _crypto_bots.values()
+            if b is not bot and b.get("open_side") and b.get("username", "admin") == uname}
     limit = _bot_lookback_bars(bot) + 2
     scanned, bar = 0, None
     for sym in bot["ai_coins"]:
@@ -4425,13 +4440,14 @@ def _ap_owner() -> str:
     return "admin"
 
 
-def _autopilot_can_go_live():
-    ex = _active_ex.get(_ap_owner(), {}).get("binance")
+def _autopilot_can_go_live(owner=None):
+    owner = owner or _ap_owner()
+    ex = _active_ex.get(owner, {}).get("binance")
     if not ex:
         return False, "Connect Binance Futures (API key with Futures trading enabled) before turning on LIVE autopilot"
     try:
-        _check_one_way_mode(ex, _ap_owner())
-        eq = _live_equity(ex, _ap_owner())
+        _check_one_way_mode(ex, owner)
+        eq = _live_equity(ex, owner)
     except _Skip as e:
         return False, str(e)
     except Exception as e:
@@ -4454,13 +4470,16 @@ def _hunter_view(b) -> dict:
             "in_trade": bool(b.get("open_side"))}
 
 
-def _autopilot_hunt_open(cands, cfg):
-    """Turn fresh, tradeable signals into one-shot bots (one trade each).
-    Retires the old long-lived autopilot bots and clears finished hunters."""
+def _autopilot_hunt_open(cands, cfg, owner=None):
+    """Turn fresh, tradeable signals into one-shot bots (one trade each) for
+    one account (the owner, or a client's own autopilot). Retires that
+    account's old long-lived autopilot bots and clears its finished hunters."""
     actions = []
-    mode, owner = cfg["mode"], _ap_owner()
+    owner = owner or _ap_owner()
+    mode, rm = cfg["mode"], _rm_for(owner)
+    mine = lambda b: b.get("username", "admin") == owner
     for bid, b in list(_crypto_bots.items()):
-        if not b.get("autopilot"):
+        if not b.get("autopilot") or not mine(b):
             continue
         with _bot_lock(bid):
             if b.get("one_shot"):
@@ -4476,12 +4495,13 @@ def _autopilot_hunt_open(cands, cfg):
                 _crypto_bots.pop(bid, None)
                 actions.append(f"{_bot_label(b)}: replaced by the signal hunter")
     ex = _active_ex.get(owner, {}).get("binance") if mode == "live" else None
-    busy = {b.get("symbol") for b in _crypto_bots.values() if b.get("status") == "active" or b.get("open_side")}
-    pending = sum(1 for b in _crypto_bots.values() if b.get("one_shot") and b.get("status") == "active" and not b.get("open_side"))
-    free = int(_rm.config["max_positions"]) - _open_positions(mode, ex, owner) - pending
+    busy = {b.get("symbol") for b in _crypto_bots.values() if mine(b) and (b.get("status") == "active" or b.get("open_side"))}
+    pending = sum(1 for b in _crypto_bots.values()
+                  if mine(b) and b.get("one_shot") and b.get("status") == "active" and not b.get("open_side"))
+    free = int(rm.config["max_positions"]) - _open_positions(mode, ex, owner) - pending
     for c in cands:
         if free <= 0:
-            actions.append(f"{c['symbol'].split('/')[0]} {c['side']} ({c['strategy']}): no free slot — {int(_rm.config['max_positions'])} positions max")
+            actions.append(f"{c['symbol'].split('/')[0]} {c['side']} ({c['strategy']}): no free slot — {int(rm.config['max_positions'])} positions max")
             continue
         if c["symbol"] in busy:
             continue
@@ -4490,8 +4510,8 @@ def _autopilot_hunt_open(cands, cfg):
         bot.update({
             "id": bid, "username": owner, "exchange": "binance", "group_id": bid,
             "group_name": f"🤖 AI Hunter · {c['strategy']}", "mode": mode,
-            "leverage": int(_rm.config["max_leverage"]), "margin_mode": "isolated",
-            "demo_balance": _rm.config["demo_capital"], "demo_equity": _rm.config["demo_capital"],
+            "leverage": int(rm.config["max_leverage"]), "margin_mode": "isolated",
+            "demo_balance": rm.config["demo_capital"], "demo_equity": rm.config["demo_capital"],
             "autopilot": True, "one_shot": True, "hunt_bar": c["bar"], "hunt_side": c["side"],
             "hunt_momentum": c.get("momentum"), "retiring": False,
             "autopilot_why": c["why"], "autopilot_rank": c["rank"],
@@ -4506,7 +4526,8 @@ def _autopilot_hunt_open(cands, cfg):
         _schedule_tick(bid, 2 + len(actions))
         actions.append(f"{mode.upper()} {c['side']} {c['symbol'].split('/')[0]} · {c['strategy']} {c['tf']} — {c['why']}")
     _save_bots()
-    active = [_hunter_view(b) for b in _crypto_bots.values() if b.get("one_shot") and (b.get("status") == "active" or b.get("open_side"))]
+    active = [_hunter_view(b) for b in _crypto_bots.values()
+              if mine(b) and b.get("one_shot") and (b.get("status") == "active" or b.get("open_side"))]
     return actions, active
 
 
@@ -4580,6 +4601,92 @@ def _ap_ohlcv(sym, tf, limit):
     return _split_closed(rows, tf)[0]
 
 
+# ── each client's own AI Autopilot ────────────────────────────────────────────
+# One market scan (the owner's _autopilot) serves everyone; a client who turns
+# their autopilot on gets the same fresh signals opened as trades on THEIR
+# account, with their own wallet, risk level, slots and kill switch.
+_AP_CLIENTS_FILE = "autopilot_clients.json"
+_ap_clients_lock = threading.Lock()
+
+
+def _ap_clients_load() -> dict:
+    try:
+        with open(_AP_CLIENTS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+_ap_clients = _ap_clients_load()
+
+
+def _ap_clients_save():
+    with _ap_clients_lock:
+        tmp = _AP_CLIENTS_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(_ap_clients, f, indent=1, default=str)
+        os.replace(tmp, _AP_CLIENTS_FILE)
+
+
+def _ap_seat(username) -> dict:
+    seat = _ap_clients.setdefault(username, {})
+    seat.setdefault("config", {"enabled": False, "mode": "demo", "level": "balanced", "balance": 0.0})
+    seat.setdefault("log", [])
+    return seat
+
+
+def _ap_seat_log(username, msg):
+    seat = _ap_seat(username)
+    seat["log"].append({"time": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"), "msg": msg})
+    seat["log"] = seat["log"][-80:]
+
+
+def _ap_client_allowed(username) -> bool:
+    user = _user_record(username)
+    return bool(user and user.get("role") == "client" and not user.get("disabled")
+                and not _is_client_expired(user) and _perms(username).get("ai_autopilot"))
+
+
+def _ap_followers() -> list:
+    return [u for u, seat in list(_ap_clients.items())
+            if (seat.get("config") or {}).get("enabled") and _ap_client_allowed(u)]
+
+
+def _ap_follow(users, go, summary, late_note):
+    for u in users:
+        seat = _ap_seat(u)
+        cfg = dict(seat["config"])
+        _ap_seat_log(u, summary)
+        if late_note:
+            _ap_seat_log(u, late_note)
+        if _rm_for(u).state.get("manual_halt"):
+            _ap_seat_log(u, "Kill switch is on — no new trades")
+            continue
+        try:
+            acts, _ = _autopilot_hunt_open(go, cfg, owner=u)
+        except Exception as e:
+            acts = [f"Could not open trades: {str(e)[:150]}"]
+        for a in acts:
+            _ap_seat_log(u, a)
+    _ap_clients_save()
+
+
+def _ap_snapshot_for(username) -> dict:
+    """The autopilot as one account sees it: the shared market scan, with the
+    owner's settings, log and picks swapped for that client's own."""
+    snap = _autopilot.snapshot()
+    if username == _ap_owner():
+        return snap
+    seat = _ap_seat(username)
+    st = dict(snap["state"])
+    st["log"] = list(seat["log"])
+    st["picks"] = [_hunter_view(b) for b in _crypto_bots.values()
+                   if b.get("username") == username and b.get("one_shot")
+                   and (b.get("status") == "active" or b.get("open_side"))]
+    cfg = {**snap["config"], **seat["config"]}
+    return {**snap, "config": cfg, "state": st, "client": True}
+
+
 _autopilot = _autopilot_mod.Autopilot({
     "tickers": lambda: _get_pub_mkt().fetch_tickers(),
     "markets": lambda: _get_pub_mkt().load_markets(),   # cached by ccxt after the first call
@@ -4592,6 +4699,8 @@ _autopilot = _autopilot_mod.Autopilot({
     "signal": _ap_signal,
     "open": _autopilot_hunt_open,
     "can_go_live": _autopilot_can_go_live,
+    "followers": lambda: _ap_followers(),
+    "follow": lambda users, go, summary, late: _ap_follow(users, go, summary, late),
 })
 
 
@@ -4683,13 +4792,17 @@ def autopilot_status(current_user: dict = Depends(_get_current_user)):
             live_eq = _live_equity(ex, current_user["username"])
         except Exception:
             live_eq = None
-    bots = [_bot_health(b) for b in _crypto_bots.values() if b.get("username") == current_user["username"]]
+    uname = current_user["username"]
+    is_client = current_user.get("role") == "client"
+    if is_client and not (_perms(uname).get("ai_autopilot") or _perms(uname).get("dashboard")):
+        return JSONResponse(status_code=403, content={"error": "AI Autopilot is not enabled for your account — ask the admin"})
+    bots = [_bot_health(b) for b in _crypto_bots.values() if b.get("username") == uname]
     bots.sort(key=lambda x: (not x["autopilot"], x["status"] != "active", x["symbol"] or ""))
     return {
-        "autopilot": _autopilot.snapshot(),
-        "risk": _rm.snapshot(live_eq),
+        "autopilot": _ap_snapshot_for(uname),
+        "risk": _rm_for(uname).snapshot(live_eq),
         "guard": _guard.snapshot([b["symbol"] for b in bots if b["status"] == "active"]),
-        "brain": _brain_summary(),
+        "brain": _brain_summary() if (not is_client or _perms(uname).get("ai_brain")) else {"enabled": False},
         "bots": bots,
         "binance_connected": bool(ex),
         "open_positions": {"live": _open_positions("live", ex, current_user["username"]),
@@ -4733,10 +4846,46 @@ class AutopilotToggleReq(BaseModel):
     confirm_live: bool = False
 
 
+def _ap_client_gate(user, mode=None):
+    """None when this client may drive their own autopilot (in this mode)."""
+    err = _perm_error(user, "ai_autopilot")
+    if err:
+        return err
+    if mode == "live":
+        return _perm_error(user, "live_trading")
+    return None
+
+
+def _ap_client_enable(uname, on, mode):
+    seat = _ap_seat(uname)
+    if on and mode == "live":
+        ok, why = _autopilot_can_go_live(uname)
+        if not ok:
+            return why
+    if mode in ("demo", "live"):
+        seat["config"]["mode"] = mode
+    seat["config"]["enabled"] = bool(on)
+    _ap_seat_log(uname, f"Autopilot {'ON' if on else 'OFF'} ({seat['config']['mode'].upper()})")
+    _ap_clients_save()
+    if on:
+        _autopilot.scan_now()
+    return None
+
+
 @app.post("/api/autopilot/toggle")
-def autopilot_toggle(req: AutopilotToggleReq, admin: dict = Depends(_require_admin)):
+def autopilot_toggle(req: AutopilotToggleReq, admin: dict = Depends(_get_current_user)):
     if req.enabled and req.mode == "live" and not req.confirm_live:
         return JSONResponse(status_code=400, content={"error": "Live mode needs confirm_live=true"})
+    if admin.get("role") == "client":
+        err = _ap_client_gate(admin, req.mode if req.enabled else None)
+        if err:
+            return err
+        if req.enabled:
+            _rm_for(admin["username"]).set_manual_halt(False)
+        why = _ap_client_enable(admin["username"], req.enabled, req.mode)
+        if why:
+            return JSONResponse(status_code=400, content={"error": why})
+        return {"success": True, "config": _ap_seat(admin["username"])["config"]}
     if req.enabled:
         _rm.set_manual_halt(False)
     ok, why = _autopilot.set_enabled(req.enabled, req.mode)
@@ -4753,9 +4902,17 @@ class AutopilotStartReq(BaseModel):
 
 
 @app.post("/api/autopilot/start")
-def autopilot_start(req: AutopilotStartReq, admin: dict = Depends(_require_admin)):
-    """One click: the owner gives a balance and a risk level; the AI picks the
-    coins, strategies, side, size, stop loss and take profit from there."""
+def autopilot_start(req: AutopilotStartReq, admin: dict = Depends(_get_current_user)):
+    """One click: the owner (or a client, on their own account) gives a balance
+    and a risk level; the AI picks the coins, strategies, side, size, stop loss
+    and take profit from there."""
+    uname = admin["username"]
+    is_client = admin.get("role") == "client"
+    if is_client:
+        err = _ap_client_gate(admin, req.mode)
+        if err:
+            return err
+    rm = _rm_for(uname)
     lvl = _autopilot_mod.RISK_LEVELS.get(req.level)
     if not lvl:
         return JSONResponse(status_code=400, content={"error": "Pick a risk level: safe, balanced or aggressive"})
@@ -4769,31 +4926,42 @@ def autopilot_start(req: AutopilotStartReq, admin: dict = Depends(_require_admin
     changes = {"risk_pct": lvl["risk_pct"], "max_positions": lvl["max_positions"]}
     note = None
     if req.mode == "demo":
-        wallet = float(_rm.state["demo_wallet"])
+        wallet = float(rm.state["demo_wallet"])
         if abs(wallet - bal) > 0.01:
-            if _open_positions("demo"):
+            if _open_positions("demo", None, uname):
                 # open demo trades belong to the current wallet: keep it, still apply the level
                 note = (f"Demo trades are open, so the wallet stays at ${wallet:,.2f} until they close "
                         f"— the {req.level} level is applied now")
                 bal = wallet
             else:
-                _rm.update_config({"demo_capital": bal})
-                _rm.reset_demo_wallet()
+                rm.update_config({"demo_capital": bal})
+                rm.reset_demo_wallet()
     else:
         changes["capital_cap_usd"] = bal       # never size live trades from more than this
-    _rm.update_config(changes)
+    rm.update_config(changes)
+    rm.set_manual_halt(False)
+    if is_client:
+        _ap_seat(uname)["config"].update({"level": req.level, "balance": bal})
+        why = _ap_client_enable(uname, True, req.mode)
+        if why:
+            return JSONResponse(status_code=400, content={"error": why})
+        return {"success": True, "config": _ap_seat(uname)["config"], "risk": rm.config,
+                "expect": {"per_day": round(lvl["per_1000_day"] * bal / 1000, 2), "max_dd_pct": lvl["max_dd"]},
+                "note": note}
     _autopilot.update_config({"level": req.level, "balance": bal})
-    _rm.set_manual_halt(False)
     ok, why = _autopilot.set_enabled(True, req.mode)
     if not ok:
         return JSONResponse(status_code=400, content={"error": why})
-    return {"success": True, "config": _autopilot.config, "risk": _rm.config,
+    return {"success": True, "config": _autopilot.config, "risk": rm.config,
             "expect": {"per_day": round(lvl["per_1000_day"] * bal / 1000, 2), "max_dd_pct": lvl["max_dd"]},
             "note": note}
 
 
 @app.post("/api/autopilot/scan")
-def autopilot_scan(admin: dict = Depends(_require_admin)):
+def autopilot_scan(admin: dict = Depends(_get_current_user)):
+    if admin.get("role") == "client":
+        return {"success": True, "note": "The AI scans the whole market at every 4h candle close — "
+                                         "your autopilot trades the next fresh signals automatically"}
     if not _autopilot.config["enabled"]:
         threading.Thread(target=lambda: _autopilot.hunt(apply=False), daemon=True).start()
         return {"success": True, "note": "Preview scan started (autopilot is off, nothing will be traded)"}
@@ -4813,16 +4981,18 @@ def risk_config(body: dict, admin: dict = Depends(_require_admin)):
 
 
 @app.post("/api/risk/kill_switch")
-def risk_kill_switch(body: dict, admin: dict = Depends(_require_admin)):
-    _rm.set_manual_halt(bool((body or {}).get("on")))
-    return {"success": True, "manual_halt": _rm.state["manual_halt"]}
+def risk_kill_switch(body: dict, admin: dict = Depends(_get_current_user)):
+    rm = _rm_for(admin["username"])          # a client's kill switch only stops their own trades
+    rm.set_manual_halt(bool((body or {}).get("on")))
+    return {"success": True, "manual_halt": rm.state["manual_halt"]}
 
 
 @app.post("/api/risk/reset_demo")
-def risk_reset_demo(admin: dict = Depends(_require_admin)):
-    if _open_positions("demo"):
+def risk_reset_demo(admin: dict = Depends(_get_current_user)):
+    uname = admin["username"]
+    if _open_positions("demo", None, uname):
         return JSONResponse(status_code=400, content={"error": "Close demo positions first"})
-    _rm.reset_demo_wallet()
+    _rm_for(uname).reset_demo_wallet()
     return {"success": True}
 
 
@@ -8450,14 +8620,25 @@ def purge_offhours_trades(current_user: dict = Depends(_get_current_user)):
 
 # ── AI BRAIN ENDPOINTS ────────────────────────────────────────────────────────
 
+def _brain_gate(user):
+    """Clients use the AI Brain only when the admin enabled it (it runs on the owner's key)."""
+    return _perm_error(user, "ai_brain") if user.get("role") == "client" else None
+
+
 @app.get("/api/brain/status")
 def brain_status(current_user: dict = Depends(_get_current_user)):
+    err = _brain_gate(current_user)
+    if err:
+        return err
     return _brain.get_status()
 
 
 @app.get("/api/brain/market")
 def brain_market_ctx(current_user: dict = Depends(_get_current_user)):
     """Fetch live Binance market context (funding, L/S, OI) — no wait."""
+    err = _brain_gate(current_user)
+    if err:
+        return err
     try:
         ctx = _brain._fetch_market_context()
         return {"success": True, "market_ctx": ctx, "time": datetime.utcnow().strftime("%Y-%m-%d %H:%M")}
@@ -8468,6 +8649,9 @@ def brain_market_ctx(current_user: dict = Depends(_get_current_user)):
 @app.post("/api/brain/run")
 def brain_run_now(current_user: dict = Depends(_get_current_user)):
     """Trigger an immediate brain analysis (don't wait for the 6h timer)."""
+    err = _brain_gate(current_user)
+    if err:
+        return err
     result = _brain.run_analysis()
     return result
 
@@ -8475,6 +8659,9 @@ def brain_run_now(current_user: dict = Depends(_get_current_user)):
 @app.get("/api/brain/scanner")
 def brain_scanner(current_user: dict = Depends(_get_current_user)):
     """Return stored scanner data (Fear & Greed, momentum, whales, news)."""
+    err = _brain_gate(current_user)
+    if err:
+        return err
     try:
         state = _brain._load_state()
         scanner = state.get("scanner")
@@ -8489,7 +8676,7 @@ class BrainConfigureRequest(BaseModel):
     api_key: str
 
 @app.post("/api/brain/configure")
-def brain_configure(body: BrainConfigureRequest, current_user: dict = Depends(_get_current_user)):
+def brain_configure(body: BrainConfigureRequest, current_user: dict = Depends(_require_admin)):
     """Save Gemini API key to brain_config.json and activate the brain."""
     key = body.api_key.strip()
     if not key:

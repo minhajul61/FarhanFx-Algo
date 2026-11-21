@@ -270,11 +270,18 @@ class Autopilot:
     def scan_now(self):
         self._wake.set()
 
+    def _followers(self) -> list:
+        """Client accounts whose own autopilot is on: they trade the same scan."""
+        try:
+            return list((self.hooks.get("followers") or (lambda: []))())
+        except Exception:
+            return []
+
     def _loop(self):
         time.sleep(20)
         while True:
             self._wake.clear()          # a scan request that arrived meanwhile is served by this scan
-            if self.config["enabled"]:
+            if self.config["enabled"] or self._followers():
                 try:
                     self.hunt(apply=True)
                 except Exception as e:
@@ -469,15 +476,24 @@ class Autopilot:
                     (late_tfs if age > self.MAX_SIGNAL_AGE_MIN else new_tfs).add(tf)
             new_candle = "4h" in new_tfs or "4h" in late_tfs
             actions, active = [], []
+            followers = self._followers() if apply else []
+            acting = apply and (cfg["enabled"] or bool(followers))
+            go = [s for s in tradeable if s["tf"] in new_tfs]
+            late = [s for s in tradeable if s["tf"] in late_tfs]
+            late_note = (f"{', '.join(sorted({s['tf'] for s in late}))} candle closed more than "
+                         f"{self.MAX_SIGNAL_AGE_MIN} min ago — too late to enter its signals, waiting for the next candle") if late else None
             if apply and cfg["enabled"]:
-                go = [s for s in tradeable if s["tf"] in new_tfs]
                 actions, active = self.hooks["open"](go, cfg)
-                late = [s for s in tradeable if s["tf"] in late_tfs]
-                if late:
-                    actions.insert(0, f"{', '.join(sorted({s['tf'] for s in late}))} candle closed more than "
-                                      f"{self.MAX_SIGNAL_AGE_MIN} min ago — too late to enter its signals, waiting for the next candle")
+                if late_note:
+                    actions.insert(0, late_note)
+            if followers and self.hooks.get("follow"):
+                summary = f"Scanned {len(board)} coins: {len(fresh)} fresh signal(s), {len(tradeable)} with an edge"
+                try:
+                    self.hooks["follow"](followers, go if acting else [], summary, late_note)
+                except Exception as e:
+                    self._log(f"Client autopilots failed: {str(e)[:150]}")
             with _lock:
-                if apply and cfg["enabled"]:
+                if acting:
                     for tf in new_tfs | late_tfs:
                         hunted[tf] = last_bar[tf]
                     self.state["hunted"] = hunted

@@ -906,6 +906,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
 .jarvis-run-btn:hover { box-shadow:0 0 35px rgba(6,182,212,.6);transform:translateY(-1px) }
 .jarvis-run-btn:disabled { opacity:.5;cursor:not-allowed;transform:none }
 </style>
+<style>body.is-client .admin-only{display:none!important}</style>
 </head>
 <body>
 <!-- JS Error Overlay — shows instead of blank page if script crashes -->
@@ -1136,7 +1137,7 @@ tr:hover td{background:rgba(139,92,246,0.07)}
         <div class="dc-grid">
           <!-- AI Market Guard -->
           <div class="ap-card dc-card">
-            <h3><i class="ti ti-shield-half"></i> AI Market Guard <span style="flex:1"></span><button class="dc-icon" title="Refresh market data" onclick="dcGuardRefresh()"><i class="ti ti-refresh"></i></button></h3>
+            <h3><i class="ti ti-shield-half"></i> AI Market Guard <span style="flex:1"></span><button class="dc-icon admin-only" title="Refresh market data" onclick="dcGuardRefresh()"><i class="ti ti-refresh"></i></button></h3>
             <div class="dc-guard-head" id="dc-guard-head">—</div>
             <div class="dc-fg">
               <svg viewBox="0 0 120 70" class="dc-gauge" aria-label="Fear and Greed gauge">
@@ -4713,6 +4714,7 @@ async function doAuthRegister() {
 // page — every other nav item is hidden, and we skip the MT5 dashboard entirely
 // since those endpoints are blocked server-side for this role anyway.
 function _applyRoleUI(role) {
+  document.body.classList.toggle('is-client', role === 'client');
   const clientNav = ['nav-trade', 'nav-algo', 'nav-lab', 'nav-reports', 'nav-profile'];
   document.querySelectorAll('.nav-item').forEach(n => {
     n.style.display = (role === 'client' && !clientNav.includes(n.id)) ? 'none' : '';
@@ -10461,7 +10463,14 @@ async function applyMenuPermissions() {
   show('nav-lab', p.strategy_lab);
   show('nav-reports', p.reports);
   show('nav-profile', true);
-  if (client) ['nav-dashboard', 'nav-autopilot', 'nav-telegram', 'nav-brain', 'nav-indian', 'nav-journal', 'nav-admin'].forEach(id => show(id, false));
+  if (client) {
+    // pages the admin can switch on per client (Admin → Clients → permissions)
+    show('nav-dashboard', p.dashboard);
+    show('nav-autopilot', p.ai_autopilot);
+    show('nav-journal', p.journal);
+    show('nav-brain', p.ai_brain);
+    ['nav-telegram', 'nav-indian', 'nav-admin'].forEach(id => show(id, false));   // owner-only
+  }
 }
 
 // ═══ ADMIN CONTROL PANEL ════════════════════════════════════════════════════

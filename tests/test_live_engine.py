@@ -1179,6 +1179,71 @@ def test_tested_timeframe_and_hold_days():
         SIGNAL["v"] = None
 
 
+def test_client_autopilot():
+    from datetime import datetime, timedelta
+    mkt, ex = fresh(mode="demo")
+    data = server._load_users()
+    data["users"] = [u for u in data.get("users", []) if u["username"] != "cli"] + [{
+        "username": "cli", "role": "client", "salt": "x", "password_hash": "x",
+        "expiry": (datetime.now() + timedelta(days=30)).isoformat()}]
+    server._save_users(data)
+    server._ap_clients.clear()
+    server._rm_users.pop("cli", None)
+    check("client autopilot: off until the client turns it on", "cli" not in server._ap_followers())
+    server._ap_seat("cli")["config"].update(enabled=True, mode="demo")
+    check("client autopilot: an enabled client follows the market scan", "cli" in server._ap_followers())
+    adm = add_bot("adm", mode="demo", sym="AAA/USDT:USDT")
+    adm.update(autopilot=True, one_shot=True)
+    go = [{"symbol": "AAA/USDT:USDT", "strategy": "rsi_trend", "tf": "4h", "side": "BUY",
+           "params": {"sl_atr": 3.0, "reward_r": 3.0, "tp_atr": 0.0, "trailing_atr": 0.0},
+           "bar": 1, "why": "test signal", "rank": 50, "momentum": 70}]
+    server._ap_follow(["cli"], go, "Scanned 40 coins: 1 fresh signal(s), 1 with an edge", None)
+    mine = [b for b in server._crypto_bots.values() if b.get("username") == "cli"]
+    check("client autopilot: the signal becomes a trade bot on the CLIENT's account, next to the owner's",
+          len(mine) == 1 and mine[0]["symbol"] == "AAA/USDT:USDT" and mine[0]["one_shot"] and "adm" in server._crypto_bots,
+          [(b["id"], b.get("username")) for b in server._crypto_bots.values()])
+    log = [x["msg"] for x in server._ap_seat("cli")["log"]]
+    check("client autopilot: the client's own log shows the scan and the trade",
+          any("Scanned" in m for m in log) and any("BUY AAA" in m for m in log), log)
+    snap = server._ap_snapshot_for("cli")
+    check("client autopilot: the client sees their own settings and picks, not the owner's",
+          snap.get("client") and snap["config"]["enabled"] and len(snap["state"]["picks"]) == 1)
+    mine[0]["status"] = "stopped"
+    server._autopilot_hunt_open([], {"mode": "demo"})            # the owner's clean-up
+    check("client autopilot: the owner's clean-up never removes a client's bots", mine[0]["id"] in server._crypto_bots)
+    server._autopilot_hunt_open([], {"mode": "demo"}, owner="cli")
+    check("...the client's own clean-up does", mine[0]["id"] not in server._crypto_bots)
+    server._rm_for("cli").set_manual_halt(True)
+    server._ap_follow(["cli"], go, "Scanned", None)
+    check("client autopilot: the client's kill switch blocks their new trades",
+          not any(b.get("username") == "cli" for b in server._crypto_bots.values()))
+    server._rm_for("cli").set_manual_halt(False)
+    data = server._load_users()
+    next(u for u in data["users"] if u["username"] == "cli")["permissions"] = {"ai_autopilot": False, "dashboard": False}
+    server._save_users(data)
+    check("client autopilot: switching the permission off stops it following", "cli" not in server._ap_followers())
+    r = server.autopilot_status({"username": "cli", "role": "client"})
+    check("client autopilot: the page is refused without the permission", getattr(r, "status_code", 200) == 403)
+    server._ap_clients.clear()
+
+
+def test_symbol_lock_per_account():
+    mkt, ex = fresh(mode="demo")
+    SIGNAL["v"] = "BUY"
+    mkt.new_candle(100.0)
+    a = add_bot("own", mode="demo", sym="LCK/USDT:USDT")
+    tick("own")
+    c = add_bot("cli1", mode="demo", sym="LCK/USDT:USDT")
+    c["username"] = "cli"
+    tick("cli1")
+    check("symbol lock is per account: a client can trade a coin the owner already holds",
+          a["open_side"] == "BUY" and c["open_side"] == "BUY", (a["open_side"], c["open_side"], c.get("last_error")))
+    b = add_bot("own2", mode="demo", sym="LCK/USDT:USDT")
+    tick("own2")
+    check("...but one account never opens the same coin twice", b["open_side"] is None and "Symbol lock" in (b.get("last_error") or ""))
+    SIGNAL["v"] = None
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
