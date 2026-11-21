@@ -962,6 +962,12 @@ tr:hover td{background:rgba(139,92,246,0.07)}
 .jm-modal h3{font-size:15px;margin-bottom:10px}
 .jm-modal .kv{display:flex;justify-content:space-between;font-size:12.5px;padding:7px 0;border-bottom:1px solid var(--border)}
 .jm-modal .kv span{color:var(--text2)}
+.jm-rev-wrap{max-height:52vh;overflow:auto;border:1px solid var(--border);border-radius:10px}
+.jm-rev{width:100%;border-collapse:collapse;font-size:12px}
+.jm-rev th{position:sticky;top:0;background:var(--card2);text-align:left;padding:7px 6px;font-size:10px;letter-spacing:1px;color:var(--text3)}
+.jm-rev td{padding:4px 6px;border-top:1px solid var(--border)}
+.jm-rev input,.jm-rev select{background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 6px;font-size:12px;font-family:inherit}
+.jm-x{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px}.jm-x:hover{color:var(--red)}
 @media (max-width:1100px){.jm-edge{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:760px){.jm-top{grid-template-columns:1fr}.jm-cols,.jm-edge{grid-template-columns:1fr}.jm-head .sub{margin-left:0;width:100%}}
 /* Support the creator — bottom of the side menu */
@@ -1798,13 +1804,13 @@ tr:hover td{background:rgba(139,92,246,0.07)}
         <!-- import bar -->
         <div class="jm-import">
           <div class="jm-import-txt"><i class="ti ti-cloud-upload"></i><div><b>Bring in your trade history</b>
-            <span>Binance Futures, MT4 / MT5 or any broker — CSV, Excel or HTML statement. The AI Mentor analyses everything.</span></div></div>
+            <span>Binance Futures, MT4 / MT5 or any broker — <b>screenshots</b>, CSV, Excel or HTML statement. The AI Mentor analyses everything.</span></div></div>
           <div class="jm-import-btns">
             <button class="ap-btn primary" onclick="document.getElementById('j-file').click()"><i class="ti ti-upload"></i> UPLOAD HISTORY</button>
             <button class="ap-btn" onclick="jImportFarhan()"><i class="ti ti-robot"></i> IMPORT MY FARHANFX TRADES</button>
             <button class="ap-btn" onclick="jTemplateCSV()" title="CSV template"><i class="ti ti-file-download"></i></button>
           </div>
-          <input type="file" id="j-file" accept=".csv,.txt,.xlsx,.xls,.html,.htm" style="display:none" onchange="jUploadFile(this)"/>
+          <input type="file" id="j-file" accept=".csv,.txt,.xlsx,.xls,.html,.htm,.png,.jpg,.jpeg,.webp,image/*" multiple style="display:none" onchange="jUploadFile(this)"/>
         </div>
         <!-- AI TRADING MENTOR -->
         <div class="jm" id="j-mentor"></div>
@@ -4767,8 +4773,11 @@ function _jLoadXlsx() {
   }));
 }
 async function jUploadFile(input) {
-  const f = input.files && input.files[0]; input.value = '';
-  if (!f) return;
+  const files = [...(input.files || [])]; input.value = '';
+  if (!files.length) return;
+  const imgs = files.filter(x => /^image\//.test(x.type) || /\.(png|jpe?g|webp|bmp)$/i.test(x.name));
+  if (imgs.length) { if (imgs.length > 10) { toast('Up to 10 screenshots at a time', false); return; } jOcrImages(imgs); return; }
+  const f = files[0];
   if (f.size > 15 * 1024 * 1024) { toast('File is too big (max 15 MB)', false); return; }
   try {
     let rows;
@@ -4830,6 +4839,174 @@ function jTemplateCSV() {
   a.download = 'FarhanFX_journal_template.csv'; a.click();
 }
 
+// ── Screenshot upload: read trade history from images (OCR runs in the browser) ──
+let _jOcrLib = null;
+function _jLoadOcr() {
+  return _jOcrLib || (_jOcrLib = new Promise((ok, bad) => {
+    const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+    s.onload = () => ok(window.Tesseract); s.onerror = () => { _jOcrLib = null; bad(new Error('Could not load the screenshot reader — check the internet connection')); };
+    document.head.appendChild(s);
+  }));
+}
+// dark-mode app screenshots read far better as dark text on white, and small ones larger
+function _jPrepImage(file) {
+  return new Promise((ok, bad) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = img.width < 1400 ? Math.min(3, 1400 / img.width) : 1;
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(img, 0, 0, c.width, c.height);
+      const d = x.getImageData(0, 0, c.width, c.height), p = d.data;
+      let sum = 0; for (let i = 0; i < p.length; i += 16) sum += p[i] * 0.299 + p[i + 1] * 0.587 + p[i + 2] * 0.114;
+      const dark = sum / (p.length / 16) < 110;
+      for (let i = 0; i < p.length; i += 4) {
+        let g = p[i] * 0.299 + p[i + 1] * 0.587 + p[i + 2] * 0.114;
+        if (dark) g = 255 - g;
+        g = g < 150 ? Math.max(0, g - 40) : 255;            // crisp text, clean background
+        p[i] = p[i + 1] = p[i + 2] = g;
+      }
+      x.putImageData(d, 0, 0); URL.revokeObjectURL(url); ok(c);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); bad(new Error('This image could not be opened')); };
+    img.src = url;
+  });
+}
+function _jOcrModal(msg) {
+  let m = document.getElementById('jm-ocr-modal');
+  if (!m) {
+    m = document.createElement('div'); m.className = 'jm-modal'; m.id = 'jm-ocr-modal';
+    m.innerHTML = '<div class="box" style="text-align:center"><i class="ti ti-scan" style="font-size:34px;color:#a78bfa"></i>' +
+      '<h3 style="margin:10px 0 6px">Reading your screenshot…</h3><div id="jm-ocr-msg" style="font-size:12.5px;color:var(--text2)"></div>' +
+      '<div style="height:6px;border-radius:6px;background:var(--border);margin-top:14px;overflow:hidden"><i id="jm-ocr-bar" style="display:block;height:100%;width:0;background:linear-gradient(90deg,#8b5cf6,#22d3ee);transition:width .3s"></i></div></div>';
+    document.body.appendChild(m);
+  }
+  document.getElementById('jm-ocr-msg').textContent = msg.text || '';
+  if (msg.pct != null) document.getElementById('jm-ocr-bar').style.width = Math.round(msg.pct) + '%';
+}
+async function jOcrImages(files) {
+  try {
+    _jOcrModal({text: 'Loading the reader (first time only)…', pct: 3});
+    const T = await _jLoadOcr();
+    let cur = 0;
+    const worker = await T.createWorker('eng', 1, {logger: m => {
+      if (m.status === 'recognizing text') _jOcrModal({text: `Screenshot ${cur + 1} of ${files.length} · reading text`, pct: ((cur + m.progress) / files.length) * 100});
+    }});
+    const trades = [];
+    for (cur = 0; cur < files.length; cur++) {
+      _jOcrModal({text: `Screenshot ${cur + 1} of ${files.length} · preparing`, pct: cur / files.length * 100});
+      const canvas = await _jPrepImage(files[cur]);
+      const {data} = await worker.recognize(canvas);
+      trades.push(..._jOcrParse(data.text || ''));
+    }
+    const seen = new Set();                                   // overlapping screenshots show the same trade twice
+    for (let i = trades.length - 1; i >= 0; i--) { const k = _jKey(trades[i]); if (seen.has(k)) trades.splice(i, 1); else seen.add(k); }
+    await worker.terminate();
+    document.getElementById('jm-ocr-modal')?.remove();
+    jReviewTrades(trades, files.length);
+  } catch (e) {
+    document.getElementById('jm-ocr-modal')?.remove();
+    toast(e.message || 'Could not read the screenshot', false);
+  }
+}
+
+// turn OCR text into trades: each block starts at a line with a symbol
+// symbols may carry a broker suffix (BTCUSDp, EURUSDm, XAUUSD.r); amounts may use spaces for thousands (58 681.10)
+const _J_SYM = /(?:^|[\s,(])((?:1000)?[A-Za-z0-9]{2,12}?(?:USDT|USDC|BUSD|FDUSD|USD|EUR|GBP|JPY|CHF|CAD|AUD|NZD)|US30|NAS100|US500|GER40|UK100|SPX500)([a-z.#+]{0,3})(?=[\s,:]|$)/i;
+const _J_STOP = /^(balance|deposit|withdraw(al)?|profit|swap|commission|equity|free ?margin|margin|credit|total)\b/i;
+const _J_NUM = /[+\-]?\d{1,3}(?:[ ,]\d{3})+(?:\.\d+)?|[+\-]?\d+(?:\.\d+)?/g;
+function _jOcrNum(s) {
+  return _jNum(String(s).replace(/[Oo](?=\d)|(?<=\d)[Oo]/g, '0').replace(/(?<=\d)[lI]|[lI](?=\d)/g, '1').replace(/(?<=\d) (?=\d{3}\b)/g, ''));
+}
+function _jOcrParse(text) {
+  // OCR reads MT5's "open → close" arrow as —, –, -, », > or ~ : between two prices it is the arrow
+  const lines = text.split(/\r?\n/).map(l => l.replace(/[|]/g, ' ').replace(/[—–]>|->/g, '→')
+    .replace(/(\d)\s+(?:[—–\-~»>]+|→)\s+(?=\d)/g, '$1 → ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const blocks = []; let cur = null;
+  lines.forEach(l => {
+    if (_J_STOP.test(l)) { cur = null; return; }                          // deposits, balance and summary rows are not trades
+    const m = l.match(_J_SYM);
+    if (m && !/^(USDT|USDC|USD)$/i.test(m[1])) { cur = {sym: m[1].toUpperCase(), lines: [l]}; blocks.push(cur); }
+    else if (cur) cur.lines.push(l);
+  });
+  const out = [];
+  blocks.forEach((b, i) => {
+    const raw = b.lines.join(' ');
+    const dates = [...raw.matchAll(/(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})[ ,T]+(\d{1,2}):(\d{2})(?::\d{2})?/g)]
+      .map(m => _jDate(`${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')} ${m[4].padStart(2, '0')}:${m[5]}`));
+    // numbers only: no dates, times, percentages, leverage (10x) or the symbol itself
+    const t = raw.replace(/\d{4}[-.\/]\d{1,2}[-.\/]\d{1,2}([ ,T]+\d{1,2}:\d{2}(:\d{2})?)?/g, ' ').replace(/\d{1,2}:\d{2}(:\d{2})?/g, ' ')
+                 .replace(/[+\-]?\d[\d,.]*\s*%/g, ' ').replace(/\b\d+(\.\d+)?\s*x\b/gi, ' ').replace(_J_SYM, ' ');
+    const lab = re => { const m = t.match(new RegExp('(?:' + re + ')[^0-9+\\-]{0,24}([+\\-]?\\s?\\d[\\d, ]*\\.?\\d*)', 'i')); return m ? _jOcrNum(m[1].trim()) : NaN; };
+    const sideM = raw.match(/\b(buy|sell|long|short)\b/i);
+    const dir = sideM && /sell|short/i.test(sideM[1]) ? 'SELL' : 'BUY';
+    let entry = lab('entry ?price|open ?price|avg\\.? ?entry|entry'), exit = lab('close ?price|exit ?price|avg\\.? ?close|mark ?price|exit');
+    let pnl = lab('closed ?p&?n?l|realized ?(?:p&?n?l|profit)|net ?(?:profit|p&?l)|p ?& ?l|p ?\\/ ?l|pnl|profit');
+    const arrow = t.match(/(\d{1,3}(?:[ ,]\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*→\s*(\d{1,3}(?:[ ,]\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)/);
+    if (arrow) {                                                                        // MT4/MT5: open → close, the result follows
+      if (isNaN(entry)) entry = _jOcrNum(arrow[1]);
+      if (isNaN(exit)) exit = _jOcrNum(arrow[2]);
+      if (isNaN(pnl)) { const after = t.slice(t.indexOf(arrow[0]) + arrow[0].length).match(_J_NUM); if (after) pnl = _jOcrNum(after[after.length - 1]); }
+    }
+    if (isNaN(pnl)) {                                                                   // otherwise the last number written with a sign
+      const signed = [...t.matchAll(/(?:^|\s)([+\-]\s?\d[\d, ]*\.\d+)(?!\d)/g)].map(m => _jOcrNum(m[1].replace(/\s/g, '')));
+      if (signed.length) pnl = signed[signed.length - 1];
+    }
+    if (isNaN(pnl)) return;
+    let qty = lab('closed ?vol\\.?|qty|quantity|size|volume|lots?');
+    if (isNaN(qty) && sideM) { const q = raw.slice(raw.search(/\b(buy|sell|long|short)\b/i)).match(/^\w+\s+(\d+(?:\.\d+)?)(?!\s*x)/i); if (q) qty = +q[1]; }
+    const open = dates[0] || '', close = dates.length > 1 ? dates[dates.length - 1] : '';
+    out.push({
+      id: Date.now() + i + Math.random(), date: open || close || _jIso(new Date()), closeDate: close, symbol: b.sym, direction: dir,
+      lots: isNaN(qty) ? 0 : Math.abs(qty), entry: isNaN(entry) ? 0 : entry, exit: isNaN(exit) ? 0 : exit, pips: 0,
+      pnl: Math.round(pnl * 100) / 100, rr: null, sl: 0, tp: 0, strategy: '', session: '', notes: '',
+      durationMin: open && close ? _jMinutes(open, close) : null, emotion: '', rating: 0,
+      result: pnl > 0 ? 'WIN' : pnl < 0 ? 'LOSS' : 'BE', source: 'Screenshot',
+    });
+  });
+  return out;
+}
+
+// screenshots are read by OCR, so every value can be checked and corrected before import
+function jReviewTrades(trades, nFiles) {
+  const box = document.createElement('div'); box.className = 'jm-modal'; box.id = 'jm-review';
+  const row = t => `<tr>
+      <td><input type="datetime-local" value="${_apEsc(String(t.date || '').slice(0, 16))}" data-k="date"></td>
+      <td><input value="${_apEsc(t.symbol)}" data-k="symbol" style="width:96px"></td>
+      <td><select data-k="direction"><option ${t.direction === 'BUY' ? 'selected' : ''}>BUY</option><option ${t.direction === 'SELL' ? 'selected' : ''}>SELL</option></select></td>
+      <td><input type="number" step="any" value="${t.lots || ''}" data-k="lots" style="width:70px"></td>
+      <td><input type="number" step="any" value="${t.entry || ''}" data-k="entry" style="width:90px"></td>
+      <td><input type="number" step="any" value="${t.exit || ''}" data-k="exit" style="width:90px"></td>
+      <td><input type="number" step="any" value="${t.pnl}" data-k="pnl" style="width:84px;font-weight:700;color:${t.pnl >= 0 ? 'var(--green)' : 'var(--red)'}"></td>
+      <td><button class="jm-x" title="Remove">✕</button></td></tr>`;
+  box.innerHTML = `<div class="box" style="width:min(860px,100%)">
+    <h3><i class="ti ti-scan" style="color:#a78bfa"></i> Check the trades read from your screenshot${nFiles > 1 ? 's' : ''}</h3>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">${trades.length ? `Found <b>${trades.length}</b> trade(s). Screenshots are read by OCR — fix any number before importing.` : 'No trades could be read. Add them by hand below, or upload a clearer screenshot / your CSV export.'}</div>
+    <div class="jm-rev-wrap"><table class="jm-rev"><thead><tr><th>Date &amp; time</th><th>Symbol</th><th>Side</th><th>Qty / lots</th><th>Entry</th><th>Exit</th><th>P&amp;L ($)</th><th></th></tr></thead>
+      <tbody>${trades.map(row).join('')}</tbody></table></div>
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:space-between;flex-wrap:wrap">
+      <button class="ap-btn" id="jm-rev-add"><i class="ti ti-plus"></i> ADD ROW</button>
+      <span style="display:flex;gap:8px"><button class="ap-btn" id="jm-rev-cancel">CANCEL</button>
+      <button class="ap-btn primary" id="jm-rev-go"><i class="ti ti-check"></i> CONTINUE</button></span></div></div>`;
+  document.body.appendChild(box);
+  const tbody = box.querySelector('tbody');
+  tbody.addEventListener('click', e => { if (e.target.classList.contains('jm-x')) e.target.closest('tr').remove(); });
+  box.querySelector('#jm-rev-add').onclick = () => tbody.insertAdjacentHTML('beforeend', row({date: _jIso(new Date()), symbol: '', direction: 'BUY', pnl: 0}));
+  box.querySelector('#jm-rev-cancel').onclick = () => box.remove();
+  box.querySelector('#jm-rev-go').onclick = () => {
+    const rows = [...tbody.querySelectorAll('tr')].map((tr, i) => {
+      const v = k => tr.querySelector(`[data-k="${k}"]`).value;
+      const pnl = parseFloat(v('pnl')), open = v('date');
+      return {id: Date.now() + i, date: open, closeDate: '', symbol: v('symbol').toUpperCase().trim(), direction: v('direction'),
+              lots: parseFloat(v('lots')) || 0, entry: parseFloat(v('entry')) || 0, exit: parseFloat(v('exit')) || 0, pips: 0,
+              pnl: isNaN(pnl) ? 0 : Math.round(pnl * 100) / 100, rr: null, sl: 0, tp: 0, strategy: '', session: '', notes: '',
+              durationMin: null, emotion: '', rating: 0, result: pnl > 0 ? 'WIN' : pnl < 0 ? 'LOSS' : 'BE', source: 'Screenshot'};
+    }).filter(t => t.symbol && t.date);
+    if (!rows.length) { toast('Nothing to import — each trade needs a symbol and a date', false); return; }
+    box.remove();
+    jPreviewImport(rows, `${nFiles} screenshot${nFiles > 1 ? 's' : ''}`);
+  };
+}
+
 // ── AI TRADING MENTOR: reads the whole history like a trading coach ──
 function _jDur(t) {
   if (t.durationMin != null) return t.durationMin;
@@ -4882,13 +5059,25 @@ function jMentor(all) {
     const p = ts[i - 1], t = ts[i], gap = _jMinutes(p.closeDate || p.date, t.date);
     if (p.pnl < 0 && gap != null && gap <= 60 && p.lots && t.lots >= p.lots * 1.5) { revN++; revPnl += t.pnl; }
   }
-  if (revN >= 2) { score -= 8; issues.push({t: `Revenge trading: <b>${revN}</b> times you opened a bigger trade within an hour of a loss — those trades made <b>${money(revPnl)}</b>.`, w: 5}); plan.push('After a losing trade, wait 30 minutes and keep the next trade at the same size or smaller.'); }
+  // one costly revenge trade is already a pattern worth naming
+  if (revN >= 2 || (revN >= 1 && revPnl < 0 && Math.abs(revPnl) > gl * 0.2)) { score -= 8; issues.push({t: `Revenge trading: <b>${revN}</b> time(s) you opened a bigger trade within an hour of a loss — those trades made <b>${money(revPnl)}</b>.`, w: 5}); plan.push('After a losing trade, wait 30 minutes and keep the next trade at the same size or smaller.'); }
+  // oversized position: the biggest loss came on a trade far bigger than usual
+  const sizes = ts.map(t => t.lots).filter(v => v > 0).sort((a, b) => a - b), medLot = sizes[Math.floor(sizes.length / 2)] || 0;
+  const worstT = losses.slice().sort((a, b) => a.pnl - b.pnl)[0];
+  if (worstT && medLot && worstT.lots >= medLot * 3) { score -= 6; issues.push({t: `Your biggest loss (<b>${money(worstT.pnl)}</b>) came on a <b>${worstT.lots}</b> lot trade — ${Math.round(worstT.lots / medLot)}× your usual ${medLot}. One oversized trade wiped out ${gl ? Math.round(-worstT.pnl / gl * 100) : 0}% of all losses.`, w: 5}); plan.push(`Hard limit: never more than ${+(medLot * 2).toFixed(2)} lots (2× your normal size) on any single trade.`); }
+  // rapid-fire: many trades opened within minutes = chasing the market
+  let burst = 0, burstPnl = 0;
+  for (let i = 0, j = 0; i < n; i++) {
+    while (_jMinutes(ts[j].date, ts[i].date) > 15) j++;
+    if (i - j + 1 >= 4 && i - j + 1 > burst) { burst = i - j + 1; burstPnl = ts.slice(j, i + 1).reduce((a, t) => a + t.pnl, 0); }
+  }
+  if (burst >= 4 && burstPnl < 0) { score -= 5; issues.push({t: `Rapid-fire trading: <b>${burst}</b> trades opened within 15 minutes — that burst lost <b>${money(burstPnl)}</b>. This is chasing the market, not following a plan.`, w: 4}); plan.push('One setup = one trade. If the first entry is stopped out, step away for at least 15 minutes.'); }
   // tilt: results after two losses in a row
   const after2 = []; for (let i = 2; i < n; i++) if (ts[i - 1].pnl < 0 && ts[i - 2].pnl < 0) after2.push(ts[i]);
-  if (after2.length >= 4) {
+  if (after2.length >= 3) {
     const a = after2.reduce((x, t) => x + t.pnl, 0) / after2.length;
-    if (a < exp - Math.abs(exp) * 0.5 && a < 0) { score -= 6; issues.push({t: `Tilt: after 2 losses in a row your next trade averages <b>${money(a)}</b> (normal ${money(exp)}).`, w: 4}); plan.push('Stop for the day after 2 losses in a row (the AI daily-loss stop can do this for you).'); }
-    else strengths.push('You stay disciplined after losing streaks — no tilt in your results.');
+    if (a < 0 && (exp >= 0 || a < exp * 1.2)) { score -= 6; issues.push({t: `Tilt: after 2 losses in a row your next trade averages <b>${money(a)}</b> (normal ${money(exp)}).`, w: 4}); plan.push('Stop for the day after 2 losses in a row (the AI daily-loss stop can do this for you).'); }
+    else if (a >= 0) strengths.push('You stay disciplined after losing streaks — trades after 2 losses still make money.');
   }
   // overtrading
   const counts = days.map(d => d.n).sort((a, b) => a - b), med = counts[Math.floor(counts.length / 2)] || 1;
